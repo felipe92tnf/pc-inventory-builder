@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum PartCategory {
+  CPU
+  GPU
+  MOTHERBOARD
+  RAM
+  STORAGE
+  PSU
+  CASE
+  COOLER
+  FAN
+  NETWORK
+  OTHER
+}
+
+enum PartCondition {
+  NEW
+  USED
+  REFURBISHED
+}
+
+enum BuildStatus {
+  DRAFT
+  CONFIRMED
+  SOLD
+}
+
+model Part {
+  id         String         @id @default(cuid())
+  name       String
+  category   PartCategory
+  condition  PartCondition
+  costPrice  Decimal
+  salePrice  Decimal
+  stock      Int            @default(0)
+  notes      String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  buildItems BuildPartItem[]
+
+  @@index([category])
+  @@index([condition])
+  @@index([name])
+}
+
+model Build {
+  id                 String          @id @default(cuid())
+  name               String
+  notes              String?
+  status             BuildStatus     @default(DRAFT)
+  confirmedAt        DateTime?
+  /// Venta total manual; si es null se usa la suma de precios de venta de las piezas.
+  saleTotalOverride  Decimal?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  items BuildPartItem[]
+  sale  Sale?
+
+  @@index([status])
+  @@index([name])
+}
+
+model Sale {
+  id             String   @id @default(cuid())
+  buildId        String   @unique
+  customerName   String
+  customerPhone  String
+  customerEmail  String?
+  finalSalePrice Decimal
+  totalCost      Decimal
+  profit         Decimal
+  soldAt         DateTime @default(now())
+  paymentMethod  String?
+  warrantyMonths Int?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
+
+  @@index([soldAt])
+}
+
+model BuildPartItem {
+  id       String @id @default(cuid())
+  buildId  String
+  partId   String
+  quantity Int    @default(1)
+
+  build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  part  Part  @relation(fields: [partId], references: [id], onDelete: Restrict)
+
+  @@unique([buildId, partId])
+  @@index([buildId])
+  @@index([partId])
+}
