@@ -1,10 +1,11 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import * as salesApi from "../api/sales";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
 import { PcConfiguratorForm } from "../components/builds/PcConfiguratorForm";
 import { SellPcModal } from "../components/sales/SellPcModal";
 import { useBuildDetail } from "../hooks/useBuildDetail";
+import { isConfiguratorPart } from "../types/part";
 
 function money(value: number): string {
   return `${value.toFixed(2)} EUR`;
@@ -15,8 +16,22 @@ export function BuildDetailPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const buildId = String(id ?? "");
-  const { build, parts, loading, actionLoading, error, addItem, removeItem, confirm, revertToDraft, updateBuildFields, reload } =
-    useBuildDetail(buildId);
+  const {
+    build,
+    parts,
+    loading,
+    actionLoading,
+    error,
+    addItem,
+    updateBuildItemLine,
+    removeItem,
+    confirm,
+    revertToDraft,
+    updateBuildFields,
+    reload
+  } = useBuildDetail(buildId);
+
+  const configuratorParts = useMemo(() => parts.filter(isConfiguratorPart), [parts]);
 
   const [saleDraft, setSaleDraft] = useState("");
   const [linkedSaleId, setLinkedSaleId] = useState<string | null>(null);
@@ -24,8 +39,13 @@ export function BuildDetailPage() {
   const [sellFormKey, setSellFormKey] = useState(0);
 
   useEffect(() => {
-    if (build) {
-      setSaleDraft(build.totalSale.toFixed(2));
+    if (!build) return;
+    const shown =
+      build.saleTotalOverride != null
+        ? Number(build.totalSale)
+        : Number(build.computedSaleTotal ?? build.totalSale);
+    if (Number.isFinite(shown)) {
+      setSaleDraft(shown.toFixed(2));
     }
   }, [build?.id, build?.totalSale, build?.saleTotalOverride, build?.computedSaleTotal]);
 
@@ -54,10 +74,16 @@ export function BuildDetailPage() {
     navigate({ pathname: location.pathname, search: location.search, hash: "" }, { replace: true });
   }, [loading, build?.status, build?.id, location.hash, location.pathname, location.search, navigate]);
 
-  const handleAddConfiguratorParts = async (items: { partId: string; quantity: number }[]) => {
-    for (const { partId, quantity } of items) {
-      if (quantity < 1) continue;
-      await addItem(partId, quantity);
+  const handleAddConfiguratorParts = async (
+    items: { partId: string; quantity: number; unitSalePrice?: number }[]
+  ) => {
+    for (const payload of items) {
+      if (payload.quantity < 1) continue;
+      await addItem({
+        partId: payload.partId,
+        quantity: payload.quantity,
+        ...(payload.unitSalePrice !== undefined ? { unitSalePrice: payload.unitSalePrice } : {})
+      });
     }
   };
 
@@ -173,11 +199,17 @@ export function BuildDetailPage() {
             <span className="font-medium text-slate-400">{money(build.computedSaleTotal)}</span>
           </p>
           {build.saleTotalOverride != null ? (
-            <p className="mt-1 text-xs font-medium text-amber-300/90">Precio personalizado activo</p>
+            <>
+              <p className="mt-1 text-xs font-medium text-amber-300/90">Precio personalizado activo</p>
+              <p className="mt-1 text-xs text-slate-500">
+                El total del campo superior sustituye a la suma de ventas por pieza. Puedes volver al total calculado con
+                el boton de abajo.
+              </p>
+            </>
           ) : (
             <p className="mt-1 text-xs text-slate-500">Usando suma de ventas de las piezas</p>
           )}
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-col gap-2">
             <button
               type="button"
               disabled={actionLoading || build.status === "SOLD"}
@@ -192,18 +224,20 @@ export function BuildDetailPage() {
               }}
               className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Guardar precio
+              Guardar precio (total manual)
             </button>
-            <button
-              type="button"
-              disabled={actionLoading || build.status === "SOLD"}
-              onClick={() => {
-                void updateBuildFields({ saleTotalOverride: null });
-              }}
-              className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Usar precio calculado
-            </button>
+            {build.saleTotalOverride != null ? (
+              <button
+                type="button"
+                disabled={actionLoading || build.status === "SOLD"}
+                onClick={() => {
+                  void updateBuildFields({ saleTotalOverride: null });
+                }}
+                className="w-full rounded-lg border border-emerald-500/45 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 shadow-sm transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-start"
+              >
+                Usar suma de piezas ({money(build.computedSaleTotal)})
+              </button>
+            ) : null}
           </div>
         </article>
         <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
@@ -216,7 +250,7 @@ export function BuildDetailPage() {
       </section>
 
       {build.status === "DRAFT" ? (
-        <PcConfiguratorForm parts={parts} disabled={actionLoading} onAddSelected={handleAddConfiguratorParts} />
+        <PcConfiguratorForm parts={configuratorParts} disabled={actionLoading} onAddSelected={handleAddConfiguratorParts} />
       ) : null}
 
       <BuildItemsTable
@@ -226,6 +260,13 @@ export function BuildDetailPage() {
         onRemove={async (itemId) => {
           await removeItem(itemId);
         }}
+        onUpdateLineSale={
+          build.status === "DRAFT"
+            ? async (itemId, unitSalePrice) => {
+                await updateBuildItemLine(itemId, { unitSalePrice });
+              }
+            : undefined
+        }
       />
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">

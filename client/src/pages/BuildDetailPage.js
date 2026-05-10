@@ -1,11 +1,12 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useState } from "react";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import * as salesApi from "../api/sales";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
 import { PcConfiguratorForm } from "../components/builds/PcConfiguratorForm";
 import { SellPcModal } from "../components/sales/SellPcModal";
 import { useBuildDetail } from "../hooks/useBuildDetail";
+import { isConfiguratorPart } from "../types/part";
 function money(value) {
     return `${value.toFixed(2)} EUR`;
 }
@@ -14,14 +15,20 @@ export function BuildDetailPage() {
     const location = useLocation();
     const navigate = useNavigate();
     const buildId = String(id ?? "");
-    const { build, parts, loading, actionLoading, error, addItem, removeItem, confirm, revertToDraft, updateBuildFields, reload } = useBuildDetail(buildId);
+    const { build, parts, loading, actionLoading, error, addItem, updateBuildItemLine, removeItem, confirm, revertToDraft, updateBuildFields, reload } = useBuildDetail(buildId);
+    const configuratorParts = useMemo(() => parts.filter(isConfiguratorPart), [parts]);
     const [saleDraft, setSaleDraft] = useState("");
     const [linkedSaleId, setLinkedSaleId] = useState(null);
     const [sellModalOpen, setSellModalOpen] = useState(false);
     const [sellFormKey, setSellFormKey] = useState(0);
     useEffect(() => {
-        if (build) {
-            setSaleDraft(build.totalSale.toFixed(2));
+        if (!build)
+            return;
+        const shown = build.saleTotalOverride != null
+            ? Number(build.totalSale)
+            : Number(build.computedSaleTotal ?? build.totalSale);
+        if (Number.isFinite(shown)) {
+            setSaleDraft(shown.toFixed(2));
         }
     }, [build?.id, build?.totalSale, build?.saleTotalOverride, build?.computedSaleTotal]);
     useEffect(() => {
@@ -50,10 +57,14 @@ export function BuildDetailPage() {
         navigate({ pathname: location.pathname, search: location.search, hash: "" }, { replace: true });
     }, [loading, build?.status, build?.id, location.hash, location.pathname, location.search, navigate]);
     const handleAddConfiguratorParts = async (items) => {
-        for (const { partId, quantity } of items) {
-            if (quantity < 1)
+        for (const payload of items) {
+            if (payload.quantity < 1)
                 continue;
-            await addItem(partId, quantity);
+            await addItem({
+                partId: payload.partId,
+                quantity: payload.quantity,
+                ...(payload.unitSalePrice !== undefined ? { unitSalePrice: payload.unitSalePrice } : {})
+            });
         }
     };
     if (!id) {
@@ -74,7 +85,7 @@ export function BuildDetailPage() {
                                                 ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
                                                 : "border-amber-500/40 bg-amber-500/15 text-amber-300"}`, children: build.status === "SOLD" ? "Vendido" : build.status === "CONFIRMED" ? "Assembled" : "Draft" }), build.status === "SOLD" ? (linkedSaleId ? (_jsx(Link, { to: `/sales/${linkedSaleId}`, className: "text-sm font-semibold text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline", children: "Ver venta" })) : (_jsx("span", { className: "text-xs text-slate-500", children: "Buscando venta..." }))) : null] })] }), _jsx(Link, { to: "/builds", className: "mt-4 inline-flex text-sm font-medium text-indigo-300 hover:text-indigo-200", children: "\u2190 Volver a montajes" })] }), error ? (_jsxs("div", { className: "flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between", children: [_jsx("span", { children: error }), _jsx("button", { type: "button", onClick: () => {
                             void reload();
-                        }, className: "rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70", children: "Reintentar" })] })) : null, _jsxs("section", { className: "grid grid-cols-1 gap-4 md:grid-cols-3", children: [_jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsx("p", { className: "text-xs uppercase tracking-wide text-slate-400", children: "Coste total" }), _jsx("p", { className: "mt-2 text-2xl font-bold text-slate-100", children: money(build.totalCost) })] }), _jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsx("p", { className: "text-xs uppercase tracking-wide text-slate-400", children: "Precio venta total" }), _jsx("input", { type: "text", inputMode: "decimal", value: saleDraft, onChange: (event) => setSaleDraft(event.target.value), disabled: actionLoading || build.status === "SOLD", className: "mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-xl font-bold text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50", "aria-label": "Precio de venta total" }), _jsxs("p", { className: "mt-2 text-xs text-slate-500", children: ["Calculado por piezas:", " ", _jsx("span", { className: "font-medium text-slate-400", children: money(build.computedSaleTotal) })] }), build.saleTotalOverride != null ? (_jsx("p", { className: "mt-1 text-xs font-medium text-amber-300/90", children: "Precio personalizado activo" })) : (_jsx("p", { className: "mt-1 text-xs text-slate-500", children: "Usando suma de ventas de las piezas" })), _jsxs("div", { className: "mt-3 flex flex-wrap gap-2", children: [_jsx("button", { type: "button", disabled: actionLoading || build.status === "SOLD", onClick: () => {
+                        }, className: "rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70", children: "Reintentar" })] })) : null, _jsxs("section", { className: "grid grid-cols-1 gap-4 md:grid-cols-3", children: [_jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsx("p", { className: "text-xs uppercase tracking-wide text-slate-400", children: "Coste total" }), _jsx("p", { className: "mt-2 text-2xl font-bold text-slate-100", children: money(build.totalCost) })] }), _jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsx("p", { className: "text-xs uppercase tracking-wide text-slate-400", children: "Precio venta total" }), _jsx("input", { type: "text", inputMode: "decimal", value: saleDraft, onChange: (event) => setSaleDraft(event.target.value), disabled: actionLoading || build.status === "SOLD", className: "mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-xl font-bold text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50", "aria-label": "Precio de venta total" }), _jsxs("p", { className: "mt-2 text-xs text-slate-500", children: ["Calculado por piezas:", " ", _jsx("span", { className: "font-medium text-slate-400", children: money(build.computedSaleTotal) })] }), build.saleTotalOverride != null ? (_jsxs(_Fragment, { children: [_jsx("p", { className: "mt-1 text-xs font-medium text-amber-300/90", children: "Precio personalizado activo" }), _jsx("p", { className: "mt-1 text-xs text-slate-500", children: "El total del campo superior sustituye a la suma de ventas por pieza. Puedes volver al total calculado con el boton de abajo." })] })) : (_jsx("p", { className: "mt-1 text-xs text-slate-500", children: "Usando suma de ventas de las piezas" })), _jsxs("div", { className: "mt-3 flex flex-col gap-2", children: [_jsx("button", { type: "button", disabled: actionLoading || build.status === "SOLD", onClick: () => {
                                             const normalized = Number(saleDraft.replace(",", ".").trim());
                                             if (!Number.isFinite(normalized) || normalized < 0) {
                                                 window.alert("Introduce un precio de venta valido (mayor o igual que 0).");
@@ -82,11 +93,15 @@ export function BuildDetailPage() {
                                             }
                                             const rounded = Math.round(normalized * 100) / 100;
                                             void updateBuildFields({ saleTotalOverride: rounded });
-                                        }, className: "rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50", children: "Guardar precio" }), _jsx("button", { type: "button", disabled: actionLoading || build.status === "SOLD", onClick: () => {
+                                        }, className: "rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50", children: "Guardar precio (total manual)" }), build.saleTotalOverride != null ? (_jsxs("button", { type: "button", disabled: actionLoading || build.status === "SOLD", onClick: () => {
                                             void updateBuildFields({ saleTotalOverride: null });
-                                        }, className: "rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50", children: "Usar precio calculado" })] })] }), _jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsx("p", { className: "text-xs uppercase tracking-wide text-slate-400", children: "Beneficio estimado" }), _jsx("p", { className: `mt-2 text-2xl font-bold ${build.profit >= 0 ? "text-emerald-300" : "text-rose-300"}`, children: money(build.profit) }), _jsx("p", { className: "mt-2 text-xs text-slate-500", children: "Precio venta total menos coste total" })] })] }), build.status === "DRAFT" ? (_jsx(PcConfiguratorForm, { parts: parts, disabled: actionLoading, onAddSelected: handleAddConfiguratorParts })) : null, _jsx(BuildItemsTable, { items: build.items, status: build.status, actionLoading: actionLoading, onRemove: async (itemId) => {
+                                        }, className: "w-full rounded-lg border border-emerald-500/45 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 shadow-sm transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-start", children: ["Usar suma de piezas (", money(build.computedSaleTotal), ")"] })) : null] })] }), _jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsx("p", { className: "text-xs uppercase tracking-wide text-slate-400", children: "Beneficio estimado" }), _jsx("p", { className: `mt-2 text-2xl font-bold ${build.profit >= 0 ? "text-emerald-300" : "text-rose-300"}`, children: money(build.profit) }), _jsx("p", { className: "mt-2 text-xs text-slate-500", children: "Precio venta total menos coste total" })] })] }), build.status === "DRAFT" ? (_jsx(PcConfiguratorForm, { parts: configuratorParts, disabled: actionLoading, onAddSelected: handleAddConfiguratorParts })) : null, _jsx(BuildItemsTable, { items: build.items, status: build.status, actionLoading: actionLoading, onRemove: async (itemId) => {
                     await removeItem(itemId);
-                } }), _jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: _jsxs("div", { className: "flex flex-col gap-4 md:flex-row md:items-center md:justify-between", children: [_jsxs("div", { children: [_jsx("h2", { className: "text-lg font-semibold text-slate-100", children: "Confirmar montaje" }), _jsx("p", { className: "text-sm text-slate-300", children: build.status === "SOLD"
+                }, onUpdateLineSale: build.status === "DRAFT"
+                    ? async (itemId, unitSalePrice) => {
+                        await updateBuildItemLine(itemId, { unitSalePrice });
+                    }
+                    : undefined }), _jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: _jsxs("div", { className: "flex flex-col gap-4 md:flex-row md:items-center md:justify-between", children: [_jsxs("div", { children: [_jsx("h2", { className: "text-lg font-semibold text-slate-100", children: "Confirmar montaje" }), _jsx("p", { className: "text-sm text-slate-300", children: build.status === "SOLD"
                                         ? "Montaje vendido. Para cambiar piezas, elimina primero la venta en la ficha de venta."
                                         : "Valida stock y descuenta inventario. Despues quedara bloqueado para edicion." })] }), _jsxs("div", { className: "flex flex-wrap gap-2", children: [build.status === "CONFIRMED" ? (_jsx("button", { type: "button", disabled: actionLoading, onClick: () => {
                                         const ok = window.confirm("Volver este montaje a borrador? El stock descontado al confirmar se devolvera al inventario y podras cambiar componentes.");

@@ -56,6 +56,12 @@ function mapServiceError(error: unknown, res: Response) {
     res.status(400).json({ message: "Pieza y cantidad obligatorias para venta de pieza suelta" });
     return true;
   }
+  if (msg === "SPARE_PART_REQUIRES_PART_KIND") {
+    res.status(400).json({
+      message: "La venta de pieza suelta solo admite piezas del inventario tipo componente."
+    });
+    return true;
+  }
 
   return false;
 }

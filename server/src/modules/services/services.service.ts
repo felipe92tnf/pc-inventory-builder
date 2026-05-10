@@ -1,4 +1,4 @@
-import { Prisma, ServiceStatus, ServiceType } from "@prisma/client";
+import { InventoryKind, Prisma, ServiceStatus, ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import {
   createServiceSchema,
@@ -35,6 +35,9 @@ export async function createService(payload: unknown) {
     const part = await prisma.part.findUnique({ where: { id: data.selectedPartId! } });
     if (!part) {
       throw new Error("PART_NOT_FOUND");
+    }
+    if (part.inventoryKind !== InventoryKind.PART) {
+      throw new Error("SPARE_PART_REQUIRES_PART_KIND");
     }
     const qty = data.quantity!;
     if (part.stock < qty) {
@@ -202,6 +205,9 @@ export async function patchService(id: string, payload: unknown) {
       if (!part) {
         throw new Error("PART_NOT_FOUND");
       }
+      if (part.inventoryKind !== InventoryKind.PART) {
+        throw new Error("SPARE_PART_REQUIRES_PART_KIND");
+      }
       if (part.stock < qty) {
         throw new Error("INSUFFICIENT_STOCK");
       }
@@ -267,6 +273,9 @@ export async function completeService(id: string) {
       const part = await tx.part.findUnique({ where: { id: existing.selectedPartId } });
       if (!part) {
         throw new Error("PART_NOT_FOUND");
+      }
+      if (part.inventoryKind !== InventoryKind.PART) {
+        throw new Error("SPARE_PART_REQUIRES_PART_KIND");
       }
       if (part.stock < existing.quantity) {
         throw new Error("INSUFFICIENT_STOCK");

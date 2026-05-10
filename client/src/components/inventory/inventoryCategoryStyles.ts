@@ -1,0 +1,233 @@
+import type { LucideIcon } from "lucide-react";
+import {
+  Box,
+  CircuitBoard,
+  Cpu,
+  Fan,
+  HardDrive,
+  Laptop,
+  MemoryStick,
+  MonitorCog,
+  Network,
+  Package,
+  PlugZap,
+  Wrench
+} from "lucide-react";
+import type { PartCategory } from "../../types/part";
+
+/**
+ * Estilo visual por categoría de inventario (solo UI).
+ * Los valores `category` en datos siguen siendo los enums de API (CPU, OS, …).
+ */
+export type InventoryCategoryStyle = {
+  /** Texto legible en español */
+  label: string;
+  Icon: LucideIcon;
+  /** Color principal (texto secundario / acento) */
+  accentText: string;
+  /** Icono en cabecera */
+  accentIcon: string;
+  /** Fondo del bloque acordeón */
+  panelBg: string;
+  /** Borde del bloque acordeón */
+  panelBorder: string;
+  /** Hover del bloque acordeón */
+  panelHover: string;
+  /** Botón cabecera (gradiente suave + hover) */
+  headerBg: string;
+  headerHover: string;
+  /** Chip / badge compacto en tarjetas */
+  chipBg: string;
+  chipBorder: string;
+  chipText: string;
+};
+
+export const INVENTORY_CATEGORY_STYLES: Record<PartCategory, InventoryCategoryStyle> = {
+  CPU: {
+    label: "CPU",
+    Icon: Cpu,
+    accentText: "text-sky-200/95",
+    accentIcon: "text-sky-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-sky-500/35",
+    panelHover: "hover:border-sky-400/45",
+    headerBg: "bg-gradient-to-r from-sky-950/55 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-sky-950/70 hover:via-slate-950/50",
+    chipBg: "bg-sky-500/12",
+    chipBorder: "border-sky-400/35",
+    chipText: "text-sky-200"
+  },
+  GPU: {
+    label: "GPU",
+    Icon: MonitorCog,
+    accentText: "text-violet-200/95",
+    accentIcon: "text-violet-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-violet-500/35",
+    panelHover: "hover:border-violet-400/45",
+    headerBg: "bg-gradient-to-r from-violet-950/55 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-violet-950/70 hover:via-slate-950/50",
+    chipBg: "bg-violet-500/12",
+    chipBorder: "border-violet-400/35",
+    chipText: "text-violet-200"
+  },
+  MOTHERBOARD: {
+    label: "Placa base",
+    Icon: CircuitBoard,
+    accentText: "text-amber-200/95",
+    accentIcon: "text-amber-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-amber-500/35",
+    panelHover: "hover:border-amber-400/45",
+    headerBg: "bg-gradient-to-r from-amber-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-amber-950/65 hover:via-slate-950/50",
+    chipBg: "bg-amber-500/12",
+    chipBorder: "border-amber-400/35",
+    chipText: "text-amber-200"
+  },
+  RAM: {
+    label: "RAM",
+    Icon: MemoryStick,
+    accentText: "text-emerald-200/95",
+    accentIcon: "text-emerald-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-emerald-500/35",
+    panelHover: "hover:border-emerald-400/45",
+    headerBg: "bg-gradient-to-r from-emerald-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-emerald-950/65 hover:via-slate-950/50",
+    chipBg: "bg-emerald-500/12",
+    chipBorder: "border-emerald-400/35",
+    chipText: "text-emerald-200"
+  },
+  STORAGE: {
+    label: "Almacenamiento",
+    Icon: HardDrive,
+    accentText: "text-cyan-200/95",
+    accentIcon: "text-cyan-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-cyan-500/35",
+    panelHover: "hover:border-cyan-400/45",
+    headerBg: "bg-gradient-to-r from-cyan-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-cyan-950/65 hover:via-slate-950/50",
+    chipBg: "bg-cyan-500/12",
+    chipBorder: "border-cyan-400/35",
+    chipText: "text-cyan-200"
+  },
+  PSU: {
+    label: "Fuente",
+    Icon: PlugZap,
+    accentText: "text-yellow-200/95",
+    accentIcon: "text-yellow-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-yellow-500/30",
+    panelHover: "hover:border-yellow-400/45",
+    headerBg: "bg-gradient-to-r from-yellow-950/35 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-yellow-950/55 hover:via-slate-950/50",
+    chipBg: "bg-yellow-500/12",
+    chipBorder: "border-yellow-400/35",
+    chipText: "text-yellow-100"
+  },
+  CASE: {
+    label: "Torre",
+    Icon: Box,
+    accentText: "text-orange-200/95",
+    accentIcon: "text-orange-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-orange-500/35",
+    panelHover: "hover:border-orange-400/45",
+    headerBg: "bg-gradient-to-r from-orange-950/45 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-orange-950/60 hover:via-slate-950/50",
+    chipBg: "bg-orange-500/12",
+    chipBorder: "border-orange-400/35",
+    chipText: "text-orange-200"
+  },
+  COOLER: {
+    label: "Refrigeracion",
+    Icon: Fan,
+    accentText: "text-blue-200/95",
+    accentIcon: "text-blue-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-blue-500/35",
+    panelHover: "hover:border-blue-400/45",
+    headerBg: "bg-gradient-to-r from-blue-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-blue-950/65 hover:via-slate-950/50",
+    chipBg: "bg-blue-500/12",
+    chipBorder: "border-blue-400/35",
+    chipText: "text-blue-200"
+  },
+  FAN: {
+    label: "Ventilador",
+    Icon: Fan,
+    accentText: "text-teal-200/95",
+    accentIcon: "text-teal-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-teal-500/35",
+    panelHover: "hover:border-teal-400/45",
+    headerBg: "bg-gradient-to-r from-teal-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-teal-950/65 hover:via-slate-950/50",
+    chipBg: "bg-teal-500/12",
+    chipBorder: "border-teal-400/35",
+    chipText: "text-teal-200"
+  },
+  NETWORK: {
+    label: "Red",
+    Icon: Network,
+    accentText: "text-indigo-200/95",
+    accentIcon: "text-indigo-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-indigo-500/35",
+    panelHover: "hover:border-indigo-400/45",
+    headerBg: "bg-gradient-to-r from-indigo-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-indigo-950/65 hover:via-slate-950/50",
+    chipBg: "bg-indigo-500/12",
+    chipBorder: "border-indigo-400/35",
+    chipText: "text-indigo-200"
+  },
+  OS: {
+    label: "Sistema Operativo",
+    Icon: Laptop,
+    accentText: "text-fuchsia-200/95",
+    accentIcon: "text-fuchsia-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-fuchsia-500/35",
+    panelHover: "hover:border-fuchsia-400/45",
+    headerBg: "bg-gradient-to-r from-fuchsia-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-fuchsia-950/65 hover:via-slate-950/50",
+    chipBg: "bg-fuchsia-500/12",
+    chipBorder: "border-fuchsia-400/35",
+    chipText: "text-fuchsia-200"
+  },
+  LABOR: {
+    label: "Mano de obra",
+    Icon: Wrench,
+    accentText: "text-rose-200/95",
+    accentIcon: "text-rose-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-rose-500/35",
+    panelHover: "hover:border-rose-400/45",
+    headerBg: "bg-gradient-to-r from-rose-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-rose-950/65 hover:via-slate-950/50",
+    chipBg: "bg-rose-500/12",
+    chipBorder: "border-rose-400/35",
+    chipText: "text-rose-200"
+  },
+  OTHER: {
+    label: "Otros",
+    Icon: Package,
+    accentText: "text-slate-200",
+    accentIcon: "text-slate-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-slate-600/45",
+    panelHover: "hover:border-slate-500/55",
+    headerBg: "bg-gradient-to-r from-slate-900/70 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-slate-900/85 hover:via-slate-950/50",
+    chipBg: "bg-slate-600/15",
+    chipBorder: "border-slate-500/40",
+    chipText: "text-slate-200"
+  }
+};
+
+export function getInventoryCategoryStyle(category: string): InventoryCategoryStyle {
+  const key = category as PartCategory;
+  return INVENTORY_CATEGORY_STYLES[key] ?? INVENTORY_CATEGORY_STYLES.OTHER;
+}

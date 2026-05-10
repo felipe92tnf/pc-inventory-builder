@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import { PART_CATEGORIES, type Part } from "../../types/part";
+import {
+  PART_CATEGORIES,
+  isNonStockCategory,
+  type Part,
+  type PartCategory
+} from "../../types/part";
+import { getInventoryCategoryStyle } from "./inventoryCategoryStyles";
 
 type PartsTableProps = {
   /** Lista completa (tras filtros); en escritorio se muestra por categorias desplegables. */
@@ -23,23 +29,29 @@ function formatCostPrice(value: number | string): string {
   return formatMoney(value);
 }
 
-function categoryBadgeClass(category: string): string {
-  const map: Record<string, string> = {
-    CPU: "bg-sky-500/15 text-sky-300 border-sky-500/40",
-    GPU: "bg-violet-500/15 text-violet-300 border-violet-500/40",
-    RAM: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
-    STORAGE: "bg-cyan-500/15 text-cyan-300 border-cyan-500/40"
-  };
-  return map[category] ?? "bg-slate-500/15 text-slate-300 border-slate-500/40";
-}
-
 function conditionBadgeClass(condition: string): string {
   if (condition === "NEW") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
   if (condition === "USED") return "bg-amber-500/15 text-amber-300 border-amber-500/40";
   return "bg-indigo-500/15 text-indigo-300 border-indigo-500/40";
 }
 
+function PartConditionBadge({ part }: { part: Part }) {
+  if (part.category && isNonStockCategory(part.category)) {
+    return <span className="text-slate-500">—</span>;
+  }
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`}
+    >
+      {part.condition}
+    </span>
+  );
+}
+
 function StockBadges({ part }: { part: Part }) {
+  if (part.category && isNonStockCategory(part.category)) {
+    return <span className="text-slate-500">No aplica</span>;
+  }
   if (part.stock === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -53,10 +65,10 @@ function StockBadges({ part }: { part: Part }) {
   );
 }
 
-function ChevronCategory({ open }: { open: boolean }) {
+function ChevronCategory({ open, className = "text-slate-400" }: { open: boolean; className?: string }) {
   return (
     <svg
-      className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+      className={`h-5 w-5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""} ${className}`}
       fill="none"
       viewBox="0 0 24 24"
       strokeWidth={2}
@@ -65,6 +77,47 @@ function ChevronCategory({ open }: { open: boolean }) {
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
     </svg>
+  );
+}
+
+function CategoryAccordionTrigger({
+  categoryKey,
+  pieceSummary,
+  expanded,
+  panelId,
+  onToggle
+}: {
+  categoryKey: PartCategory;
+  pieceSummary: string;
+  expanded: boolean;
+  panelId: string;
+  onToggle: () => void;
+}) {
+  const style = getInventoryCategoryStyle(categoryKey);
+  const Icon = style.Icon;
+
+  return (
+    <button
+      type="button"
+      className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors duration-200 ${style.headerBg} ${style.headerHover}`}
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-controls={panelId}
+    >
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${style.chipBorder} ${style.chipBg}`}
+        aria-hidden
+      >
+        <Icon className={`h-[1.125rem] w-[1.125rem] ${style.accentIcon}`} strokeWidth={2} />
+      </span>
+      <span
+        className={`inline-flex max-w-[min(100%,14rem)] shrink-0 truncate rounded-full border px-2.5 py-1 text-xs font-semibold ${style.chipBg} ${style.chipBorder} ${style.chipText}`}
+      >
+        {style.label}
+      </span>
+      <span className={`min-w-0 flex-1 text-sm tabular-nums ${style.accentText}`}>{pieceSummary}</span>
+      <ChevronCategory open={expanded} className={style.accentIcon} />
+    </button>
   );
 }
 
@@ -82,6 +135,8 @@ function PartCard({
   /** Dentro de un acordeon por categoria, ocultar chip duplicado */
   showCategoryBadge?: boolean;
 }) {
+  const catStyle = getInventoryCategoryStyle((part.category ?? "OTHER") as PartCategory);
+
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-md shadow-black/20">
       <div className="flex flex-col gap-3">
@@ -109,16 +164,12 @@ function PartCard({
         <div className="flex flex-wrap gap-2">
           {showCategoryBadge ? (
             <span
-              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${categoryBadgeClass(part.category)}`}
+              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${catStyle.chipBg} ${catStyle.chipBorder} ${catStyle.chipText}`}
             >
-              {part.category}
+              {catStyle.label}
             </span>
           ) : null}
-          <span
-            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`}
-          >
-            {part.condition}
-          </span>
+          <PartConditionBadge part={part} />
         </div>
 
         <dl className="grid grid-cols-1 gap-3 border-t border-slate-800/80 pt-3 text-sm sm:grid-cols-2">
@@ -130,7 +181,7 @@ function PartCard({
             <dt className="text-xs uppercase tracking-wide text-slate-500">Precio venta</dt>
             <dd className="font-medium text-emerald-300/95">{formatMoney(part.salePrice)}</dd>
           </div>
-          {part.stock !== 0 ? (
+          {part.stock !== 0 || (part.category != null && isNonStockCategory(part.category)) ? (
             <div className="flex flex-col gap-1.5 sm:col-span-2">
               <dt className="text-xs uppercase tracking-wide text-slate-500">Stock</dt>
               <dd>
@@ -147,9 +198,10 @@ function PartCard({
 function groupPartsByCategory(parts: Part[]): { category: string; items: Part[] }[] {
   const map = new Map<string, Part[]>();
   for (const p of parts) {
-    const list = map.get(p.category) ?? [];
+    const key = p.category ?? "OTHER";
+    const list = map.get(key) ?? [];
     list.push(p);
-    map.set(p.category, list);
+    map.set(key, list);
   }
   return Array.from(map.entries()).map(([category, items]) => ({ category, items }));
 }
@@ -157,7 +209,7 @@ function groupPartsByCategory(parts: Part[]): { category: string; items: Part[] 
 function groupPartsByCategoryOrdered(parts: Part[]): { category: string; items: Part[] }[] {
   const result: { category: string; items: Part[] }[] = [];
   for (const cat of PART_CATEGORIES) {
-    const items = parts.filter((p) => p.category === cat);
+    const items = parts.filter((p) => p.category != null && p.category === cat);
     if (items.length) {
       result.push({ category: cat, items });
     }
@@ -195,28 +247,20 @@ function MobilePartsByCategory({
       {groups.map(({ category, items }) => {
         const expanded = isOpen(category);
         const panelId = `inv-cat-${category}`;
+        const catStyle = getInventoryCategoryStyle(category);
+        const pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"} en esta pagina`;
         return (
           <div
             key={category}
-            className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/85 shadow-lg shadow-black/20"
+            className={`overflow-hidden rounded-2xl border shadow-lg shadow-black/25 transition-colors duration-200 ${catStyle.panelBg} ${catStyle.panelBorder} ${catStyle.panelHover}`}
           >
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-slate-100"
-              onClick={() => toggle(category)}
-              aria-expanded={expanded}
-              aria-controls={panelId}
-            >
-              <span
-                className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${categoryBadgeClass(category)}`}
-              >
-                {category}
-              </span>
-              <span className="min-w-0 flex-1 text-sm text-slate-400">
-                {items.length} pieza{items.length === 1 ? "" : "s"} en esta pagina
-              </span>
-              <ChevronCategory open={expanded} />
-            </button>
+            <CategoryAccordionTrigger
+              categoryKey={category as PartCategory}
+              pieceSummary={pieceSummary}
+              expanded={expanded}
+              panelId={panelId}
+              onToggle={() => toggle(category)}
+            />
             <div
               id={panelId}
               className={expanded ? "border-t border-slate-800 px-3 pb-3 pt-1" : "hidden"}
@@ -271,28 +315,20 @@ function DesktopPartsByCategory({
       {groups.map(({ category, items }) => {
         const expanded = isOpen(category);
         const panelId = `inv-desktop-cat-${category}`;
+        const catStyle = getInventoryCategoryStyle(category);
+        const pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"}`;
         return (
           <div
             key={category}
-            className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/85 shadow-lg shadow-black/20"
+            className={`overflow-hidden rounded-2xl border shadow-lg shadow-black/25 transition-colors duration-200 ${catStyle.panelBg} ${catStyle.panelBorder} ${catStyle.panelHover}`}
           >
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-slate-100"
-              onClick={() => toggle(category)}
-              aria-expanded={expanded}
-              aria-controls={panelId}
-            >
-              <span
-                className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${categoryBadgeClass(category)}`}
-              >
-                {category}
-              </span>
-              <span className="min-w-0 flex-1 text-sm text-slate-400">
-                {items.length} pieza{items.length === 1 ? "" : "s"}
-              </span>
-              <ChevronCategory open={expanded} />
-            </button>
+            <CategoryAccordionTrigger
+              categoryKey={category as PartCategory}
+              pieceSummary={pieceSummary}
+              expanded={expanded}
+              panelId={panelId}
+              onToggle={() => toggle(category)}
+            />
             <div id={panelId} className={expanded ? "border-t border-slate-800" : "hidden"}>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm text-slate-200">
@@ -311,11 +347,7 @@ function DesktopPartsByCategory({
                       <tr key={part.id} className="transition hover:bg-slate-800/50">
                         <td className="px-4 py-3 font-medium text-slate-100">{part.name}</td>
                         <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`}
-                          >
-                            {part.condition}
-                          </span>
+                          <PartConditionBadge part={part} />
                         </td>
                         <td className="px-4 py-3 text-slate-300">{formatCostPrice(part.costPrice)}</td>
                         <td className="px-4 py-3 text-slate-300">{formatMoney(part.salePrice)}</td>

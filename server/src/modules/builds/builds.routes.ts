@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   addBuildItemHandler,
   confirmBuildHandler,
+  createBuildFromPrebuiltHandler,
   createBuildHandler,
   deleteBuildHandler,
   deleteBuildItemHandler,
@@ -15,6 +16,8 @@ import {
 export const buildsRouter = Router();
 
 buildsRouter.get("/", listBuildsHandler);
+/** Antes de /:id para no interpretar el segmento como id. */
+buildsRouter.post("/from-prebuilt-part", createBuildFromPrebuiltHandler);
 buildsRouter.get("/:id", getBuildHandler);
 buildsRouter.post("/", createBuildHandler);
 buildsRouter.patch("/:id", updateBuildHandler);

@@ -1,6 +1,10 @@
 import { Link } from "react-router-dom";
 import type { Build } from "../../types/build";
 
+function isInventoryPrebuiltBuild(build: Build): boolean {
+  return build.items?.length === 1 && build.items[0]?.part?.inventoryKind === "PREBUILT_PC";
+}
+
 type BuildsListProps = {
   builds: Build[];
   loading: boolean;
@@ -37,9 +41,14 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
           className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40"
         >
           <div className="flex items-start justify-between gap-3">
-            <h3 className="text-lg font-semibold text-slate-100">
-              {build.name}
-            </h3>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className="text-lg font-semibold text-slate-100">{build.name}</h3>
+              {isInventoryPrebuiltBuild(build) ? (
+                <span className="shrink-0 rounded-full border border-violet-500/35 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+                  PC inventario
+                </span>
+              ) : null}
+            </div>
 
             <span
               className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${

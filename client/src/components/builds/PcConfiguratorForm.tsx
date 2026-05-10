@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Part, PartCategory } from "../../types/part";
+import { isNonStockCategory, type ConfiguratorPart, type PartCategory } from "../../types/part";
 
 export type ConfiguratorSlotId =
   | "CPU"
@@ -11,6 +11,8 @@ export type ConfiguratorSlotId =
   | "CASE"
   | "COOLING"
   | "FANS"
+  | "OS"
+  | "LABOR"
   | "OTHER";
 
 type SlotDef = {
@@ -29,6 +31,8 @@ const CONFIGURATOR_SLOTS: SlotDef[] = [
   { id: "CASE", label: "Case", categories: ["CASE"] },
   { id: "COOLING", label: "Cooling", categories: ["COOLER"] },
   { id: "FANS", label: "Fans", categories: ["FAN"] },
+  { id: "OS", label: "Sistema operativo", categories: ["OS"] },
+  { id: "LABOR", label: "Mano de obra", categories: ["LABOR"] },
   { id: "OTHER", label: "Other", categories: ["OTHER", "NETWORK"] }
 ];
 
@@ -39,10 +43,12 @@ function formatMoney(value: number | string): string {
 export type ConfiguratorAddItem = {
   partId: string;
   quantity: number;
+  /** Opcional: distinto del catalogo al crear la linea en el montaje. */
+  unitSalePrice?: number;
 };
 
 type PcConfiguratorFormProps = {
-  parts: Part[];
+  parts: ConfiguratorPart[];
   disabled: boolean;
   onAddSelected: (items: ConfiguratorAddItem[]) => Promise<void>;
 };
@@ -67,24 +73,37 @@ function emptyQuantities(): Record<ConfiguratorSlotId, number> {
   );
 }
 
+function emptySaleDrafts(): Partial<Record<ConfiguratorSlotId, string>> {
+  return {};
+}
+
 export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfiguratorFormProps) {
   const [selections, setSelections] = useState<Record<ConfiguratorSlotId, string>>(emptySelections);
   const [quantities, setQuantities] = useState<Record<ConfiguratorSlotId, number>>(emptyQuantities);
+  const [saleDraftBySlot, setSaleDraftBySlot] = useState<Partial<Record<ConfiguratorSlotId, string>>>(() =>
+    emptySaleDrafts()
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const partsBySlot = useMemo(() => {
-    const map = new Map<ConfiguratorSlotId, Part[]>();
+    const map = new Map<ConfiguratorSlotId, ConfiguratorPart[]>();
     for (const slot of CONFIGURATOR_SLOTS) {
-      const list = parts.filter(
-        (part) => part.stock > 0 && slot.categories.includes(part.category)
-      );
+      const list = parts.filter((part) => {
+        if (!slot.categories.includes(part.category)) {
+          return false;
+        }
+        if (isNonStockCategory(part.category)) {
+          return true;
+        }
+        return part.stock > 0;
+      });
       map.set(slot.id, list.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" })));
     }
     return map;
   }, [parts]);
 
   const selectedPartBySlot = useMemo(() => {
-    const map = new Map<ConfiguratorSlotId, Part | null>();
+    const map = new Map<ConfiguratorSlotId, ConfiguratorPart | null>();
     for (const slot of CONFIGURATOR_SLOTS) {
       const id = selections[slot.id];
       if (!id) {
@@ -101,10 +120,25 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
     setSelections((prev) => ({ ...prev, [slotId]: partId }));
     if (!partId) {
       setQuantities((prev) => ({ ...prev, [slotId]: 1 }));
+      setSaleDraftBySlot((prev) => {
+        const next = { ...prev };
+        delete next[slotId];
+        return next;
+      });
       return;
     }
     const part = parts.find((p) => p.id === partId);
-    const maxStock = part?.stock ?? 1;
+    if (part) {
+      setSaleDraftBySlot((prev) => ({
+        ...prev,
+        [slotId]: Number(part.salePrice).toFixed(2)
+      }));
+    }
+    const maxStock = part
+      ? isNonStockCategory(part.category)
+        ? 1
+        : Math.max(1, part.stock)
+      : 1;
     setQuantities((prev) => ({
       ...prev,
       [slotId]: Math.min(Math.max(1, prev[slotId]), maxStock)
@@ -113,28 +147,57 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
 
   const handleQuantityChange = (slotId: ConfiguratorSlotId, raw: number) => {
     const selected = selectedPartBySlot.get(slotId);
-    const max = selected?.stock ?? 1;
+    const max = selected
+      ? isNonStockCategory(selected.category)
+        ? 1
+        : Math.max(1, selected.stock)
+      : 1;
     const next = Number.isFinite(raw) ? Math.floor(raw) : 1;
     const clamped = Math.min(Math.max(1, next), max);
     setQuantities((prev) => ({ ...prev, [slotId]: clamped }));
   };
 
   const handleAddSelected = async () => {
-    const perSlot: ConfiguratorAddItem[] = [];
+    const merged = new Map<string, { quantity: number; unitSalePrice?: number }>();
+
     for (const slot of CONFIGURATOR_SLOTS) {
       const partId = selections[slot.id];
       if (!partId) continue;
       const qty = quantities[slot.id];
       if (qty < 1) continue;
-      perSlot.push({ partId, quantity: qty });
+      const part = parts.find((p) => p.id === partId);
+      if (!part) continue;
+
+      const rawDraft = saleDraftBySlot[slot.id]?.trim();
+      const base = Number(part.salePrice);
+      let unitSalePrice: number | undefined;
+      if (rawDraft !== undefined && rawDraft !== "") {
+        const n = Number(rawDraft.replace(",", "."));
+        if (Number.isFinite(n) && n >= 0 && Math.abs(n - base) >= 0.005) {
+          unitSalePrice = Math.round(n * 100) / 100;
+        }
+      }
+
+      const prev = merged.get(partId);
+      if (!prev) {
+        merged.set(partId, {
+          quantity: qty,
+          ...(unitSalePrice !== undefined ? { unitSalePrice } : {})
+        });
+      } else {
+        merged.set(partId, {
+          quantity: prev.quantity + qty,
+          unitSalePrice: unitSalePrice !== undefined ? unitSalePrice : prev.unitSalePrice
+        });
+      }
     }
 
-    const merged = new Map<string, number>();
-    for (const { partId, quantity } of perSlot) {
-      merged.set(partId, (merged.get(partId) ?? 0) + quantity);
-    }
+    const items: ConfiguratorAddItem[] = Array.from(merged.entries()).map(([partId, v]) => ({
+      partId,
+      quantity: v.quantity,
+      ...(v.unitSalePrice !== undefined ? { unitSalePrice: v.unitSalePrice } : {})
+    }));
 
-    const items = Array.from(merged.entries()).map(([partId, quantity]) => ({ partId, quantity }));
     if (items.length === 0) {
       return;
     }
@@ -144,6 +207,7 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
       await onAddSelected(items);
       setSelections(emptySelections());
       setQuantities(emptyQuantities());
+      setSaleDraftBySlot(emptySaleDrafts());
     } finally {
       setSubmitting(false);
     }
@@ -156,7 +220,9 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
     <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
       <h2 className="mb-1 text-lg font-semibold text-slate-100">Configurar montaje</h2>
       <p className="mb-4 text-sm text-slate-400">
-        Elige pieza y cantidad por ranura (opcional). La cantidad es un desplegable del 1 hasta el stock disponible. Pulsa el boton para anadirlas al montaje.
+        Elige pieza y cantidad por ranura (opcional). Puedes ajustar el precio de venta unitario para este montaje (por
+        defecto es el del inventario). En sistema operativo y mano de obra no hay stock y la cantidad es 1. Pulsa el boton
+        para anadirlas al montaje.
       </p>
 
       <div className="space-y-4">
@@ -165,7 +231,11 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
           const selected = selectedPartBySlot.get(slot.id) ?? null;
           const selectValue = selections[slot.id];
           const qtyValue = quantities[slot.id];
-          const maxQty = selected ? selected.stock : 1;
+          const maxQty = selected
+            ? isNonStockCategory(selected.category)
+              ? 1
+              : Math.max(1, selected.stock)
+            : 1;
 
           return (
             <div
@@ -211,19 +281,42 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
                 </select>
               </label>
 
-              <div className="flex flex-wrap gap-4 text-sm lg:shrink-0">
+              <div className="flex flex-wrap gap-4 text-sm lg:shrink-0 lg:flex-1 lg:justify-end">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-500">Stock</p>
-                  <p className="font-medium text-slate-200">{selected ? selected.stock : "—"}</p>
+                  <p className="font-medium text-slate-200">
+                    {selected ? (isNonStockCategory(selected.category) ? "N/A" : selected.stock) : "—"}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Coste</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Coste inv.</p>
                   <p className="font-medium text-slate-200">{selected ? formatMoney(selected.costPrice) : "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Venta</p>
-                  <p className="font-medium text-slate-200">{selected ? formatMoney(selected.salePrice) : "—"}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Venta inv.</p>
+                  <p className="font-medium text-slate-400">{selected ? formatMoney(selected.salePrice) : "—"}</p>
                 </div>
+                <label className="flex min-w-[9rem] flex-col gap-1">
+                  <span className="text-xs uppercase tracking-wide text-slate-500">Venta montaje</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      selected
+                        ? (saleDraftBySlot[slot.id] ?? Number(selected.salePrice).toFixed(2))
+                        : ""
+                    }
+                    onChange={(event) =>
+                      setSaleDraftBySlot((prev) => ({
+                        ...prev,
+                        [slot.id]: event.target.value
+                      }))
+                    }
+                    disabled={busy || !selected}
+                    placeholder="EUR"
+                    className="rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-sm font-medium text-emerald-200/95 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                  />
+                </label>
               </div>
             </div>
           );

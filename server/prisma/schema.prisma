@@ -18,6 +18,8 @@ enum PartCategory {
   COOLER
   FAN
   NETWORK
+  OS
+  LABOR
   OTHER
 }
 
@@ -25,6 +27,11 @@ enum PartCondition {
   NEW
   USED
   REFURBISHED
+}
+
+enum InventoryKind {
+  PART
+  PREBUILT_PC
 }
 
 enum BuildStatus {
@@ -52,16 +59,20 @@ enum ServiceStatus {
 }
 
 model Part {
-  id         String         @id @default(cuid())
-  name       String
-  category   PartCategory
-  condition  PartCondition
-  costPrice  Decimal
-  salePrice  Decimal
-  stock      Int            @default(0)
-  notes      String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  id              String         @id @default(cuid())
+  inventoryKind   InventoryKind  @default(PART)
+  name            String
+  /// Obligatorio para PART; null para PC premontado.
+  category        PartCategory?
+  condition       PartCondition
+  costPrice       Decimal
+  salePrice       Decimal
+  stock           Int            @default(0)
+  notes           String?
+  /// Componentes / especificaciones (principalmente PREBUILT_PC).
+  description     String         @default("")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   buildItems          BuildPartItem[]
   sparePartServices   Service[]       @relation("SparePart")
@@ -69,6 +80,7 @@ model Part {
   @@index([category])
   @@index([condition])
   @@index([name])
+  @@index([inventoryKind])
 }
 
 model Service {
@@ -142,10 +154,14 @@ model Sale {
 }
 
 model BuildPartItem {
-  id       String @id @default(cuid())
-  buildId  String
-  partId   String
-  quantity Int    @default(1)
+  id            String  @id @default(cuid())
+  buildId       String
+  partId        String
+  quantity      Int     @default(1)
+  /// Coste unitario snapshot al anadir la linea (no sigue cambios del inventario).
+  unitCost      Decimal
+  /// Precio de venta unitario para esta linea del montaje (independiente del inventario).
+  unitSalePrice Decimal
 
   build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
   part  Part  @relation(fields: [partId], references: [id], onDelete: Restrict)

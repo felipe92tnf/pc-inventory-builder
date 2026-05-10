@@ -25,16 +25,30 @@ export function useBuildDetail(buildId) {
     useEffect(() => {
         void reload();
     }, [reload]);
-    const addItem = useCallback(async (partId, quantity) => {
+    const addItem = useCallback(async (payload) => {
         setActionLoading(true);
         setError(null);
         try {
-            await buildsApi.addBuildItem(buildId, partId, quantity);
-            const updated = await buildsApi.getBuild(buildId);
+            const updated = await buildsApi.addBuildItem(buildId, payload);
             setBuild(updated);
         }
         catch (err) {
             setError(err instanceof Error ? err.message : "No se pudo anadir la pieza.");
+            throw err;
+        }
+        finally {
+            setActionLoading(false);
+        }
+    }, [buildId]);
+    const updateBuildItemLine = useCallback(async (itemId, payload) => {
+        setActionLoading(true);
+        setError(null);
+        try {
+            const updated = await buildsApi.updateBuildItem(buildId, itemId, payload);
+            setBuild(updated);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo actualizar la linea.");
             throw err;
         }
         finally {
@@ -113,6 +127,7 @@ export function useBuildDetail(buildId) {
         actionLoading,
         error,
         addItem,
+        updateBuildItemLine,
         removeItem,
         confirm,
         revertToDraft,

@@ -1,13 +1,21 @@
 ﻿import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import * as buildsApi from "../api/builds";
 import { BuildForm } from "../components/builds/BuildForm";
 import { BuildsList } from "../components/builds/BuildsList";
+import { PrebuiltInventorySaleSection } from "../components/builds/PrebuiltInventorySaleSection";
 import { useBuilds } from "../hooks/useBuilds";
+import { useParts } from "../hooks/useParts";
 import type { Build } from "../types/build";
+import type { Part } from "../types/part";
 
 export function BuildsPage() {
+  const navigate = useNavigate();
   const { builds, loading, creating, updatingId, deletingId, error, createBuild, updateBuild, deleteBuild, reload } =
     useBuilds();
+  const { parts: inventoryParts, loading: inventoryLoading, reload: reloadInventory } = useParts();
   const [editingBuild, setEditingBuild] = useState<Build | null>(null);
+  const [preparingPartId, setPreparingPartId] = useState<string | null>(null);
 
   const handleDelete = async (buildId: string, buildName: string) => {
     const confirmed = window.confirm(`Eliminar el montaje "${buildName}"?`);
@@ -23,8 +31,8 @@ export function BuildsPage() {
       <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
         <h1 className="text-2xl font-bold">Montajes de PC</h1>
         <p className="mt-2 text-sm text-slate-300">
-          Crea configuraciones, gestiona piezas por montaje y confirma cuando este listo para ensamblar. Los PCs ya ensamblados
-          puedes pasarlos al apartado Ventas con el boton <span className="font-semibold text-cyan-300">Registrar venta</span>.
+          Crea montajes por piezas o vende PCs completos del inventario. En ambos casos, cuando el equipo este listo,
+          usalo con <span className="font-semibold text-cyan-300">Registrar venta</span> para pasarlo al apartado Ventas.
         </p>
       </section>
 
@@ -77,6 +85,31 @@ export function BuildsPage() {
           }}
         />
       ) : null}
+
+      <PrebuiltInventorySaleSection
+        parts={inventoryParts}
+        loading={inventoryLoading}
+        preparingPartId={preparingPartId}
+        onPrepareSale={async (part: Part) => {
+          setPreparingPartId(part.id);
+          try {
+            const detail = await buildsApi.createBuildFromPrebuiltPart(part.id);
+            await Promise.all([reload(), reloadInventory()]);
+            navigate(`/builds/${detail.id}#registrar-venta`);
+          } catch (err) {
+            window.alert(err instanceof Error ? err.message : "No se pudo preparar la venta del PC.");
+          } finally {
+            setPreparingPartId(null);
+          }
+        }}
+      />
+
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold text-slate-100">Montajes por piezas</h2>
+        <p className="text-sm text-slate-400">
+          Borradores y montajes confirmados creados desde el configurador de componentes.
+        </p>
+      </section>
 
       <BuildsList
         builds={builds}

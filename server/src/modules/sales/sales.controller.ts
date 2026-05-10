@@ -24,6 +24,8 @@ function serializeBuildWithItems(
         : Number(build.saleTotalOverride),
     items: build.items.map((item) => ({
       ...item,
+      unitCost: Number(item.unitCost),
+      unitSalePrice: Number(item.unitSalePrice),
       part: serializePart(item.part)
     }))
   };

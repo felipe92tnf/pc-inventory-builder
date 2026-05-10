@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as servicesApi from "../api/services";
 import { useParts } from "../hooks/useParts";
 import { useServices } from "../hooks/useServices";
+import { isPartPiece } from "../types/part";
 import { SERVICE_TYPES, SERVICE_STATUSES } from "../types/service";
 const SERVICE_LABELS = {
     SPARE_PART_SALE: "Venta de pieza suelta",
@@ -42,7 +43,7 @@ export function ServicesPage() {
     const statusParam = filterStatus === "ALL" ? undefined : filterStatus;
     const { services, loading, error, submitting, actionId, reload, createService, patchService, deleteService, completeService } = useServices(filterMonth, filterYear, typeParam, statusParam);
     const { parts } = useParts();
-    const partsForSpare = useMemo(() => parts.filter((p) => p.stock > 0), [parts]);
+    const partsForSpare = useMemo(() => parts.filter((p) => isPartPiece(p) && p.stock > 0), [parts]);
     const [monthlyRows, setMonthlyRows] = useState([]);
     useEffect(() => {
         void servicesApi.getMonthlyServicesSummary().then(setMonthlyRows).catch(() => setMonthlyRows([]));

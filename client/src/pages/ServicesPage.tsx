@@ -3,6 +3,7 @@ import * as servicesApi from "../api/services";
 import { useParts } from "../hooks/useParts";
 import { useServices } from "../hooks/useServices";
 import type { CreateServicePayload, ServiceRow, ServiceStatus, ServiceType } from "../types/service";
+import { isPartPiece } from "../types/part";
 import { SERVICE_TYPES, SERVICE_STATUSES } from "../types/service";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
@@ -74,7 +75,10 @@ export function ServicesPage() {
 
   const { parts } = useParts();
 
-  const partsForSpare = useMemo(() => parts.filter((p) => p.stock > 0), [parts]);
+  const partsForSpare = useMemo(
+    () => parts.filter((p) => isPartPiece(p) && p.stock > 0),
+    [parts]
+  );
 
   const [monthlyRows, setMonthlyRows] = useState<Awaited<ReturnType<typeof servicesApi.getMonthlyServicesSummary>>>(
     []

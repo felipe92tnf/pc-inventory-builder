@@ -1,5 +1,18 @@
 import type { Request, Response } from "express";
+import { ZodError } from "zod";
 import * as buildsService from "./builds.service.js";
+import { serializeBuildDetail } from "./builds.serializer.js";
+
+function mapValidationOrBuildError(error: unknown, res: Response): boolean {
+  if (error instanceof ZodError) {
+    res.status(400).json({
+      message: "Datos invalidos",
+      issues: error.flatten()
+    });
+    return true;
+  }
+  return mapBuildError(error, res);
+}
 
 function mapBuildError(error: unknown, res: Response) {
   if (!(error instanceof Error)) {
@@ -9,6 +22,25 @@ function mapBuildError(error: unknown, res: Response) {
 
   if (error.message === "BUILD_NOT_FOUND") {
     res.status(404).json({ message: "Build not found" });
+    return true;
+  }
+
+  if (error.message === "PART_NOT_FOUND") {
+    res.status(404).json({ message: "Pieza no encontrada" });
+    return true;
+  }
+
+  if (error.message === "BUILD_ITEM_REQUIRES_PART_KIND") {
+    res.status(400).json({
+      message: "Solo las piezas sueltas pueden anadirse a un montaje por componentes."
+    });
+    return true;
+  }
+
+  if (error.message === "INVALID_PREBUILT_PART") {
+    res.status(400).json({
+      message: "Solo se pueden usar PCs completos del inventario (tipo premontado)."
+    });
     return true;
   }
 
@@ -60,7 +92,7 @@ function mapBuildError(error: unknown, res: Response) {
 
 export async function listBuildsHandler(_req: Request, res: Response) {
   const data = await buildsService.listBuilds();
-  res.json(data);
+  res.json(data.map((b) => serializeBuildDetail(b)));
 }
 
 export async function getBuildHandler(req: Request, res: Response) {
@@ -72,12 +104,33 @@ export async function getBuildHandler(req: Request, res: Response) {
     return;
   }
 
-  res.json(data);
+  res.json(serializeBuildDetail(data));
 }
 
 export async function createBuildHandler(req: Request, res: Response) {
-  const data = await buildsService.createBuild(req.body);
-  res.status(201).json(data);
+  try {
+    const data = await buildsService.createBuild(req.body);
+    res.status(201).json(data);
+  } catch (error) {
+    if (!mapValidationOrBuildError(error, res)) {
+      throw error;
+    }
+  }
+}
+
+export async function createBuildFromPrebuiltHandler(req: Request, res: Response) {
+  try {
+    const data = await buildsService.createBuildFromPrebuiltPart(req.body);
+    if (!data) {
+      res.status(404).json({ message: "Build not found" });
+      return;
+    }
+    res.status(201).json(serializeBuildDetail(data));
+  } catch (error) {
+    if (!mapValidationOrBuildError(error, res)) {
+      throw error;
+    }
+  }
 }
 
 export async function updateBuildHandler(req: Request, res: Response) {
@@ -89,9 +142,9 @@ export async function updateBuildHandler(req: Request, res: Response) {
       res.status(404).json({ message: "Build not found" });
       return;
     }
-    res.json(data);
+    res.json(serializeBuildDetail(data));
   } catch (error) {
-    if (!mapBuildError(error, res)) {
+    if (!mapValidationOrBuildError(error, res)) {
       throw error;
     }
   }
@@ -112,10 +165,15 @@ export async function deleteBuildHandler(req: Request, res: Response) {
 export async function addBuildItemHandler(req: Request, res: Response) {
   try {
     const buildId = String(req.params.id);
-    const data = await buildsService.addBuildItem(buildId, req.body);
-    res.status(201).json(data);
+    await buildsService.addBuildItem(buildId, req.body);
+    const build = await buildsService.getBuild(buildId);
+    if (!build) {
+      res.status(404).json({ message: "Build not found" });
+      return;
+    }
+    res.status(201).json(serializeBuildDetail(build));
   } catch (error) {
-    if (!mapBuildError(error, res)) {
+    if (!mapValidationOrBuildError(error, res)) {
       throw error;
     }
   }
@@ -125,10 +183,15 @@ export async function updateBuildItemHandler(req: Request, res: Response) {
   try {
     const buildId = String(req.params.id);
     const itemId = String(req.params.itemId);
-    const data = await buildsService.updateBuildItem(buildId, itemId, req.body);
-    res.json(data);
+    await buildsService.updateBuildItem(buildId, itemId, req.body);
+    const build = await buildsService.getBuild(buildId);
+    if (!build) {
+      res.status(404).json({ message: "Build not found" });
+      return;
+    }
+    res.json(serializeBuildDetail(build));
   } catch (error) {
-    if (!mapBuildError(error, res)) {
+    if (!mapValidationOrBuildError(error, res)) {
       throw error;
     }
   }
@@ -151,7 +214,11 @@ export async function confirmBuildHandler(req: Request, res: Response) {
   try {
     const buildId = String(req.params.id);
     const data = await buildsService.confirmBuild(buildId);
-    res.json(data);
+    if (!data) {
+      res.status(404).json({ message: "Build not found" });
+      return;
+    }
+    res.json(serializeBuildDetail(data));
   } catch (error) {
     if (!mapBuildError(error, res)) {
       throw error;
@@ -163,7 +230,11 @@ export async function revertBuildToDraftHandler(req: Request, res: Response) {
   try {
     const buildId = String(req.params.id);
     const data = await buildsService.revertBuildToDraft(buildId);
-    res.json(data);
+    if (!data) {
+      res.status(404).json({ message: "Build not found" });
+      return;
+    }
+    res.json(serializeBuildDetail(data));
   } catch (error) {
     if (!mapBuildError(error, res)) {
       throw error;

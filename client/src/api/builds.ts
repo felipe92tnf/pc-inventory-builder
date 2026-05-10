@@ -1,5 +1,12 @@
 import { http } from "./http";
-import type { Build, BuildDetail, CreateBuildPayload, UpdateBuildPayload } from "../types/build";
+import type {
+  AddBuildItemPayload,
+  Build,
+  BuildDetail,
+  CreateBuildPayload,
+  UpdateBuildPayload,
+  UpdateBuildItemPayload
+} from "../types/build";
 
 export function listBuilds() {
   return http<Build[]>("/builds");
@@ -16,6 +23,14 @@ export function createBuild(payload: CreateBuildPayload) {
   });
 }
 
+/** Crea montaje confirmado desde 1 unidad de PC premontado en inventario (listo para venta). */
+export function createBuildFromPrebuiltPart(partId: string) {
+  return http<BuildDetail>("/builds/from-prebuilt-part", {
+    method: "POST",
+    body: { partId }
+  });
+}
+
 export function updateBuild(buildId: string, payload: UpdateBuildPayload) {
   return http<BuildDetail>(`/builds/${buildId}`, {
     method: "PATCH",
@@ -29,10 +44,17 @@ export function deleteBuild(buildId: string) {
   });
 }
 
-export function addBuildItem(buildId: string, partId: string, quantity: number) {
-  return http(`/builds/${buildId}/items`, {
+export function addBuildItem(buildId: string, payload: AddBuildItemPayload) {
+  return http<BuildDetail>(`/builds/${buildId}/items`, {
     method: "POST",
-    body: { partId, quantity }
+    body: payload
+  });
+}
+
+export function updateBuildItem(buildId: string, itemId: string, payload: UpdateBuildItemPayload) {
+  return http<BuildDetail>(`/builds/${buildId}/items/${itemId}`, {
+    method: "PATCH",
+    body: payload
   });
 }
 

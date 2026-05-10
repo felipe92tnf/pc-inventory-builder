@@ -11,6 +11,13 @@ export function createBuild(payload) {
         body: payload
     });
 }
+/** Crea montaje confirmado desde 1 unidad de PC premontado en inventario (listo para venta). */
+export function createBuildFromPrebuiltPart(partId) {
+    return http("/builds/from-prebuilt-part", {
+        method: "POST",
+        body: { partId }
+    });
+}
 export function updateBuild(buildId, payload) {
     return http(`/builds/${buildId}`, {
         method: "PATCH",
@@ -22,10 +29,16 @@ export function deleteBuild(buildId) {
         method: "DELETE"
     });
 }
-export function addBuildItem(buildId, partId, quantity) {
+export function addBuildItem(buildId, payload) {
     return http(`/builds/${buildId}/items`, {
         method: "POST",
-        body: { partId, quantity }
+        body: payload
+    });
+}
+export function updateBuildItem(buildId, itemId, payload) {
+    return http(`/builds/${buildId}/items/${itemId}`, {
+        method: "PATCH",
+        body: payload
     });
 }
 export function deleteBuildItem(buildId, itemId) {

@@ -1,5 +1,8 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Link } from "react-router-dom";
+function isInventoryPrebuiltBuild(build) {
+    return build.items?.length === 1 && build.items[0]?.part?.inventoryKind === "PREBUILT_PC";
+}
 export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, onDelete }) {
     if (loading) {
         return (_jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40", children: _jsx("p", { className: "text-sm text-slate-300", children: "Cargando montajes..." }) }));
@@ -7,7 +10,7 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
     if (builds.length === 0) {
         return (_jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40", children: _jsx("p", { className: "text-sm text-slate-300", children: "Todav\u00EDa no has creado montajes." }) }));
     }
-    return (_jsx("section", { className: "grid grid-cols-1 gap-4 lg:grid-cols-2", children: builds.map((build) => (_jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsxs("div", { className: "flex items-start justify-between gap-3", children: [_jsx("h3", { className: "text-lg font-semibold text-slate-100", children: build.name }), _jsx("span", { className: `rounded-full border px-2.5 py-1 text-xs font-semibold ${build.status === "SOLD"
+    return (_jsx("section", { className: "grid grid-cols-1 gap-4 lg:grid-cols-2", children: builds.map((build) => (_jsxs("article", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40", children: [_jsxs("div", { className: "flex items-start justify-between gap-3", children: [_jsxs("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [_jsx("h3", { className: "text-lg font-semibold text-slate-100", children: build.name }), isInventoryPrebuiltBuild(build) ? (_jsx("span", { className: "shrink-0 rounded-full border border-violet-500/35 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200", children: "PC inventario" })) : null] }), _jsx("span", { className: `rounded-full border px-2.5 py-1 text-xs font-semibold ${build.status === "SOLD"
                                 ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-300"
                                 : build.status === "CONFIRMED"
                                     ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"

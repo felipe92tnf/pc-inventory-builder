@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { ZodError, type ZodIssue } from "zod";
 import * as partsService from "./parts.service.js";
 
 function mapPartError(error: unknown, res: Response): boolean {
@@ -34,14 +35,34 @@ export async function getPartHandler(req: Request, res: Response) {
 }
 
 export async function createPartHandler(req: Request, res: Response) {
-  const data = await partsService.createPart(req.body);
-  res.status(201).json(data);
+  try {
+    const data = await partsService.createPart(req.body);
+    res.status(201).json(data);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({
+        message: error.issues.map((issue: ZodIssue) => issue.message).join("; ")
+      });
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function updatePartHandler(req: Request, res: Response) {
-  const partId = String(req.params.id);
-  const data = await partsService.updatePart(partId, req.body);
-  res.json(data);
+  try {
+    const partId = String(req.params.id);
+    const data = await partsService.updatePart(partId, req.body);
+    res.json(data);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({
+        message: error.issues.map((issue: ZodIssue) => issue.message).join("; ")
+      });
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function deletePartHandler(req: Request, res: Response) {

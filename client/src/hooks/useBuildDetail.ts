@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import * as buildsApi from "../api/builds";
 import * as partsApi from "../api/parts";
-import type { BuildDetail, UpdateBuildPayload } from "../types/build";
+import type { AddBuildItemPayload, BuildDetail, UpdateBuildPayload, UpdateBuildItemPayload } from "../types/build";
 import type { Part } from "../types/part";
 
 type UseBuildDetailReturn = {
@@ -10,7 +10,8 @@ type UseBuildDetailReturn = {
   loading: boolean;
   actionLoading: boolean;
   error: string | null;
-  addItem: (partId: string, quantity: number) => Promise<void>;
+  addItem: (payload: AddBuildItemPayload) => Promise<void>;
+  updateBuildItemLine: (itemId: string, payload: UpdateBuildItemPayload) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   confirm: () => Promise<void>;
   revertToDraft: () => Promise<void>;
@@ -44,15 +45,31 @@ export function useBuildDetail(buildId: string): UseBuildDetailReturn {
   }, [reload]);
 
   const addItem = useCallback(
-    async (partId: string, quantity: number) => {
+    async (payload: AddBuildItemPayload) => {
       setActionLoading(true);
       setError(null);
       try {
-        await buildsApi.addBuildItem(buildId, partId, quantity);
-        const updated = await buildsApi.getBuild(buildId);
+        const updated = await buildsApi.addBuildItem(buildId, payload);
         setBuild(updated);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo anadir la pieza.");
+        throw err;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [buildId]
+  );
+
+  const updateBuildItemLine = useCallback(
+    async (itemId: string, payload: UpdateBuildItemPayload) => {
+      setActionLoading(true);
+      setError(null);
+      try {
+        const updated = await buildsApi.updateBuildItem(buildId, itemId, payload);
+        setBuild(updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo actualizar la linea.");
         throw err;
       } finally {
         setActionLoading(false);
@@ -132,6 +149,7 @@ export function useBuildDetail(buildId: string): UseBuildDetailReturn {
     actionLoading,
     error,
     addItem,
+    updateBuildItemLine,
     removeItem,
     confirm,
     revertToDraft,
