@@ -1,5 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { NavLink, Route, Routes } from "react-router-dom";
+import { PwaUpdateNotifier } from "../components/pwa/PwaUpdateNotifier";
 import { InventoryPage } from "../pages/InventoryPage";
 import { BuildsPage } from "../pages/BuildsPage";
 import { BuildDetailPage } from "../pages/BuildDetailPage";
@@ -20,7 +21,7 @@ function CpuIcon({ className }) {
 }
 const navLinkClass = "group flex min-h-[3.25rem] flex-1 items-center justify-center gap-3 rounded-2xl border px-5 py-3.5 text-base font-semibold tracking-tight transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 sm:min-w-[11rem] sm:flex-none sm:justify-start";
 export function AppRouter() {
-    return (_jsxs("div", { className: "min-h-screen bg-blue-950", children: [_jsxs("header", { className: "relative overflow-hidden border-b border-cyan-500/25 bg-gradient-to-br from-blue-950 via-[#0a1628] to-blue-950 shadow-[0_12px_40px_-8px_rgba(8,47,73,0.85)]", children: [_jsx("div", { className: "pointer-events-none absolute inset-0 opacity-[0.4]", style: {
+    return (_jsxs("div", { className: "min-h-screen bg-blue-950", children: [_jsx(PwaUpdateNotifier, {}), _jsxs("header", { className: "relative overflow-hidden border-b border-cyan-500/25 bg-gradient-to-br from-blue-950 via-[#0a1628] to-blue-950 shadow-[0_12px_40px_-8px_rgba(8,47,73,0.85)]", children: [_jsx("div", { className: "pointer-events-none absolute inset-0 opacity-[0.4]", style: {
                             backgroundImage: "radial-gradient(ellipse 80% 60% at 20% -20%, rgba(34, 211, 238, 0.22), transparent 55%), radial-gradient(ellipse 70% 50% at 100% 0%, rgba(14, 165, 233, 0.18), transparent 50%)"
                         } }), _jsx("div", { className: "relative mx-auto max-w-7xl px-4 py-6 sm:px-6 md:py-8", children: _jsxs("div", { className: "flex flex-col gap-5 md:flex-row md:items-end md:justify-between", children: [_jsxs("div", { className: "space-y-1", children: [_jsx("p", { className: "text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300", children: "PC Inventory Builder" }), _jsx("p", { className: "text-lg font-bold text-white md:text-xl", children: "Navegaci\u00F3n principal" }), _jsx("p", { className: "max-w-md text-sm text-blue-100/75", children: "Inventario, montajes, ventas de PCs y servicios tecnicos en un solo sitio." })] }), _jsxs("nav", { className: "flex w-full flex-col gap-3 rounded-2xl border border-white/15 bg-blue-950/70 p-3 shadow-inner shadow-black/40 backdrop-blur-md sm:flex-row sm:items-stretch md:w-auto", "aria-label": "Secciones", children: [_jsxs(NavLink, { to: "/", end: true, className: ({ isActive }) => [
                                                 navLinkClass,

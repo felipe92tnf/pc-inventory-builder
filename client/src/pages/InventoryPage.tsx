@@ -8,6 +8,7 @@ import {
   PART_CATEGORIES,
   PART_CONDITIONS,
   isNonStockCategory,
+  isPrebuiltPc,
   partCategoryLabel,
   type Part,
   type PartCategory,
@@ -83,37 +84,50 @@ function inventoryTotals(parts: Part[]) {
   };
 }
 
+const LOW_STOCK_MAX = 3;
+
+function isLowStock(part: Part): boolean {
+  if (part.inventoryKind === "PREBUILT_PC") {
+    return part.stock > 0 && part.stock <= LOW_STOCK_MAX;
+  }
+  if (!part.category || isNonStockCategory(part.category)) return false;
+  return part.stock > 0 && part.stock <= LOW_STOCK_MAX;
+}
+
 function listedInInventory(part: Part): boolean {
   if (part.inventoryKind === "PREBUILT_PC") return true;
   if (!part.category) return part.stock > 0;
   return part.stock > 0 || isNonStockCategory(part.category);
 }
 
-function ChevronDown({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2}
-      stroke="currentColor"
-      aria-hidden
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  );
-}
-
 function money(value: number): string {
   return `${value.toFixed(2)} EUR`;
+}
+
+function formatShortDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return "";
+  }
 }
 
 type KindFilter = "ALL" | "PART" | "PREBUILT_PC";
 type StockFilter = "ALL" | "IN_STOCK" | "OUT_OF_STOCK";
 
+type InventoryTabId = "summary" | "add" | "components" | "prebuilt";
+
+const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
+  { id: "summary", label: "Resumen" },
+  { id: "add", label: "Añadir item" },
+  { id: "components", label: "Componentes" },
+  { id: "prebuilt", label: "PCs completos" }
+];
+
 export function InventoryPage() {
   const { parts, loading, error, submitting, deletingId, createPart, updatePart, deletePart, reload } = useParts();
   const [selectedPart, setSelectedPart] = useState<Part | null>(null);
+  const [activeTab, setActiveTab] = useState<InventoryTabId>("summary");
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<KindFilter>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<PartCategory | "ALL">("ALL");
@@ -122,12 +136,9 @@ export function InventoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
 
-  const [mobileFormOpen, setMobileFormOpen] = useState(false);
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-
   useEffect(() => {
     if (selectedPart) {
-      setMobileFormOpen(true);
+      setActiveTab("add");
     }
   }, [selectedPart]);
 
@@ -168,7 +179,8 @@ export function InventoryPage() {
       let matchesStock = true;
       if (stockFilter === "IN_STOCK") {
         matchesStock =
-          part.stock > 0 || (part.inventoryKind === "PART" && part.category !== null && isNonStockCategory(part.category));
+          part.stock > 0 ||
+          (part.inventoryKind === "PART" && part.category !== null && isNonStockCategory(part.category));
       } else if (stockFilter === "OUT_OF_STOCK") {
         matchesStock =
           part.stock === 0 &&
@@ -228,45 +240,48 @@ export function InventoryPage() {
     conditionFilter !== "ALL" ||
     stockFilter !== "ALL";
 
-  const showFormOnMobile = mobileFormOpen || selectedPart !== null;
-  const showFiltersOnMobile = mobileFiltersOpen;
+  const lowStockItems = useMemo(() => {
+    return partsListed.filter(isLowStock).sort((a, b) => {
+      if (a.stock !== b.stock) return a.stock - b.stock;
+      return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+    });
+  }, [partsListed]);
 
-  const formTitleMobile = selectedPart
+  const recentParts = useMemo(() => {
+    return [...partsListed]
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 8);
+  }, [partsListed]);
+
+  const clearFilters = () => {
+    setQuery("");
+    setKindFilter("ALL");
+    setCategoryFilter("ALL");
+    setConditionFilter("ALL");
+    setStockFilter("ALL");
+  };
+
+  const formTitle = selectedPart
     ? selectedPart.inventoryKind === "PREBUILT_PC"
       ? "Editar PC completo"
       : "Editar pieza"
-    : "Anadir al inventario";
+    : "Añadir al inventario";
+
+  const tabButtonClass = (id: InventoryTabId) =>
+    [
+      "shrink-0 snap-start whitespace-nowrap rounded-t-lg border border-b-0 px-3 py-2.5 text-sm font-semibold transition md:px-4",
+      activeTab === id
+        ? "border-slate-700 bg-slate-900 text-slate-100 shadow-sm"
+        : "border-transparent bg-slate-950/50 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
+    ].join(" ");
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
+    <div className="mx-auto w-full max-w-6xl space-y-5 px-2 pb-8 text-slate-100 md:space-y-6 md:px-4">
+      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-5 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)] md:p-6">
         <h1 className="text-2xl font-bold">Inventario</h1>
         <p className="mt-2 text-sm text-slate-300">
-          Piezas sueltas para montajes y PCs completos / premontados listos para vender.
+          Piezas sueltas para montajes y PCs completos / premontados. Usa las pestañas para moverte entre secciones.
         </p>
-      </section>
-
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Valor coste total</p>
-          <p className="mt-1 text-xl font-bold text-slate-100">{money(totals.totalCostValue)}</p>
-        </article>
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Valor venta estimado</p>
-          <p className="mt-1 text-xl font-bold text-emerald-300/95">{money(totals.totalSaleValue)}</p>
-        </article>
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Beneficio potencial</p>
-          <p
-            className={`mt-1 text-xl font-bold ${totals.potentialProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}
-          >
-            {money(totals.potentialProfit)}
-          </p>
-        </article>
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Unidades en stock</p>
-          <p className="mt-1 text-xl font-bold text-slate-100">{totals.units}</p>
-        </article>
       </section>
 
       {error ? (
@@ -284,89 +299,317 @@ export function InventoryPage() {
         </div>
       ) : null}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 md:border-0 md:bg-transparent md:shadow-none">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left text-slate-100 md:hidden"
-          onClick={() => setMobileFormOpen((v) => !v)}
-          aria-expanded={showFormOnMobile}
-          aria-controls="inventory-part-form-panel"
-        >
-          <span className="text-sm font-semibold">{formTitleMobile}</span>
-          <ChevronDown open={showFormOnMobile} />
-        </button>
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-1.5 shadow-inner shadow-black/30 md:p-2">
         <div
-          id="inventory-part-form-panel"
-          className={showFormOnMobile ? "block" : "hidden md:block"}
+          className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0"
+          role="tablist"
+          aria-label="Secciones de inventario"
         >
-          <PartForm
-            selectedPart={selectedPart}
-            submitting={submitting}
-            onSubmit={handleSubmit}
-            onCancelEdit={() => setSelectedPart(null)}
-            className="max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:shadow-none max-md:px-4 max-md:pb-5 max-md:pt-3"
-          />
+          {INVENTORY_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`inventory-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`inventory-panel-${tab.id}`}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              className={tabButtonClass(tab.id)}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <section
+        id="inventory-panel-summary"
+        role="tabpanel"
+        aria-labelledby="inventory-tab-summary"
+        hidden={activeTab !== "summary"}
+        className={activeTab === "summary" ? "space-y-5" : "hidden"}
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-400">Valor coste total</p>
+            <p className="mt-1 text-lg font-bold text-slate-100 md:text-xl">{money(totals.totalCostValue)}</p>
+          </article>
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-400">Valor venta estimado</p>
+            <p className="mt-1 text-lg font-bold text-emerald-300/95 md:text-xl">{money(totals.totalSaleValue)}</p>
+          </article>
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-400">Beneficio potencial</p>
+            <p
+              className={`mt-1 text-lg font-bold md:text-xl ${totals.potentialProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+            >
+              {money(totals.potentialProfit)}
+            </p>
+          </article>
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-400">Unidades en stock</p>
+            <p className="mt-1 text-lg font-bold text-slate-100 md:text-xl">{totals.units}</p>
+          </article>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <article className="rounded-xl border border-amber-500/25 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-100">Stock bajo</h2>
+              <span className="text-xs text-amber-200/90">
+                Stock 1–{LOW_STOCK_MAX} unidades (piezas con inventario fisico)
+              </span>
+            </div>
+            {lowStockItems.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-400">No hay líneas por debajo del umbral.</p>
+            ) : (
+              <>
+                <p className="mt-1 text-xs text-slate-500">{lowStockItems.length} línea(s)</p>
+                <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-sm">
+                  {lowStockItems.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2"
+                    >
+                      <span className="min-w-0 font-medium text-slate-200">{p.name}</span>
+                      <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-200">
+                        {p.stock} u.
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </article>
+
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
+            <h2 className="text-sm font-semibold text-slate-100">Últimas actualizaciones</h2>
+            <p className="mt-1 text-xs text-slate-500">Ordenadas por fecha de modificación en el inventario.</p>
+            {recentParts.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-400">Sin datos todavia.</p>
+            ) : (
+              <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-sm">
+                {recentParts.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPart(p)}
+                      className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2 text-left transition hover:border-indigo-500/35 hover:bg-slate-900/80"
+                    >
+                      <span className="min-w-0 flex-1 font-medium text-slate-200">{p.name}</span>
+                      <span className="flex shrink-0 flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                            isPrebuiltPc(p)
+                              ? "border border-violet-500/35 bg-violet-500/10 text-violet-200"
+                              : "border border-slate-600 bg-slate-800/80 text-slate-300"
+                          }`}
+                        >
+                          {isPrebuiltPc(p) ? "PC" : "Pieza"}
+                        </span>
+                        <span className="text-xs text-slate-500">{formatShortDate(p.updatedAt)}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 backdrop-blur">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left md:hidden"
-          onClick={() => setMobileFiltersOpen((v) => !v)}
-          aria-expanded={showFiltersOnMobile}
-          aria-controls="inventory-filters-panel"
-        >
-          <span className="text-sm font-semibold text-slate-100">Filtros de busqueda</span>
-          <ChevronDown open={showFiltersOnMobile} />
-        </button>
+      <section
+        id="inventory-panel-add"
+        role="tabpanel"
+        aria-labelledby="inventory-tab-add"
+        hidden={activeTab !== "add"}
+        className={activeTab === "add" ? "space-y-3" : "hidden"}
+      >
+        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
+          <h2 className="text-lg font-semibold text-slate-100">{formTitle}</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Elige pieza suelta o PC completo. Desde otras pestañas, Editar abre este formulario automáticamente.
+          </p>
+          <div className="mt-4">
+            <PartForm
+              selectedPart={selectedPart}
+              submitting={submitting}
+              onSubmit={handleSubmit}
+              onCancelEdit={() => setSelectedPart(null)}
+              className="border-0 bg-transparent p-0 shadow-none"
+            />
+          </div>
+        </div>
+      </section>
 
-        <div
-          id="inventory-filters-panel"
-          className={`px-4 pb-4 pt-4 md:px-5 md:pb-5 md:pt-5 ${showFiltersOnMobile ? "block" : "hidden md:block"}`}
-        >
-          <h2 className="mb-4 hidden text-lg font-semibold text-slate-100 md:block">Filtros de busqueda</h2>
+      <section
+        id="inventory-panel-components"
+        role="tabpanel"
+        aria-labelledby="inventory-tab-components"
+        hidden={activeTab !== "components"}
+        className={activeTab === "components" ? "space-y-4" : "hidden"}
+      >
+        <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 backdrop-blur">
+          <div className="px-4 pb-4 pt-4 md:px-5 md:pb-5 md:pt-5">
+            <h2 className="mb-4 text-lg font-semibold text-slate-100">Filtros de búsqueda</h2>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6 lg:gap-3">
-            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200 lg:col-span-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6 lg:gap-3">
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200 lg:col-span-2">
+                Buscar por nombre
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Ej: RTX, Ryzen, SSD..."
+                  className="min-h-[42px] w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring sm:text-sm"
+                />
+              </label>
+
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                Tipo
+                <select
+                  value={kindFilter}
+                  onChange={(event) => setKindFilter(event.target.value as KindFilter)}
+                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                >
+                  <option value="ALL">Todos</option>
+                  <option value="PART">Piezas</option>
+                  <option value="PREBUILT_PC">PCs completos</option>
+                </select>
+              </label>
+
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                Categoria
+                <select
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value as PartCategory | "ALL")}
+                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                >
+                  <option value="ALL">Todas</option>
+                  {PART_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {partCategoryLabel(category)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                Estado
+                <select
+                  value={conditionFilter}
+                  onChange={(event) => setConditionFilter(event.target.value as PartCondition | "ALL")}
+                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                >
+                  <option value="ALL">Todos</option>
+                  {PART_CONDITIONS.map((condition) => (
+                    <option key={condition} value={condition}>
+                      {condition}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                Stock
+                <select
+                  value={stockFilter}
+                  onChange={(event) => setStockFilter(event.target.value as StockFilter)}
+                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                >
+                  <option value="ALL">Todos</option>
+                  <option value="IN_STOCK">Con stock</option>
+                  <option value="OUT_OF_STOCK">Sin stock</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-slate-800 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
+            <p className="text-sm text-slate-300">
+              {sortedPieceParts.length} pieza(s) en esta vista (mismos filtros que el inventario completo).
+            </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        </section>
+
+        <div className="space-y-3">
+          <PartsTable
+            parts={sortedPieceParts}
+            partsMobilePage={paginatedPieces}
+            compact
+            loading={loading}
+            deletingId={deletingId}
+            onEdit={setSelectedPart}
+            emptyMessage={
+              hasActiveFilters ? "No hay piezas que coincidan con los filtros." : undefined
+            }
+            onDelete={(part) => {
+              void handleDelete(part);
+            }}
+          />
+        </div>
+
+        {!loading && sortedPieceParts.length > 0 ? (
+          <section className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3 shadow-lg shadow-slate-950/40 md:hidden">
+            <p className="text-sm text-slate-300">
+              Página {currentPage} de {totalPages} (piezas)
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
+          </section>
+        ) : null}
+      </section>
+
+      <section
+        id="inventory-panel-prebuilt"
+        role="tabpanel"
+        aria-labelledby="inventory-tab-prebuilt"
+        hidden={activeTab !== "prebuilt"}
+        className={activeTab === "prebuilt" ? "space-y-4" : "hidden"}
+      >
+        {kindFilter === "PART" ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            El filtro <strong>Tipo</strong> está en &quot;Piezas&quot;. Cámbialo a <strong>Todos</strong> o{" "}
+            <strong>PCs completos</strong> para ver los premontados, o pulsa Limpiar filtros.
+          </div>
+        ) : null}
+
+        <section className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-4 shadow-lg shadow-slate-950/40 md:px-5 md:py-5">
+          <h2 className="mb-3 text-lg font-semibold text-slate-100">Filtros</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
               Buscar por nombre
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Ej: RTX, Ryzen, SSD..."
-                className="min-h-[42px] w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring sm:text-sm"
+                placeholder="Nombre del equipo..."
+                className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring sm:text-sm"
               />
             </label>
-
-            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-              Tipo
-              <select
-                value={kindFilter}
-                onChange={(event) => setKindFilter(event.target.value as KindFilter)}
-                className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-              >
-                <option value="ALL">Todos</option>
-                <option value="PART">Piezas</option>
-                <option value="PREBUILT_PC">PCs completos</option>
-              </select>
-            </label>
-
-            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-              Categoria
-              <select
-                value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value as PartCategory | "ALL")}
-                className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-              >
-                <option value="ALL">Todas</option>
-                {PART_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {partCategoryLabel(category)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
             <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
               Estado
               <select
@@ -382,7 +625,6 @@ export function InventoryPage() {
                 ))}
               </select>
             </label>
-
             <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
               Stock
               <select
@@ -396,77 +638,22 @@ export function InventoryPage() {
               </select>
             </label>
           </div>
-        </div>
-
-        <div className="flex flex-col gap-3 border-t border-slate-800 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
-          <p className="text-sm text-slate-300">
-            {sortedPieceParts.length} pieza(s) y {partPrebuilt.length} PC(s) mostrado(s) (
-            {filteredParts.length} de {partsListed.length} lineas)
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setQuery("");
-              setKindFilter("ALL");
-              setCategoryFilter("ALL");
-              setConditionFilter("ALL");
-              setStockFilter("ALL");
-            }}
-            disabled={!hasActiveFilters}
-            className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Limpiar filtros
-          </button>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-100">Componentes</h2>
-        <PartsTable
-          parts={sortedPieceParts}
-          partsMobilePage={paginatedPieces}
-          loading={loading}
-          deletingId={deletingId}
-          onEdit={setSelectedPart}
-          emptyMessage={
-            hasActiveFilters ? "No hay piezas que coincidan con los filtros." : undefined
-          }
-          onDelete={(part) => {
-            void handleDelete(part);
-          }}
-        />
-      </section>
-
-      {!loading && sortedPieceParts.length > 0 ? (
-        <section className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3 shadow-lg shadow-slate-950/40 md:hidden">
-          <p className="text-sm text-slate-300">
-            Pagina {currentPage} de {totalPages} (piezas)
-          </p>
-          <div className="flex gap-2">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-4">
+            <p className="text-sm text-slate-300">{partPrebuilt.length} PC(s) mostrado(s)</p>
             <button
               type="button"
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Anterior
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Siguiente
+              Limpiar filtros
             </button>
           </div>
         </section>
-      ) : null}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-100">PCs completos</h2>
         <PrebuiltInventoryTable
           items={partPrebuilt}
+          compact
           loading={loading}
           deletingId={deletingId}
           onEdit={setSelectedPart}

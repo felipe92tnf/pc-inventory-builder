@@ -12,6 +12,8 @@ type PartsTableProps = {
   parts: Part[];
   /** Si se define, la vista movil usa este trozo paginado; si no, usa `parts`. */
   partsMobilePage?: Part[];
+  /** Reduce padding en tablas y acordeones (p. ej. vista con pestañas). */
+  compact?: boolean;
   loading: boolean;
   deletingId: string | null;
   onEdit: (part: Part) => void;
@@ -85,13 +87,15 @@ function CategoryAccordionTrigger({
   pieceSummary,
   expanded,
   panelId,
-  onToggle
+  onToggle,
+  compact = false
 }: {
   categoryKey: PartCategory;
   pieceSummary: string;
   expanded: boolean;
   panelId: string;
   onToggle: () => void;
+  compact?: boolean;
 }) {
   const style = getInventoryCategoryStyle(categoryKey);
   const Icon = style.Icon;
@@ -99,16 +103,16 @@ function CategoryAccordionTrigger({
   return (
     <button
       type="button"
-      className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors duration-200 ${style.headerBg} ${style.headerHover}`}
+      className={`flex w-full items-center gap-3 text-left transition-colors duration-200 ${compact ? "px-3 py-2.5" : "px-4 py-3.5"} ${style.headerBg} ${style.headerHover}`}
       onClick={onToggle}
       aria-expanded={expanded}
       aria-controls={panelId}
     >
       <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${style.chipBorder} ${style.chipBg}`}
+        className={`flex shrink-0 items-center justify-center rounded-xl border ${compact ? "h-9 w-9" : "h-10 w-10"} ${style.chipBorder} ${style.chipBg}`}
         aria-hidden
       >
-        <Icon className={`h-[1.125rem] w-[1.125rem] ${style.accentIcon}`} strokeWidth={2} />
+        <Icon className={`${compact ? "h-4 w-4" : "h-[1.125rem] w-[1.125rem]"} ${style.accentIcon}`} strokeWidth={2} />
       </span>
       <span
         className={`inline-flex max-w-[min(100%,14rem)] shrink-0 truncate rounded-full border px-2.5 py-1 text-xs font-semibold ${style.chipBg} ${style.chipBorder} ${style.chipText}`}
@@ -126,7 +130,8 @@ function PartCard({
   deletingId,
   onEdit,
   onDelete,
-  showCategoryBadge = true
+  showCategoryBadge = true,
+  compact = false
 }: {
   part: Part;
   deletingId: string | null;
@@ -134,11 +139,14 @@ function PartCard({
   onDelete: (part: Part) => void;
   /** Dentro de un acordeon por categoria, ocultar chip duplicado */
   showCategoryBadge?: boolean;
+  compact?: boolean;
 }) {
   const catStyle = getInventoryCategoryStyle((part.category ?? "OTHER") as PartCategory);
 
   return (
-    <article className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-md shadow-black/20">
+    <article
+      className={`rounded-2xl border border-slate-800 bg-slate-950/50 shadow-md shadow-black/20 ${compact ? "p-3" : "p-4"}`}
+    >
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h3 className="min-w-0 flex-1 text-base font-semibold leading-snug text-slate-100">{part.name}</h3>
@@ -172,7 +180,9 @@ function PartCard({
           <PartConditionBadge part={part} />
         </div>
 
-        <dl className="grid grid-cols-1 gap-3 border-t border-slate-800/80 pt-3 text-sm sm:grid-cols-2">
+        <dl
+          className={`grid grid-cols-1 border-t border-slate-800/80 text-sm sm:grid-cols-2 ${compact ? "gap-2 pt-2" : "gap-3 pt-3"}`}
+        >
           <div className="flex justify-between gap-3 sm:flex-col sm:justify-start">
             <dt className="text-xs uppercase tracking-wide text-slate-500">Precio coste</dt>
             <dd className="font-medium text-slate-200">{formatCostPrice(part.costPrice)}</dd>
@@ -221,12 +231,14 @@ function MobilePartsByCategory({
   parts,
   deletingId,
   onEdit,
-  onDelete
+  onDelete,
+  compact = false
 }: {
   parts: Part[];
   deletingId: string | null;
   onEdit: (part: Part) => void;
   onDelete: (part: Part) => void;
+  compact?: boolean;
 }) {
   const groups = useMemo(() => groupPartsByCategory(parts), [parts]);
 
@@ -243,7 +255,7 @@ function MobilePartsByCategory({
   };
 
   return (
-    <section className="space-y-3 md:hidden">
+    <section className={`md:hidden ${compact ? "space-y-2" : "space-y-3"}`}>
       {groups.map(({ category, items }) => {
         const expanded = isOpen(category);
         const panelId = `inv-cat-${category}`;
@@ -260,12 +272,17 @@ function MobilePartsByCategory({
               expanded={expanded}
               panelId={panelId}
               onToggle={() => toggle(category)}
+              compact={compact}
             />
             <div
               id={panelId}
-              className={expanded ? "border-t border-slate-800 px-3 pb-3 pt-1" : "hidden"}
+              className={
+                expanded
+                  ? `border-t border-slate-800 px-3 pt-1 ${compact ? "pb-2" : "pb-3"}`
+                  : "hidden"
+              }
             >
-              <div className="space-y-3 pt-2">
+              <div className={`pt-2 ${compact ? "space-y-2" : "space-y-3"}`}>
                 {items.map((part) => (
                   <PartCard
                     key={part.id}
@@ -274,6 +291,7 @@ function MobilePartsByCategory({
                     onEdit={onEdit}
                     onDelete={onDelete}
                     showCategoryBadge={false}
+                    compact={compact}
                   />
                 ))}
               </div>
@@ -289,12 +307,14 @@ function DesktopPartsByCategory({
   parts,
   deletingId,
   onEdit,
-  onDelete
+  onDelete,
+  compact = false
 }: {
   parts: Part[];
   deletingId: string | null;
   onEdit: (part: Part) => void;
   onDelete: (part: Part) => void;
+  compact?: boolean;
 }) {
   const groups = useMemo(() => groupPartsByCategoryOrdered(parts), [parts]);
 
@@ -310,8 +330,10 @@ function DesktopPartsByCategory({
     }));
   };
 
+  const cell = compact ? "px-3 py-2" : "px-4 py-3";
+
   return (
-    <section className="hidden space-y-3 md:block">
+    <section className={`hidden md:block ${compact ? "space-y-2" : "space-y-3"}`}>
       {groups.map(({ category, items }) => {
         const expanded = isOpen(category);
         const panelId = `inv-desktop-cat-${category}`;
@@ -328,33 +350,34 @@ function DesktopPartsByCategory({
               expanded={expanded}
               panelId={panelId}
               onToggle={() => toggle(category)}
+              compact={compact}
             />
             <div id={panelId} className={expanded ? "border-t border-slate-800" : "hidden"}>
               <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm text-slate-200">
+                <table className={`min-w-full text-left text-slate-200 ${compact ? "text-xs" : "text-sm"}`}>
                   <thead className="bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400">
                     <tr>
-                      <th className="px-4 py-3">Nombre</th>
-                      <th className="px-4 py-3">Estado</th>
-                      <th className="px-4 py-3">Precio coste</th>
-                      <th className="px-4 py-3">Precio venta</th>
-                      <th className="px-4 py-3">Stock</th>
-                      <th className="px-4 py-3 text-right">Acciones</th>
+                      <th className={cell}>Nombre</th>
+                      <th className={cell}>Estado</th>
+                      <th className={cell}>Precio coste</th>
+                      <th className={cell}>Precio venta</th>
+                      <th className={cell}>Stock</th>
+                      <th className={`${cell} text-right`}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {items.map((part) => (
                       <tr key={part.id} className="transition hover:bg-slate-800/50">
-                        <td className="px-4 py-3 font-medium text-slate-100">{part.name}</td>
-                        <td className="px-4 py-3">
+                        <td className={`${cell} font-medium text-slate-100`}>{part.name}</td>
+                        <td className={cell}>
                           <PartConditionBadge part={part} />
                         </td>
-                        <td className="px-4 py-3 text-slate-300">{formatCostPrice(part.costPrice)}</td>
-                        <td className="px-4 py-3 text-slate-300">{formatMoney(part.salePrice)}</td>
-                        <td className="px-4 py-3">
+                        <td className={`${cell} text-slate-300`}>{formatCostPrice(part.costPrice)}</td>
+                        <td className={`${cell} text-slate-300`}>{formatMoney(part.salePrice)}</td>
+                        <td className={cell}>
                           <StockBadges part={part} />
                         </td>
-                        <td className="px-4 py-3">
+                        <td className={cell}>
                           <div className="flex justify-end gap-2">
                             <button
                               type="button"
@@ -389,6 +412,7 @@ function DesktopPartsByCategory({
 export function PartsTable({
   parts,
   partsMobilePage,
+  compact = false,
   loading,
   deletingId,
   onEdit,
@@ -415,10 +439,22 @@ export function PartsTable({
 
   return (
     <>
-      <DesktopPartsByCategory parts={parts} deletingId={deletingId} onEdit={onEdit} onDelete={onDelete} />
+      <DesktopPartsByCategory
+        parts={parts}
+        deletingId={deletingId}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        compact={compact}
+      />
 
       {/* Movil: tarjetas agrupadas por categoria (acordeon); opcionalmente paginado */}
-      <MobilePartsByCategory parts={mobileParts} deletingId={deletingId} onEdit={onEdit} onDelete={onDelete} />
+      <MobilePartsByCategory
+        parts={mobileParts}
+        deletingId={deletingId}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        compact={compact}
+      />
     </>
   );
 }

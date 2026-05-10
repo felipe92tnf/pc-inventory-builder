@@ -41,7 +41,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,webmanifest}"],
-        navigateFallback: "/index.html"
+        navigateFallback: "/index.html",
+        /** Evita que rutas tipo /api en el mismo origen pasen por el SPA shell. */
+        navigateFallbackDenylist: [/^\/api(?:\/|$)/],
+        /** Limpia entradas de precache de despliegues anteriores (comportamiento recomendado). */
+        cleanupOutdatedCaches: true,
+        /** autoUpdate ya fuerza skipWaiting/clientsClaim; se dejan explícitos por claridad. */
+        skipWaiting: true,
+        clientsClaim: true
       },
       devOptions: {
         enabled: false

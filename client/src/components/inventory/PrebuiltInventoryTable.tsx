@@ -2,6 +2,7 @@ import type { Part } from "../../types/part";
 
 type PrebuiltInventoryTableProps = {
   items: Part[];
+  compact?: boolean;
   loading: boolean;
   deletingId: string | null;
   onEdit: (part: Part) => void;
@@ -27,6 +28,7 @@ function conditionBadgeClass(condition: string): string {
 
 export function PrebuiltInventoryTable({
   items,
+  compact = false,
   loading,
   deletingId,
   onEdit,
@@ -51,40 +53,42 @@ export function PrebuiltInventoryTable({
     );
   }
 
+  const cell = compact ? "px-3 py-2" : "px-4 py-3";
+
   return (
     <>
-      <section className="hidden space-y-3 md:block">
+      <section className={`hidden md:block ${compact ? "space-y-2" : "space-y-3"}`}>
         <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
-          <table className="min-w-full text-left text-sm text-slate-200">
+          <table className={`min-w-full text-left text-slate-200 ${compact ? "text-xs" : "text-sm"}`}>
             <thead className="bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400">
               <tr>
-                <th className="px-4 py-3">Nombre</th>
-                <th className="px-4 py-3">Descripcion</th>
-                <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Coste</th>
-                <th className="px-4 py-3">Venta</th>
-                <th className="px-4 py-3">Stock</th>
-                <th className="px-4 py-3 text-right">Acciones</th>
+                <th className={cell}>Nombre</th>
+                <th className={cell}>Descripcion</th>
+                <th className={cell}>Estado</th>
+                <th className={cell}>Coste</th>
+                <th className={cell}>Venta</th>
+                <th className={cell}>Stock</th>
+                <th className={`${cell} text-right`}>Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {items.map((part) => (
                 <tr key={part.id} className="transition hover:bg-slate-800/50">
-                  <td className="px-4 py-3 font-medium text-slate-100">{part.name}</td>
-                  <td className="max-w-xs px-4 py-3 text-slate-400">
+                  <td className={`${cell} font-medium text-slate-100`}>{part.name}</td>
+                  <td className={`max-w-xs ${cell} text-slate-400`}>
                     <span className="line-clamp-2 text-xs">{part.description || "—"}</span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className={cell}>
                     <span
                       className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`}
                     >
                       {part.condition}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-300">{formatCostPrice(part.costPrice)}</td>
-                  <td className="px-4 py-3 text-emerald-300/95">{formatMoney(part.salePrice)}</td>
-                  <td className="px-4 py-3 text-slate-300">{part.stock}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className={`${cell} text-slate-300`}>{formatCostPrice(part.costPrice)}</td>
+                  <td className={`${cell} text-emerald-300/95`}>{formatMoney(part.salePrice)}</td>
+                  <td className={`${cell} text-slate-300`}>{part.stock}</td>
+                  <td className={`${cell} text-right`}>
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
@@ -110,11 +114,11 @@ export function PrebuiltInventoryTable({
         </div>
       </section>
 
-      <section className="space-y-3 md:hidden">
+      <section className={`md:hidden ${compact ? "space-y-2" : "space-y-3"}`}>
         {items.map((part) => (
           <article
             key={part.id}
-            className="rounded-2xl border border-cyan-500/20 bg-slate-950/50 p-4 shadow-md shadow-black/20"
+            className={`rounded-2xl border border-cyan-500/20 bg-slate-950/50 shadow-md shadow-black/20 ${compact ? "p-3" : "p-4"}`}
           >
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-start justify-between gap-2">

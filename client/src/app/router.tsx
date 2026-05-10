@@ -1,4 +1,5 @@
 ﻿import { NavLink, Route, Routes } from "react-router-dom";
+import { PwaUpdateNotifier } from "../components/pwa/PwaUpdateNotifier";
 import { InventoryPage } from "../pages/InventoryPage";
 import { BuildsPage } from "../pages/BuildsPage";
 import { BuildDetailPage } from "../pages/BuildDetailPage";
@@ -68,6 +69,7 @@ const navLinkClass =
 export function AppRouter() {
   return (
     <div className="min-h-screen bg-blue-950">
+      <PwaUpdateNotifier />
       <header className="relative overflow-hidden border-b border-cyan-500/25 bg-gradient-to-br from-blue-950 via-[#0a1628] to-blue-950 shadow-[0_12px_40px_-8px_rgba(8,47,73,0.85)]">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.4]"
