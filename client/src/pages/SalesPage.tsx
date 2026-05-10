@@ -3,9 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useSales } from "../hooks/useSales";
 import type { MonthlySalesSummaryRow, SaleListRow } from "../types/sale";
 import {
+  combinePcMonthWithServices,
+  extendYearRangeWithServices,
   filterSalesByMonth,
+  mergeSalesAndServicesMonthlySummaries,
+  mergeYearTotalsFromMonthlySummaries,
   minMaxYearsFromData,
-  monthlyRevenueSeriesForYear,
+  monthlyRevenueSeriesCombined,
   monthTotalsFromSales,
   marginPercentOnRevenue,
   pctDelta,
@@ -121,7 +125,7 @@ function YearRevenueChart({ series, year }: { series: { month: number; revenue: 
 }
 
 export function SalesPage() {
-  const { sales, summary, loading, error, reload } = useSales();
+  const { sales, summary, servicesSummary, loading, error, reload } = useSales();
   const location = useLocation();
   const navigate = useNavigate();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
@@ -137,7 +141,10 @@ export function SalesPage() {
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.pathname, location.state, navigate]);
 
-  const { minYear, maxYear } = useMemo(() => minMaxYearsFromData(summary, sales), [summary, sales]);
+  const { minYear, maxYear } = useMemo(
+    () => extendYearRangeWithServices(minMaxYearsFromData(summary, sales), servicesSummary),
+    [summary, sales, servicesSummary]
+  );
 
   const yearOptions = useMemo(() => {
     const out: number[] = [];
@@ -148,15 +155,26 @@ export function SalesPage() {
     return [...new Set(out)].sort((a, b) => a - b);
   }, [minYear, maxYear, selectedYear, now]);
 
-  const selectedMonthStats = useMemo(
+  const selectedMonthStats = useMemo(() => {
+    const pc = monthTotalsFromSales(sales, selectedYear, selectedMonth);
+    const svc = servicesSummary.find((r) => r.year === selectedYear && r.month === selectedMonth);
+    return combinePcMonthWithServices(pc, svc);
+  }, [sales, servicesSummary, selectedYear, selectedMonth]);
+
+  const prevYM = useMemo(() => prevMonthYear(selectedYear, selectedMonth), [selectedYear, selectedMonth]);
+  const previousMonthStats = useMemo(() => {
+    const pc = monthTotalsFromSales(sales, prevYM.year, prevYM.month);
+    const svc = servicesSummary.find((r) => r.year === prevYM.year && r.month === prevYM.month);
+    return combinePcMonthWithServices(pc, svc);
+  }, [sales, servicesSummary, prevYM.year, prevYM.month]);
+
+  const selectedMonthPcOnly = useMemo(
     () => monthTotalsFromSales(sales, selectedYear, selectedMonth),
     [sales, selectedYear, selectedMonth]
   );
-
-  const prevYM = useMemo(() => prevMonthYear(selectedYear, selectedMonth), [selectedYear, selectedMonth]);
-  const previousMonthStats = useMemo(
-    () => monthTotalsFromSales(sales, prevYM.year, prevYM.month),
-    [sales, prevYM.year, prevYM.month]
+  const selectedMonthSvcRow = useMemo(
+    () => servicesSummary.find((r) => r.year === selectedYear && r.month === selectedMonth),
+    [servicesSummary, selectedYear, selectedMonth]
   );
 
   const marginSelected = useMemo(
@@ -165,9 +183,24 @@ export function SalesPage() {
   );
 
   const annualTotals = useMemo(
+    () => mergeYearTotalsFromMonthlySummaries(summary, servicesSummary, selectedYear),
+    [summary, servicesSummary, selectedYear]
+  );
+
+  const annualTotalsPcOnly = useMemo(
     () => yearTotalsFromSummary(summary, selectedYear),
     [summary, selectedYear]
   );
+
+  const annualServicesCount = useMemo(() => {
+    let n = 0;
+    for (const r of servicesSummary) {
+      if (r.year === selectedYear) {
+        n += r.servicesCount;
+      }
+    }
+    return n;
+  }, [servicesSummary, selectedYear]);
 
   const marginAnnual = useMemo(
     () => marginPercentOnRevenue(annualTotals.totalRevenue, annualTotals.totalProfit),
@@ -175,8 +208,13 @@ export function SalesPage() {
   );
 
   const revenueSeries = useMemo(
-    () => monthlyRevenueSeriesForYear(summary, selectedYear),
-    [summary, selectedYear]
+    () => monthlyRevenueSeriesCombined(summary, servicesSummary, selectedYear),
+    [summary, servicesSummary, selectedYear]
+  );
+
+  const mergedHistoricSummary = useMemo(
+    () => mergeSalesAndServicesMonthlySummaries(summary, servicesSummary),
+    [summary, servicesSummary]
   );
 
   const salesInSelectedMonth = useMemo(
@@ -242,7 +280,7 @@ export function SalesPage() {
       <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
         <h1 className="text-2xl font-bold tracking-tight">Ventas</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-300">
-          Estadisticas por periodo, comparativa con el mes anterior, evolucion anual y rankings de montajes y clientes.
+          Beneficio e ingresos combinando ventas de PCs y servicios completados; rankings solo ventas PC.
         </p>
 
         <div className="mt-6 flex flex-wrap items-end gap-4">
@@ -334,34 +372,53 @@ export function SalesPage() {
               {monthLabel(selectedMonth, selectedYear)}
             </p>
             {loading ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">
+                {[
+                  { k: "a", span: "xl:col-span-3" },
+                  { k: "b", span: "xl:col-span-3" },
+                  { k: "c", span: "xl:col-span-4" },
+                  { k: "d", span: "xl:col-span-2" }
+                ].map(({ k, span }) => (
+                  <div
+                    key={k}
+                    className={`h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60 ${span}`}
+                  />
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <article className="rounded-2xl border border-cyan-500/25 bg-slate-900/90 p-5 shadow-lg shadow-black/30">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Ingresos</p>
-                  <p className="mt-2 text-2xl font-bold text-emerald-400">{money(selectedMonthStats.totalRevenue)}</p>
-                  <p className="mt-1 text-xs text-slate-500">{selectedMonthStats.salesCount} ventas</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12 xl:items-stretch xl:gap-5">
+                <article className="rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 shadow-md shadow-black/20 xl:col-span-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Ingresos</p>
+                  <p className="mt-2 text-xl font-bold text-emerald-400/95">{money(selectedMonthStats.totalRevenue)}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {selectedMonthPcOnly.salesCount} ventas PC · {selectedMonthSvcRow?.servicesCount ?? 0} servicios
+                    completados
+                  </p>
                 </article>
-                <article className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg shadow-black/30">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Costes</p>
-                  <p className="mt-2 text-2xl font-bold text-slate-200">{money(selectedMonthStats.totalCost)}</p>
+                <article className="rounded-2xl border border-slate-700/80 bg-slate-900/75 p-5 shadow-md shadow-black/20 xl:col-span-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Costes</p>
+                  <p className="mt-2 text-xl font-bold text-slate-300">{money(selectedMonthStats.totalCost)}</p>
                   <p className="mt-1 text-xs text-slate-500">Coste acumulado del mes</p>
                 </article>
-                <article className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg shadow-black/30">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Beneficio</p>
-                  <p className={`mt-2 text-2xl font-bold ${profitClass(selectedMonthStats.totalProfit)}`}>
+                <article className="relative overflow-hidden rounded-2xl border border-emerald-400/40 bg-gradient-to-br from-emerald-950/90 via-slate-900/95 to-slate-950 p-5 shadow-md shadow-emerald-950/25 ring-1 ring-emerald-500/20 sm:p-6 xl:col-span-4">
+                  <div
+                    className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-500/10 blur-xl"
+                    aria-hidden
+                  />
+                  <p className="relative text-xs font-bold uppercase tracking-wider text-emerald-400/95">Beneficio neto</p>
+                  <p
+                    className={`relative mt-2.5 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl ${profitClass(selectedMonthStats.totalProfit)}`}
+                  >
                     {money(selectedMonthStats.totalProfit)}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">Ingresos menos costes</p>
+                  <p className="relative mt-2.5 text-xs text-emerald-200/65">
+                    Ventas PC + servicios completados · ingresos menos costes
+                  </p>
                 </article>
-                <article className="rounded-2xl border border-indigo-500/25 bg-slate-900/90 p-5 shadow-lg shadow-black/30">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Margen medio</p>
-                  <p className="mt-2 text-2xl font-bold text-indigo-300">{marginSelected.toFixed(1)} %</p>
-                  <p className="mt-1 text-xs text-slate-500">Sobre ingresos del mes</p>
+                <article className="rounded-2xl border border-indigo-500/20 bg-slate-900/80 p-5 shadow-md shadow-black/20 xl:col-span-2 xl:min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Margen</p>
+                  <p className="mt-2 text-xl font-bold text-indigo-300">{marginSelected.toFixed(1)} %</p>
+                  <p className="mt-1 text-[11px] leading-snug text-slate-500">Sobre ingresos del mes</p>
                 </article>
               </div>
             )}
@@ -392,33 +449,41 @@ export function SalesPage() {
             {loading ? (
               <p className="mt-4 text-sm text-slate-500">Cargando...</p>
             ) : (
-              <dl className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Ingresos</dt>
-              <dd className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-lg font-semibold text-emerald-400">{money(selectedMonthStats.totalRevenue)}</span>
-                <DeltaBadge value={deltaRevenue} />
-              </dd>
-              <p className="mt-1 text-xs text-slate-500">Anterior: {money(previousMonthStats.totalRevenue)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Costes</dt>
-              <dd className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-lg font-semibold text-slate-200">{money(selectedMonthStats.totalCost)}</span>
-                <DeltaBadge value={deltaCost} invert />
-              </dd>
-              <p className="mt-1 text-xs text-slate-500">Anterior: {money(previousMonthStats.totalCost)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Beneficio</dt>
-              <dd className="mt-2 flex flex-wrap items-center gap-2">
-                <span className={`text-lg font-semibold ${profitClass(selectedMonthStats.totalProfit)}`}>
-                  {money(selectedMonthStats.totalProfit)}
-                </span>
-                <DeltaBadge value={deltaProfit} />
-              </dd>
-              <p className="mt-1 text-xs text-slate-500">Anterior: {money(previousMonthStats.totalProfit)}</p>
-            </div>
+              <dl className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-700/80 bg-slate-950/50 p-4">
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Ingresos</dt>
+                  <dd className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-lg font-semibold text-emerald-400">{money(selectedMonthStats.totalRevenue)}</span>
+                    <DeltaBadge value={deltaRevenue} />
+                  </dd>
+                  <p className="mt-1 text-xs text-slate-500">Anterior: {money(previousMonthStats.totalRevenue)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-700/80 bg-slate-950/50 p-4">
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Costes</dt>
+                  <dd className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-lg font-semibold text-slate-200">{money(selectedMonthStats.totalCost)}</span>
+                    <DeltaBadge value={deltaCost} invert />
+                  </dd>
+                  <p className="mt-1 text-xs text-slate-500">Anterior: {money(previousMonthStats.totalCost)}</p>
+                </div>
+                <div className="relative overflow-hidden rounded-xl border border-emerald-400/40 bg-gradient-to-br from-emerald-950/85 to-slate-950 p-4 shadow-md shadow-emerald-950/25 sm:col-span-2 sm:p-5">
+                  <div
+                    className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-full bg-emerald-400/10 blur-xl"
+                    aria-hidden
+                  />
+                  <dt className="relative text-xs font-bold uppercase tracking-wider text-emerald-400">Beneficio neto</dt>
+                  <dd className="relative mt-2 flex flex-wrap items-end gap-3">
+                    <span
+                      className={`text-2xl font-extrabold tracking-tight sm:text-3xl ${profitClass(selectedMonthStats.totalProfit)}`}
+                    >
+                      {money(selectedMonthStats.totalProfit)}
+                    </span>
+                    <DeltaBadge value={deltaProfit} />
+                  </dd>
+                  <p className="relative mt-2 text-xs text-emerald-200/65">
+                    Mes anterior: {money(previousMonthStats.totalProfit)}
+                  </p>
+                </div>
               </dl>
             )}
           </div>
@@ -443,32 +508,45 @@ export function SalesPage() {
           <div className="grid grid-cols-1 gap-6 p-4 pt-2 md:grid md:p-0 xl:grid-cols-3 xl:gap-6">
         <article className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-slate-900/95 to-amber-950/20 p-5 shadow-lg shadow-slate-950/40 xl:col-span-1">
           <h2 className="text-lg font-semibold text-slate-100">Total acumulado del ano {selectedYear}</h2>
-          <p className="mt-1 text-sm text-slate-400">Suma de todos los meses con ventas registradas en el resumen.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            Suma del ano en ventas PC y servicios completados (mismo criterio que el beneficio total).
+          </p>
           {loading ? (
             <div className="mt-4 h-24 animate-pulse rounded-lg bg-slate-800/60" />
           ) : (
             <dl className="mt-5 space-y-3 text-sm">
               <div className="flex justify-between gap-2 border-b border-slate-800/80 pb-2">
                 <dt className="text-slate-500">Ingresos anuales</dt>
-                <dd className="font-semibold text-emerald-400">{money(annualTotals.totalRevenue)}</dd>
+                <dd className="text-base font-semibold text-emerald-400">{money(annualTotals.totalRevenue)}</dd>
               </div>
               <div className="flex justify-between gap-2 border-b border-slate-800/80 pb-2">
                 <dt className="text-slate-500">Costes anuales</dt>
-                <dd className="text-slate-300">{money(annualTotals.totalCost)}</dd>
+                <dd className="text-base font-semibold text-slate-300">{money(annualTotals.totalCost)}</dd>
               </div>
-              <div className="flex justify-between gap-2 border-b border-slate-800/80 pb-2">
-                <dt className="text-slate-500">Beneficio anual</dt>
-                <dd className={`font-semibold ${profitClass(annualTotals.totalProfit)}`}>
-                  {money(annualTotals.totalProfit)}
-                </dd>
+              <div className="relative overflow-hidden rounded-xl border border-emerald-400/35 bg-gradient-to-r from-emerald-950/75 to-slate-950 px-3 py-3 shadow-inner shadow-emerald-950/30 sm:px-4 sm:py-3.5">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <dt className="text-xs font-bold uppercase tracking-wider text-emerald-400">Beneficio anual</dt>
+                  <dd
+                    className={`text-xl font-extrabold tracking-tight sm:text-2xl ${profitClass(annualTotals.totalProfit)}`}
+                  >
+                    {money(annualTotals.totalProfit)}
+                  </dd>
+                </div>
+                <p className="mt-2 text-[11px] text-emerald-200/55">Resultado tras costes (PC + servicios)</p>
               </div>
               <div className="flex justify-between gap-2 pt-1">
                 <dt className="text-slate-500">Margen medio anual</dt>
                 <dd className="font-semibold text-amber-200/90">{marginAnnual.toFixed(1)} %</dd>
               </div>
               <div className="flex justify-between gap-2 text-xs text-slate-500">
-                <dt>PCs vendidos (ano)</dt>
+                <dt>Operaciones (ano)</dt>
                 <dd>{annualTotals.salesCount}</dd>
+              </div>
+              <div className="flex justify-between gap-2 text-[11px] leading-snug text-slate-600">
+                <dt>Ventas PC / servicios</dt>
+                <dd>
+                  {annualTotalsPcOnly.salesCount} / {annualServicesCount}
+                </dd>
               </div>
             </dl>
           )}
@@ -476,7 +554,9 @@ export function SalesPage() {
 
         <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 xl:col-span-2">
           <h2 className="text-lg font-semibold text-slate-100">Ingresos por mes ({selectedYear})</h2>
-          <p className="mt-1 text-sm text-slate-400">Barras proporcionales al mes de mayor facturacion.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            Ventas PC + ingresos por servicios completados en cada mes.
+          </p>
           {loading ? (
             <div className="mt-8 h-48 animate-pulse rounded-lg bg-slate-800/50" />
           ) : (
@@ -606,15 +686,15 @@ export function SalesPage() {
           <div className="p-5">
             <h2 className="hidden text-lg font-semibold text-slate-100 md:block">Resumen mensual (historico)</h2>
             <p className="mt-1 hidden text-sm text-slate-400 md:block">
-              Totales agregados por mes segun fecha de venta.
+              Totales por mes: ventas PC (fecha venta) + servicios completados (fecha servicio).
             </p>
             {loading ? (
               <p className="mt-4 text-sm text-slate-400">Cargando resumenes...</p>
-            ) : summary.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-400">Sin datos de ventas todavia.</p>
+            ) : mergedHistoricSummary.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-400">Sin datos de ventas ni servicios todavia.</p>
             ) : (
               <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {summary.map((row) => (
+                {mergedHistoricSummary.map((row) => (
                   <MonthlySummaryCard key={`${row.year}-${row.month}`} row={row} />
                 ))}
               </div>
@@ -752,7 +832,7 @@ function MonthlySummaryCard({ row }: { row: MonthlySalesSummaryRow }) {
       <p className="text-sm font-semibold capitalize text-slate-100">{monthLabel(row.month, row.year)}</p>
       <dl className="mt-4 space-y-3 text-sm">
         <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">PCs vendidos</dt>
+          <dt className="text-slate-500">Ventas PC + servicios</dt>
           <dd className="font-medium text-slate-200">{row.salesCount}</dd>
         </div>
         <div className="flex justify-between gap-2">

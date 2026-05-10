@@ -75,14 +75,14 @@ function MobilePartsByCategory({ parts, deletingId, onEdit, onDelete }) {
 }
 function DesktopPartsByCategory({ parts, deletingId, onEdit, onDelete }) {
     const groups = useMemo(() => groupPartsByCategoryOrdered(parts), [parts]);
-    /** Sin entrada = abierto por defecto en escritorio */
+    /** Solo true = abierto (por defecto plegado, igual que en movil) */
     const [openMap, setOpenMap] = useState({});
-    const isOpen = (category) => openMap[category] !== false;
+    const isOpen = (category) => openMap[category] === true;
     const toggle = (category) => {
-        setOpenMap((prev) => {
-            const currentlyOpen = prev[category] !== false;
-            return { ...prev, [category]: !currentlyOpen };
-        });
+        setOpenMap((prev) => ({
+            ...prev,
+            [category]: !(prev[category] === true)
+        }));
     };
     return (_jsx("section", { className: "hidden space-y-3 md:block", children: groups.map(({ category, items }) => {
             const expanded = isOpen(category);

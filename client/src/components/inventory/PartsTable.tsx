@@ -254,16 +254,16 @@ function DesktopPartsByCategory({
 }) {
   const groups = useMemo(() => groupPartsByCategoryOrdered(parts), [parts]);
 
-  /** Sin entrada = abierto por defecto en escritorio */
+  /** Solo true = abierto (por defecto plegado, igual que en movil) */
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 
-  const isOpen = (category: string) => openMap[category] !== false;
+  const isOpen = (category: string) => openMap[category] === true;
 
   const toggle = (category: string) => {
-    setOpenMap((prev) => {
-      const currentlyOpen = prev[category] !== false;
-      return { ...prev, [category]: !currentlyOpen };
-    });
+    setOpenMap((prev) => ({
+      ...prev,
+      [category]: !(prev[category] === true)
+    }));
   };
 
   return (

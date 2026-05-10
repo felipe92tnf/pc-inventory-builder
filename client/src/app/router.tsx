@@ -4,6 +4,7 @@ import { BuildsPage } from "../pages/BuildsPage";
 import { BuildDetailPage } from "../pages/BuildDetailPage";
 import { SalesPage } from "../pages/SalesPage";
 import { SaleDetailPage } from "../pages/SaleDetailPage";
+import { ServicesPage } from "../pages/ServicesPage";
 
 function PackageIcon({ className }: { className?: string }) {
   return (
@@ -28,6 +29,20 @@ function SalesIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+      />
+    </svg>
+  );
+}
+
+function WrenchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"
       />
     </svg>
   );
@@ -67,7 +82,7 @@ export function AppRouter() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">PC Inventory Builder</p>
               <p className="text-lg font-bold text-white md:text-xl">Navegación principal</p>
               <p className="max-w-md text-sm text-blue-100/75">
-                Inventario, montajes ensamblados y ventas de PCs en un solo sitio.
+                Inventario, montajes, ventas de PCs y servicios tecnicos en un solo sitio.
               </p>
             </div>
             <nav
@@ -104,6 +119,20 @@ export function AppRouter() {
                 <span>Montajes</span>
               </NavLink>
               <NavLink
+                to="/services"
+                className={({ isActive }) =>
+                  [
+                    navLinkClass,
+                    isActive
+                      ? "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35"
+                      : "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white"
+                  ].join(" ")
+                }
+              >
+                <WrenchIcon className="h-7 w-7 shrink-0 opacity-90" />
+                <span>Servicios</span>
+              </NavLink>
+              <NavLink
                 to="/sales"
                 className={({ isActive }) =>
                   [
@@ -129,6 +158,7 @@ export function AppRouter() {
           <Route path="/builds/:id" element={<BuildDetailPage />} />
           <Route path="/sales" element={<SalesPage />} />
           <Route path="/sales/:id" element={<SaleDetailPage />} />
+          <Route path="/services" element={<ServicesPage />} />
         </Routes>
       </main>
     </div>

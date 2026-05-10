@@ -33,6 +33,24 @@ enum BuildStatus {
   SOLD
 }
 
+enum ServiceType {
+  SPARE_PART_SALE
+  PC_CLEANING
+  FORMATTING
+  OS_INSTALLATION
+  DIAGNOSTIC
+  THERMAL_PASTE_CHANGE
+  PARTIAL_ASSEMBLY
+  HOME_SERVICE
+  OTHER
+}
+
+enum ServiceStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
 model Part {
   id         String         @id @default(cuid())
   name       String
@@ -45,11 +63,43 @@ model Part {
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
-  buildItems BuildPartItem[]
+  buildItems          BuildPartItem[]
+  sparePartServices   Service[]       @relation("SparePart")
 
   @@index([category])
   @@index([condition])
   @@index([name])
+}
+
+model Service {
+  id                     String          @id @default(cuid())
+  type                   ServiceType
+  title                  String
+  customerName           String
+  customerPhone          String
+  customerEmail          String?
+  description            String          @default("")
+  selectedPartId         String?
+  quantity               Int?
+  costPrice              Decimal
+  salePrice              Decimal
+  profit                 Decimal
+  isHomeService          Boolean         @default(false)
+  homeServiceAddress     String?
+  /// Suplemento opcional por desplazamiento (informativo; puede incluirse ya en salePrice).
+  homeServiceSupplement  Decimal?
+  serviceDate            DateTime
+  status                 ServiceStatus   @default(PENDING)
+  paymentMethod          String?
+  notes                  String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  selectedPart Part? @relation("SparePart", fields: [selectedPartId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([status])
+  @@index([serviceDate])
 }
 
 model Build {

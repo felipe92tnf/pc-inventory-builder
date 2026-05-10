@@ -1,3 +1,96 @@
+/** Suma mes PC ventas + servicios completados (resumenes mensuales API). */
+export function combinePcMonthWithServices(pc, svc) {
+    if (!svc) {
+        return pc;
+    }
+    return {
+        month: pc.month,
+        year: pc.year,
+        salesCount: pc.salesCount + svc.servicesCount,
+        totalRevenue: pc.totalRevenue + svc.totalRevenue,
+        totalCost: pc.totalCost + svc.totalCost,
+        totalProfit: pc.totalProfit + svc.totalProfit
+    };
+}
+export function mergeSalesAndServicesMonthlySummaries(salesRows, serviceRows) {
+    const map = new Map();
+    const keyOf = (y, m) => `${y}-${String(m).padStart(2, "0")}`;
+    for (const r of salesRows) {
+        map.set(keyOf(r.year, r.month), { ...r });
+    }
+    for (const r of serviceRows) {
+        const k = keyOf(r.year, r.month);
+        const existing = map.get(k);
+        if (!existing) {
+            map.set(k, {
+                month: r.month,
+                year: r.year,
+                salesCount: r.servicesCount,
+                totalRevenue: r.totalRevenue,
+                totalCost: r.totalCost,
+                totalProfit: r.totalProfit
+            });
+        }
+        else {
+            map.set(k, {
+                ...existing,
+                salesCount: existing.salesCount + r.servicesCount,
+                totalRevenue: existing.totalRevenue + r.totalRevenue,
+                totalCost: existing.totalCost + r.totalCost,
+                totalProfit: existing.totalProfit + r.totalProfit
+            });
+        }
+    }
+    return Array.from(map.values()).sort((a, b) => {
+        if (a.year !== b.year)
+            return b.year - a.year;
+        return b.month - a.month;
+    });
+}
+export function mergeYearTotalsFromMonthlySummaries(salesSummary, servicesSummary, year) {
+    const salesYear = yearTotalsFromSummary(salesSummary, year);
+    let svcCount = 0;
+    let svcRev = 0;
+    let svcCost = 0;
+    let svcProfit = 0;
+    for (const r of servicesSummary) {
+        if (r.year !== year)
+            continue;
+        svcCount += r.servicesCount;
+        svcRev += r.totalRevenue;
+        svcCost += r.totalCost;
+        svcProfit += r.totalProfit;
+    }
+    return {
+        month: 0,
+        year,
+        salesCount: salesYear.salesCount + svcCount,
+        totalRevenue: salesYear.totalRevenue + svcRev,
+        totalCost: salesYear.totalCost + svcCost,
+        totalProfit: salesYear.totalProfit + svcProfit
+    };
+}
+export function monthlyRevenueSeriesCombined(salesSummary, servicesSummary, year) {
+    const out = [];
+    for (let m = 1; m <= 12; m++) {
+        const s = salesSummary.find((r) => r.year === year && r.month === m);
+        const sv = servicesSummary.find((r) => r.year === year && r.month === m);
+        out.push({
+            month: m,
+            revenue: (s?.totalRevenue ?? 0) + (sv?.totalRevenue ?? 0)
+        });
+    }
+    return out;
+}
+export function extendYearRangeWithServices(base, servicesSummary) {
+    let minY = base.minYear;
+    let maxY = base.maxYear;
+    for (const r of servicesSummary) {
+        minY = Math.min(minY, r.year);
+        maxY = Math.max(maxY, r.year);
+    }
+    return { minYear: minY, maxYear: maxY };
+}
 export function prevMonthYear(year, month) {
     if (month === 1)
         return { year: year - 1, month: 12 };
