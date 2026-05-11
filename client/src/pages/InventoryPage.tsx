@@ -1,5 +1,6 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as buildsApi from "../api/builds";
+import type { Build } from "../types/build";
 import { PartForm } from "../components/inventory/PartForm";
 import { PartsTable } from "../components/inventory/PartsTable";
 import { PrebuiltInventoryTable } from "../components/inventory/PrebuiltInventoryTable";
@@ -18,6 +19,7 @@ import {
   type PartPayload
 } from "../types/part";
 import { calculateSalePrice } from "../utils/pricing";
+import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
 
 function finiteNonNegative(n: number, fallback: number): number {
   if (!Number.isFinite(n) || n < 0) return fallback;
@@ -85,6 +87,37 @@ function inventoryTotals(parts: Part[]) {
   };
 }
 
+function coerceMoney(v: number | string | null | undefined): number {
+  if (v == null) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  const n = parseFloat(String(v));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Montajes confirmados = PC terminado en almacén (coste/venta del montaje, sin duplicar piezas ya descontadas del stock). */
+function inventorySummaryWithBuilds(parts: Part[], builds: Build[]) {
+  const shelf = inventoryTotals(parts);
+  const confirmedBuilds = builds.filter((b) => b.status === "CONFIRMED");
+  let buildCostValue = 0;
+  let buildSaleValue = 0;
+  for (const b of confirmedBuilds) {
+    buildCostValue += coerceMoney(b.totalCost);
+    buildSaleValue += coerceMoney(b.totalSale ?? b.computedSaleTotal);
+  }
+  const totalCostValue = shelf.totalCostValue + buildCostValue;
+  const totalSaleValue = shelf.totalSaleValue + buildSaleValue;
+  return {
+    shelf,
+    confirmedBuildCount: confirmedBuilds.length,
+    buildCostValue,
+    buildSaleValue,
+    totalCostValue,
+    totalSaleValue,
+    potentialProfit: totalSaleValue - totalCostValue,
+    units: shelf.units + confirmedBuilds.length
+  };
+}
+
 /** Alerta cuando la suma de unidades en una categoría es menor que este valor (p. ej. menos de 3 CPUs en total). */
 const LOW_STOCK_CATEGORY_THRESHOLD = 3;
 
@@ -120,6 +153,7 @@ const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
 
 export function InventoryPage() {
   const { parts, loading, error, submitting, deletingId, createPart, updatePart, deletePart, reload } = useParts();
+  const [builds, setBuilds] = useState<Build[]>([]);
   const [partIdsInBuiltPcs, setPartIdsInBuiltPcs] = useState<Set<string>>(new Set());
   const [selectedPart, setSelectedPart] = useState<Part | null>(null);
   const [activeTab, setActiveTab] = useState<InventoryTabId>("summary");
@@ -137,30 +171,29 @@ export function InventoryPage() {
     }
   }, [selectedPart]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void buildsApi
-      .listBuilds()
-      .then((rows) => {
-        if (cancelled) return;
-        const ids = new Set<string>();
-        for (const build of rows) {
-          if (build.status === "DRAFT") continue;
-          for (const item of build.items ?? []) {
-            if (item.part?.inventoryKind === "PART") {
-              ids.add(item.partId);
-            }
+  const refreshBuilds = useCallback(async () => {
+    try {
+      const rows = await buildsApi.listBuilds();
+      setBuilds(rows);
+      const ids = new Set<string>();
+      for (const build of rows) {
+        if (build.status === "DRAFT") continue;
+        for (const item of build.items ?? []) {
+          if (item.part?.inventoryKind === "PART") {
+            ids.add(item.partId);
           }
         }
-        setPartIdsInBuiltPcs(ids);
-      })
-      .catch(() => {
-        if (!cancelled) setPartIdsInBuiltPcs(new Set());
-      });
-    return () => {
-      cancelled = true;
-    };
+      }
+      setPartIdsInBuiltPcs(ids);
+    } catch {
+      setBuilds([]);
+      setPartIdsInBuiltPcs(new Set());
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshBuilds();
+  }, [refreshBuilds]);
 
   const handleSubmit = async (values: PartFormValues) => {
     const payload = toPayload(values);
@@ -183,7 +216,7 @@ export function InventoryPage() {
     }
   };
 
-  const totals = useMemo(() => inventoryTotals(parts), [parts]);
+  const totals = useMemo(() => inventorySummaryWithBuilds(parts, builds), [parts, builds]);
 
   const partsListed = useMemo(() => {
     return parts.filter((part) => {
@@ -339,10 +372,7 @@ export function InventoryPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 px-2 pb-8 text-slate-100 md:space-y-6 md:px-4">
       <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-5 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)] md:p-6">
-        <h1 className="text-2xl font-bold">Inventario</h1>
-        <p className="mt-2 text-sm text-slate-300">
-          Piezas sueltas para montajes y PCs completos / premontados. Usa las pestañas para moverte entre secciones.
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight">Inventario</h1>
       </section>
 
       {error ? (
@@ -352,6 +382,7 @@ export function InventoryPage() {
             type="button"
             onClick={() => {
               void reload();
+              void refreshBuilds();
             }}
             className="rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70"
           >
@@ -392,43 +423,37 @@ export function InventoryPage() {
         className={activeTab === "summary" ? "space-y-5" : "hidden"}
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
             <p className="text-xs uppercase tracking-wide text-slate-400">Valor coste total</p>
-            <p className="mt-1 text-lg font-bold text-slate-100 md:text-xl">{money(totals.totalCostValue)}</p>
+            <p className="mt-1 text-xl font-bold text-slate-100 md:text-2xl">{money(totals.totalCostValue)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
             <p className="text-xs uppercase tracking-wide text-slate-400">Valor venta estimado</p>
-            <p className="mt-1 text-lg font-bold text-emerald-300/95 md:text-xl">{money(totals.totalSaleValue)}</p>
+            <p className="mt-1 text-xl font-bold text-emerald-300/95 md:text-2xl">{money(totals.totalSaleValue)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
             <p className="text-xs uppercase tracking-wide text-slate-400">Beneficio potencial</p>
             <p
-              className={`mt-1 text-lg font-bold md:text-xl ${totals.potentialProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+              className={`mt-1 text-xl font-bold md:text-2xl ${totals.potentialProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}
             >
               {money(totals.potentialProfit)}
             </p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/40 md:p-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
             <p className="text-xs uppercase tracking-wide text-slate-400">Unidades en stock</p>
-            <p className="mt-1 text-lg font-bold text-slate-100 md:text-xl">{totals.units}</p>
+            <p className="mt-1 text-xl font-bold text-slate-100 md:text-2xl">{totals.units}</p>
           </article>
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <article className="rounded-xl border border-amber-500/25 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
+          <article className="rounded-xl border border-amber-500/25 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold text-slate-100">Stock bajo</h2>
-              <span className="text-xs text-amber-200/90">
-                Menos de {LOW_STOCK_CATEGORY_THRESHOLD} u. sumadas por categoría (inventario físico)
-              </span>
+              <h2 className="text-base font-semibold text-slate-100">Stock bajo</h2>
             </div>
             {lowStockCategories.length === 0 && !prebuiltStockLow ? (
-              <p className="mt-3 text-sm text-slate-400">Ninguna categoría por debajo del umbral.</p>
+              <p className="mt-3 text-sm text-slate-400">Sin avisos.</p>
             ) : (
               <>
-                <p className="mt-1 text-xs text-slate-500">
-                  {lowStockCategories.length + (prebuiltStockLow ? 1 : 0)} aviso(s)
-                </p>
                 <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-sm">
                   {lowStockCategories.map(({ category, total }) => (
                     <li
@@ -456,9 +481,8 @@ export function InventoryPage() {
             )}
           </article>
 
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
-            <h2 className="text-sm font-semibold text-slate-100">Últimas actualizaciones</h2>
-            <p className="mt-1 text-xs text-slate-500">Ordenadas por fecha de modificación en el inventario.</p>
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
+            <h2 className="text-base font-semibold text-slate-100">Últimas actualizaciones</h2>
             {recentParts.length === 0 ? (
               <p className="mt-3 text-sm text-slate-400">Sin datos todavia.</p>
             ) : (
@@ -499,11 +523,8 @@ export function InventoryPage() {
         hidden={activeTab !== "add"}
         className={activeTab === "add" ? "space-y-3" : "hidden"}
       >
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-          <h2 className="text-lg font-semibold text-slate-100">{formTitle}</h2>
-          <p className="mt-1 text-xs text-slate-400">
-            Elige pieza suelta o PC completo. Desde otras pestañas, Editar abre este formulario automáticamente.
-          </p>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
+          <h2 className="text-xl font-semibold text-slate-100">{formTitle}</h2>
           <div className="mt-4">
             <PartForm
               selectedPart={selectedPart}
@@ -599,14 +620,12 @@ export function InventoryPage() {
           </div>
 
           <div className="flex flex-col gap-3 border-t border-slate-800 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
-            <p className="text-sm text-slate-300">
-              {sortedPieceParts.length} pieza(s) en esta vista (mismos filtros que el inventario completo).
-            </p>
+            <p className="text-sm font-medium text-slate-200">{sortedPieceParts.length} piezas</p>
             <button
               type="button"
               onClick={clearFilters}
               disabled={!hasActiveFilters}
-              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className={`${SECONDARY_BUTTON_SM} min-h-[40px] disabled:cursor-not-allowed`}
             >
               Limpiar filtros
             </button>
@@ -642,7 +661,7 @@ export function InventoryPage() {
                 type="button"
                 onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`${SECONDARY_BUTTON_SM} min-h-[40px] px-3 py-2 disabled:cursor-not-allowed`}
               >
                 Anterior
               </button>
@@ -650,7 +669,7 @@ export function InventoryPage() {
                 type="button"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`${SECONDARY_BUTTON_SM} min-h-[40px] px-3 py-2 disabled:cursor-not-allowed`}
               >
                 Siguiente
               </button>
@@ -668,8 +687,7 @@ export function InventoryPage() {
       >
         {kindFilter === "PART" ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            El filtro <strong>Tipo</strong> está en &quot;Piezas&quot;. Cámbialo a <strong>Todos</strong> o{" "}
-            <strong>PCs completos</strong> para ver los premontados, o pulsa Limpiar filtros.
+            Cambia el filtro <strong>Tipo</strong> (no &quot;Piezas&quot;) o pulsa Limpiar filtros para ver PCs completos.
           </div>
         ) : null}
 
@@ -719,7 +737,7 @@ export function InventoryPage() {
               type="button"
               onClick={clearFilters}
               disabled={!hasActiveFilters}
-              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className={`${SECONDARY_BUTTON_SM} min-h-[40px] disabled:cursor-not-allowed`}
             >
               Limpiar filtros
             </button>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as buildsApi from "../api/builds";
 import { useBuilds } from "../hooks/useBuilds";
@@ -6,6 +6,13 @@ import { useParts } from "../hooks/useParts";
 import type { Build } from "../types/build";
 import * as salesApi from "../api/sales";
 import type { SaleListRow } from "../types/sale";
+import {
+  PRIMARY_ACTION_BUTTON,
+  PRIMARY_ACTION_BUTTON_COMPACT,
+  SECONDARY_GHOST_SM,
+  FILTER_TOGGLE_ROW,
+  DESTRUCTIVE_BUTTON_SM
+} from "../theme/actionButtons";
 
 type BuildBucketKey = "DRAFTS" | "PENDING" | "READY" | "SOLD";
 type StatusFilter = "ALL" | BuildBucketKey;
@@ -168,12 +175,18 @@ export function BuildsPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
-        <h1 className="text-2xl font-bold">Montajes de PC</h1>
-        <p className="mt-2 text-sm text-slate-300">
-          Crea montajes por piezas o vende PCs completos del inventario. En ambos casos, cuando el equipo este listo,
-          usalo con <span className="font-semibold text-cyan-300">Registrar venta</span> para pasarlo al apartado Ventas.
-        </p>
+      <section className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)] md:flex-row md:items-center md:justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Montajes de PC</h1>
+        <button
+          type="button"
+          onClick={() => {
+            void handleQuickCreate();
+          }}
+          disabled={creatingQuick}
+          className={PRIMARY_ACTION_BUTTON}
+        >
+          {creatingQuick ? "Creando..." : "Crear montaje"}
+        </button>
       </section>
 
       {error ? (
@@ -192,24 +205,8 @@ export function BuildsPage() {
       ) : null}
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
-        <button
-          type="button"
-          onClick={() => {
-            void handleQuickCreate();
-          }}
-          disabled={creatingQuick}
-          className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500 disabled:opacity-60 md:w-auto"
-        >
-          {creatingQuick ? "Creando..." : "Crear montaje"}
-        </button>
-        <p className="mt-2 text-xs text-slate-500">
-          Crea un borrador al instante y completa nombre, notas y piezas en el detalle del montaje.
-        </p>
-      </section>
-
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
         <details>
-          <summary className="cursor-pointer list-none text-sm font-semibold text-slate-100">
+          <summary className={FILTER_TOGGLE_ROW}>
             Filtros
           </summary>
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -258,20 +255,17 @@ export function BuildsPage() {
         </details>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40">
-        <h2 className="text-lg font-semibold text-slate-100">PCs disponibles para vender</h2>
-        <p className="mt-1 text-xs text-slate-500">Incluye PCs completos de inventario y montajes listos para venta.</p>
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
+        <h2 className="text-xl font-semibold text-slate-100">PCs disponibles para vender</h2>
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
           {(inventoryLoading ? [] : inventoryParts.filter((p) => p.inventoryKind === "PREBUILT_PC" && p.stock > 0)).map((part) => {
-            const cost = Number(part.costPrice);
             const sale = Number(part.salePrice);
-            const profit = sale - cost;
             return (
-              <article key={`inv-${part.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+              <article key={`inv-${part.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 md:p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-slate-100">{part.name}</p>
-                    <p className="text-xs text-violet-300">Origen: Inventario · Stock {part.stock}</p>
+                    <p className="mt-1 text-sm font-medium text-violet-300">Stock {part.stock}</p>
                   </div>
                   <button
                     type="button"
@@ -286,32 +280,27 @@ export function BuildsPage() {
                         .finally(() => setPreparingPartId(null));
                     }}
                     disabled={preparingPartId === part.id}
-                    className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+                    className={PRIMARY_ACTION_BUTTON_COMPACT}
                   >
                     {preparingPartId === part.id ? "Preparando..." : "Registrar venta"}
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-slate-400">
-                  Coste {money(cost)} · Venta estimada {money(sale)} · Beneficio {money(profit)}
-                </p>
+                <p className="mt-3 text-lg font-semibold text-emerald-300">{money(sale)}</p>
               </article>
             );
           })}
           {bucketBuilds.READY.map((build) => (
-            <article key={`ready-${build.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+            <article key={`ready-${build.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 md:p-5">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-slate-100">{build.name}</p>
-                  <p className="text-xs text-emerald-300">Origen: Montaje</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Link to={`/builds/${build.id}#registrar-venta`} className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500">Registrar venta</Link>
-                  <Link to={`/builds/${build.id}`} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500">Ver detalle</Link>
+                  <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>Registrar venta</Link>
+                  <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
                 </div>
               </div>
-              <p className="mt-2 text-xs text-slate-400">
-                Coste {money(Number(build.totalCost ?? 0))} · Venta estimada {money(Number(build.totalSale ?? 0))} · Beneficio {money(Number(build.profit ?? 0))}
-              </p>
+              <p className="mt-3 text-lg font-semibold text-emerald-300">{money(Number(build.totalSale ?? 0))}</p>
             </article>
           ))}
           {!inventoryLoading && inventoryParts.filter((p) => p.inventoryKind === "PREBUILT_PC" && p.stock > 0).length === 0 && bucketBuilds.READY.length === 0 ? (
@@ -328,15 +317,6 @@ export function BuildsPage() {
         <>
           {(["PENDING", "DRAFTS"] as const).map((bucketKey) => {
             const rows = bucketBuilds[bucketKey];
-            const totals = rows.reduce(
-              (acc, b) => {
-                acc.cost += Number(b.totalCost ?? 0);
-                acc.sale += Number(b.totalSale ?? 0);
-                acc.profit += Number(b.profit ?? 0);
-                return acc;
-              },
-              { cost: 0, sale: 0, profit: 0 }
-            );
             const defaultOpen = rows.length > 0;
             return (
               <BuildSection
@@ -344,7 +324,6 @@ export function BuildsPage() {
                 title={bucketTitle(bucketKey)}
                 tone={bucketTone(bucketKey)}
                 builds={rows}
-                totals={totals}
                 deletingId={deletingId}
                 defaultOpen={defaultOpen}
                 salesByBuildId={salesByBuildId}
@@ -357,8 +336,7 @@ export function BuildsPage() {
             <details className="group" open={false}>
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5">
                 <div className="min-w-0">
-                  <p className="text-base font-semibold text-slate-100">Vendidos</p>
-                  <p className="text-xs text-slate-500">Historial plegado para no saturar la vista de trabajo.</p>
+                  <p className="text-lg font-semibold text-slate-100">Vendidos</p>
                 </div>
                 <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${bucketTone("SOLD")}`}>
                   {soldBuildsFiltered.length} montajes
@@ -385,25 +363,25 @@ export function BuildsPage() {
                   {soldVisible.map((build) => {
                     const sale = salesByBuildId.get(build.id);
                     return (
-                      <article key={build.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2.5">
+                      <article key={build.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-medium text-slate-100">{build.name}</p>
-                            <p className="text-xs text-slate-500">
-                              {toDateLabel(sale?.soldAt ?? build.updatedAt)} · Cliente: {sale?.customerName ?? "—"}
-                            </p>
+                            <p className="mt-1 text-sm text-slate-400">{sale?.customerName ?? "—"}</p>
                           </div>
-                          <p className="text-sm font-semibold text-emerald-300">{money(Number(sale?.profit ?? build.profit ?? 0))}</p>
+                          <p className="text-lg font-semibold text-emerald-300">
+                            {money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}
+                          </p>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <Link to={`/builds/${build.id}`} className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20">Ver detalle</Link>
+                          <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
                         </div>
                       </article>
                     );
                   })}
                 </div>
                 {soldBuildsFiltered.length > 5 ? (
-                  <button type="button" onClick={() => setSoldExpanded((v) => !v)} className="mt-3 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800">
+                  <button type="button" onClick={() => setSoldExpanded((v) => !v)} className="mt-3 rounded-lg border border-slate-600 bg-slate-900/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800">
                     {soldExpanded ? "Ver menos" : "Ver todos"}
                   </button>
                 ) : null}
@@ -420,7 +398,6 @@ function BuildSection({
   title,
   tone,
   builds,
-  totals,
   deletingId,
   defaultOpen,
   salesByBuildId,
@@ -429,7 +406,6 @@ function BuildSection({
   title: string;
   tone: string;
   builds: Build[];
-  totals: { cost: number; sale: number; profit: number };
   deletingId: string | null;
   defaultOpen: boolean;
   salesByBuildId: Map<string, SaleListRow>;
@@ -440,10 +416,7 @@ function BuildSection({
       <details open={defaultOpen}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5">
           <div className="min-w-0">
-            <p className="text-base font-semibold text-slate-100">{title}</p>
-            <p className="text-xs text-slate-500">
-              {builds.length} montajes · coste {money(totals.cost)} · venta {money(totals.sale)} · beneficio {money(totals.profit)}
-            </p>
+            <p className="text-lg font-semibold text-slate-100">{title}</p>
           </div>
           <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${tone}`}>{builds.length}</span>
         </summary>
@@ -476,11 +449,11 @@ function BuildSection({
                           <td className="px-3 py-2.5 text-right text-cyan-300">{money(Number(sale?.profit ?? build.profit ?? 0))}</td>
                           <td className="px-3 py-2.5">
                             <div className="flex justify-end gap-2">
-                              <Link to={`/builds/${build.id}`} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500">Ver detalle</Link>
+                              <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
                               {build.status === "CONFIRMED" ? (
-                                <Link to={`/builds/${build.id}#registrar-venta`} className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500">Vender PC</Link>
+                                <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>Vender PC</Link>
                               ) : null}
-                              <button type="button" onClick={() => onDelete(build)} disabled={deletingId === build.id || build.status === "SOLD"} className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 disabled:opacity-50">Eliminar</button>
+                              <button type="button" onClick={() => onDelete(build)} disabled={deletingId === build.id || build.status === "SOLD"} className={DESTRUCTIVE_BUTTON_SM}>Eliminar</button>
                             </div>
                           </td>
                         </tr>
@@ -493,21 +466,18 @@ function BuildSection({
                 {builds.map((build) => {
                   const sale = salesByBuildId.get(build.id);
                   return (
-                    <article key={build.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                      <article key={build.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                       <p className="font-semibold text-slate-100">{build.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {toDateLabel(sale?.soldAt ?? build.updatedAt)} · Cliente: {sale?.customerName ?? "—"}
+                      <p className="mt-1 text-sm text-slate-400">{sale?.customerName ?? "—"}</p>
+                      <p className="mt-3 text-base font-semibold text-emerald-300">
+                        {money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}
                       </p>
-                      <div className="mt-2 flex items-center justify-between text-xs">
-                        <span className="text-emerald-300">Venta {money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}</span>
-                        <span className="text-cyan-300">Beneficio {money(Number(sale?.profit ?? build.profit ?? 0))}</span>
-                      </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Link to={`/builds/${build.id}`} className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">Ver detalle</Link>
+                        <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
                         {build.status === "CONFIRMED" ? (
-                          <Link to={`/builds/${build.id}#registrar-venta`} className="rounded-lg bg-cyan-600 px-3 py-1 text-xs font-semibold text-white">Vender PC</Link>
+                          <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>Vender PC</Link>
                         ) : null}
-                        <button type="button" onClick={() => onDelete(build)} disabled={deletingId === build.id || build.status === "SOLD"} className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-200 disabled:opacity-50">Eliminar</button>
+                        <button type="button" onClick={() => onDelete(build)} disabled={deletingId === build.id || build.status === "SOLD"} className={DESTRUCTIVE_BUTTON_SM}>Eliminar</button>
                       </div>
                     </article>
                   );

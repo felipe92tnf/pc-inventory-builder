@@ -1,4 +1,5 @@
 import { isPrebuiltPc, type Part } from "../../types/part";
+import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
 
 type PrebuiltInventorySaleSectionProps = {
   parts: Part[];
@@ -90,7 +91,7 @@ export function PrebuiltInventorySaleSection({
                   onClick={() => {
                     void onPrepareSale(part);
                   }}
-                  className="inline-flex rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/30 transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={PRIMARY_ACTION_BUTTON}
                 >
                   {preparingPartId === part.id ? "Preparando..." : "Registrar venta"}
                 </button>

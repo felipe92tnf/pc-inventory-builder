@@ -1,4 +1,5 @@
 import type { Part } from "../../types/part";
+import { SECONDARY_GHOST_SM, DESTRUCTIVE_BUTTON_SM } from "../../theme/actionButtons";
 
 type PrebuiltInventoryTableProps = {
   items: Part[];
@@ -90,18 +91,14 @@ export function PrebuiltInventoryTable({
                   <td className={`${cell} text-slate-300`}>{part.stock}</td>
                   <td className={`${cell} text-right`}>
                     <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onEdit(part)}
-                        className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20"
-                      >
+                      <button type="button" onClick={() => onEdit(part)} className={SECONDARY_GHOST_SM}>
                         Editar
                       </button>
                       <button
                         type="button"
                         onClick={() => onDelete(part)}
                         disabled={deletingId === part.id}
-                        className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        className={DESTRUCTIVE_BUTTON_SM}
                       >
                         {deletingId === part.id ? "Eliminando..." : "Eliminar"}
                       </button>
@@ -155,7 +152,7 @@ export function PrebuiltInventoryTable({
                 <button
                   type="button"
                   onClick={() => onEdit(part)}
-                  className="flex-1 rounded-lg border border-indigo-500/40 bg-indigo-500/10 py-2 text-xs font-semibold text-indigo-200"
+                  className={`${SECONDARY_GHOST_SM} flex-1 justify-center py-2`}
                 >
                   Editar
                 </button>
@@ -163,7 +160,7 @@ export function PrebuiltInventoryTable({
                   type="button"
                   onClick={() => onDelete(part)}
                   disabled={deletingId === part.id}
-                  className="flex-1 rounded-lg border border-rose-500/40 bg-rose-500/10 py-2 text-xs font-semibold text-rose-200 disabled:opacity-60"
+                  className={`${DESTRUCTIVE_BUTTON_SM} flex-1 justify-center py-2`}
                 >
                   {deletingId === part.id ? "..." : "Eliminar"}
                 </button>

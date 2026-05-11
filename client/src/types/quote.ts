@@ -42,6 +42,8 @@ export type Quote = {
   customerName: string;
   customerPhone: string | null;
   customerEmail: string | null;
+  /** Opcional: dirección del cliente para documentos (PDF, etc.). */
+  customerAddress?: string | null;
   title: string;
   description: string | null;
   status: QuoteStatus;
@@ -49,6 +51,10 @@ export type Quote = {
   subtotal: number;
   discountAmount: number;
   total: number;
+  /** Opcional: importe de IVA desglosado en el PDF si el backend lo envía. */
+  taxAmount?: number | null;
+  /** Opcional: tipo impositivo (%) para mostrar junto al IVA en el PDF. */
+  taxRatePercent?: number | null;
   notes: string | null;
   /** Si se convirtió en montaje, id del `Build` creado. */
   convertedToBuildId: string | null;

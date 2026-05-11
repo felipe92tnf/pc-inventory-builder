@@ -20,6 +20,7 @@ import {
   rankClientsBySpend,
   yearTotalsFromSummary
 } from "../utils/salesStats";
+import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -341,13 +342,6 @@ export function SalesPage() {
     parts: false
   });
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  useEffect(() => {
-    setSalesSectionsOpen({
-      pcs: salesInSelectedMonth.length <= 6,
-      services: technicalServices.length <= 6,
-      parts: partSales.length <= 6
-    });
-  }, [salesInSelectedMonth.length, technicalServices.length, partSales.length]);
   const toggleSalesSection = (key: "pcs" | "services" | "parts") => {
     setSalesSectionsOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -368,12 +362,10 @@ export function SalesPage() {
       ) : null}
 
       <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
-        <h1 className="text-2xl font-bold tracking-tight">Ventas</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-300">
-          Beneficio e ingresos combinando ventas de PCs y servicios completados; rankings solo ventas PC.
-        </p>
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
 
-        <div className="mt-6 flex flex-wrap items-end gap-4">
+          <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-400">
             Mes
             <select
@@ -411,10 +403,11 @@ export function SalesPage() {
               setSelectedYear(now.getFullYear());
               setSelectedMonth(now.getMonth() + 1);
             }}
-            className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+            className={SECONDARY_BUTTON_SM}
           >
             Mes actual
           </button>
+        </div>
         </div>
       </section>
 
@@ -438,44 +431,29 @@ export function SalesPage() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-        <h2 className="text-lg font-semibold text-slate-100">
-          Resumen global de ingresos ({monthLabel(selectedMonth, selectedYear)})
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40 md:p-7">
+        <h2 className="text-xl font-semibold text-slate-100">
+          Resumen global · {monthLabel(selectedMonth, selectedYear)}
         </h2>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
             <p className="text-xs uppercase tracking-wide text-slate-500">Ingresos totales</p>
-            <p className="mt-1 text-xl font-bold text-emerald-300">{money(globalMonthSummary.totalRevenue)}</p>
+            <p className="mt-1 text-2xl font-bold text-emerald-300">{money(globalMonthSummary.totalRevenue)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
             <p className="text-xs uppercase tracking-wide text-slate-500">Coste total</p>
-            <p className="mt-1 text-xl font-bold text-slate-200">{money(globalMonthSummary.totalCost)}</p>
+            <p className="mt-1 text-2xl font-bold text-slate-200">{money(globalMonthSummary.totalCost)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
             <p className="text-xs uppercase tracking-wide text-slate-500">Beneficio total</p>
-            <p className={`mt-1 text-xl font-bold ${profitClass(globalMonthSummary.totalProfit)}`}>
+            <p className={`mt-1 text-2xl font-bold ${profitClass(globalMonthSummary.totalProfit)}`}>
               {money(globalMonthSummary.totalProfit)}
             </p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
             <p className="text-xs uppercase tracking-wide text-slate-500">Operaciones</p>
-            <p className="mt-1 text-xl font-bold text-slate-100">{globalMonthSummary.totalOperations}</p>
+            <p className="mt-1 text-2xl font-bold text-slate-100">{globalMonthSummary.totalOperations}</p>
           </article>
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-            Beneficio PCs: <span className={profitClass(globalMonthSummary.pcProfit)}>{money(globalMonthSummary.pcProfit)}</span>
-          </p>
-          <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-            Beneficio servicios:{" "}
-            <span className={profitClass(globalMonthSummary.serviceProfit)}>{money(globalMonthSummary.serviceProfit)}</span>
-          </p>
-          <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-            Beneficio piezas sueltas:{" "}
-            <span className={profitClass(globalMonthSummary.partSaleProfit)}>
-              {money(globalMonthSummary.partSaleProfit)}
-            </span>
-          </p>
         </div>
       </section>
 
@@ -488,19 +466,13 @@ export function SalesPage() {
           aria-expanded={mobileSalesOpen.salesList}
         >
           <div>
-            <span className="text-sm font-semibold text-slate-100">Detalle de operaciones</span>
-            <p className="mt-0.5 text-xs text-slate-500">
-              PCs, servicios tecnicos y piezas sueltas
-            </p>
+            <span className="text-base font-semibold text-slate-100">Detalle de operaciones</span>
           </div>
           <ChevronSales open={mobileSalesOpen.salesList} />
         </button>
         <div className={mobileSalesOpen.salesList ? "block" : "hidden md:block"}>
           <div className="p-5 pt-4 md:pt-5">
-            <h2 className="hidden text-lg font-semibold text-slate-100 md:block">Detalle global de ventas</h2>
-            <p className="mt-1 hidden text-sm text-slate-400 md:block">
-              Muestra separada de PCs vendidos, servicios completados y piezas sueltas vendidas.
-            </p>
+            <h2 className="hidden text-xl font-semibold text-slate-100 md:block">Detalle global de ventas</h2>
             {loading || servicesLoading ? (
               <p className="mt-4 text-sm text-slate-400">Cargando operaciones...</p>
             ) : globalMonthSummary.totalOperations === 0 ? (
@@ -509,7 +481,6 @@ export function SalesPage() {
               <div className="mt-4 space-y-4">
                 <SalesOverviewSection
                   title="PCs vendidos"
-                  subtitle="Ventas de montajes / equipos confirmados."
                   count={pcMonthTotals.totalOperations}
                   totalRevenue={pcMonthTotals.totalRevenue}
                   totalProfit={pcMonthTotals.totalProfit}
@@ -561,7 +532,6 @@ export function SalesPage() {
 
                 <SalesOverviewSection
                   title="Servicios técnicos"
-                  subtitle="Solo servicios completados, excluyendo pieza suelta."
                   count={technicalTotals.totalOperations}
                   totalRevenue={technicalTotals.totalRevenue}
                   totalProfit={technicalTotals.totalProfit}
@@ -619,7 +589,6 @@ export function SalesPage() {
 
                 <SalesOverviewSection
                   title="Piezas sueltas vendidas"
-                  subtitle="Registros de venta de pieza suelta completados."
                   count={partSalesTotals.totalOperations}
                   totalRevenue={partSalesTotals.totalRevenue}
                   totalProfit={partSalesTotals.totalProfit}
@@ -688,18 +657,16 @@ export function SalesPage() {
           aria-expanded={advancedOpen}
         >
           <div>
-            <span className="text-sm font-semibold text-slate-100">Estadísticas avanzadas</span>
-            <p className="mt-0.5 text-xs text-slate-500">Comparativas, acumulado anual, rankings y histórico</p>
+            <span className="text-base font-semibold text-slate-100">Estadísticas avanzadas</span>
           </div>
           <ChevronSales open={advancedOpen} />
         </button>
         {advancedOpen ? (
           <div className="space-y-6 p-4 md:p-5">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-              <h3 className="text-base font-semibold text-slate-100">Comparativa vs mes anterior</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Vs. <span className="capitalize">{monthLabel(prevYM.month, prevYM.year)}</span>
-              </p>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-5">
+              <h3 className="text-lg font-semibold text-slate-100">
+                Comparativa vs {monthLabel(prevYM.month, prevYM.year)}
+              </h3>
               <dl className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
                   <dt className="text-xs text-slate-500">Ingresos</dt>
@@ -799,24 +766,20 @@ export function SalesPage() {
 function MonthlySummaryCard({ row }: { row: MonthlySalesSummaryRow }) {
   const margin = marginPercentOnRevenue(row.totalRevenue, row.totalProfit);
   return (
-    <article className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/90 p-5 shadow-inner shadow-black/20">
-      <p className="text-sm font-semibold capitalize text-slate-100">{monthLabel(row.month, row.year)}</p>
+    <article className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/90 p-6 shadow-inner shadow-black/20">
+      <p className="text-base font-semibold capitalize text-slate-100">{monthLabel(row.month, row.year)}</p>
       <dl className="mt-4 space-y-3 text-sm">
         <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Ventas PC + servicios</dt>
-          <dd className="font-medium text-slate-200">{row.salesCount}</dd>
+          <dt className="text-slate-500">Operaciones</dt>
+          <dd className="font-semibold text-slate-200">{row.salesCount}</dd>
         </div>
         <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Total vendido</dt>
-          <dd className="font-medium text-emerald-400">{money(row.totalRevenue)}</dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Coste total</dt>
-          <dd className="text-slate-400">{money(row.totalCost)}</dd>
+          <dt className="text-slate-500">Ingresos</dt>
+          <dd className="text-lg font-semibold text-emerald-400">{money(row.totalRevenue)}</dd>
         </div>
         <div className="flex justify-between gap-2 border-t border-slate-800 pt-3">
           <dt className="text-slate-500">Beneficio</dt>
-          <dd className={`font-semibold ${profitClass(row.totalProfit)}`}>{money(row.totalProfit)}</dd>
+          <dd className={`text-lg font-semibold ${profitClass(row.totalProfit)}`}>{money(row.totalProfit)}</dd>
         </div>
         <div className="flex justify-between gap-2">
           <dt className="text-slate-500">Margen</dt>
@@ -829,7 +792,6 @@ function MonthlySummaryCard({ row }: { row: MonthlySalesSummaryRow }) {
 
 function SalesOverviewSection({
   title,
-  subtitle,
   count,
   totalRevenue,
   totalProfit,
@@ -839,7 +801,6 @@ function SalesOverviewSection({
   mobileCards
 }: {
   title: string;
-  subtitle: string;
   count: number;
   totalRevenue: number;
   totalProfit: number;
@@ -853,27 +814,18 @@ function SalesOverviewSection({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left md:px-5 md:py-4"
         aria-expanded={open}
       >
         <div className="min-w-0">
-          <p className="font-semibold text-slate-100">{title}</p>
-          <p className="text-xs text-slate-500">{subtitle}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <span className="inline-flex rounded-full border border-indigo-500/40 bg-indigo-500/15 px-2.5 py-1 text-xs font-semibold text-indigo-200">
-              {count} registro{count === 1 ? "" : "s"}
+          <p className="text-lg font-semibold text-slate-100">{title}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <span className="inline-flex rounded-full border border-indigo-500/40 bg-indigo-500/15 px-3 py-1 text-sm font-semibold text-indigo-200">
+              {count}
             </span>
-            <span className="inline-flex rounded-full border border-cyan-500/40 bg-cyan-500/15 px-2.5 py-1 text-xs font-semibold text-cyan-200">
-              Venta {money(totalRevenue)}
-            </span>
-            <span
-              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                totalProfit >= 0
-                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
-                  : "border-rose-500/40 bg-rose-500/15 text-rose-200"
-              }`}
-            >
-              Beneficio {money(totalProfit)}
+            <span className="text-lg font-semibold text-emerald-300">{money(totalRevenue)}</span>
+            <span className={`text-base font-semibold ${totalProfit >= 0 ? "text-cyan-300" : "text-rose-300"}`}>
+              {money(totalProfit)}
             </span>
           </div>
         </div>

@@ -13,6 +13,7 @@ import {
   type InventoryKind
 } from "../../types/part";
 import { calculateSalePrice } from "../../utils/pricing";
+import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
 
 const STOCK_QUICK_OPTIONS = [1, 2, 3, 4, 5] as const;
 
@@ -496,7 +497,7 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
+            className={PRIMARY_ACTION_BUTTON}
           >
             {submitting ? "Guardando..." : isPrebuilt ? "Guardar PC completo" : "Guardar pieza"}
           </button>

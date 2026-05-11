@@ -6,6 +6,7 @@ import {
   type PartCategory
 } from "../../types/part";
 import { getInventoryCategoryStyle } from "./inventoryCategoryStyles";
+import { SECONDARY_GHOST_SM, DESTRUCTIVE_BUTTON_SM } from "../../theme/actionButtons";
 
 type PartsTableProps = {
   /** Lista completa (tras filtros); en escritorio se muestra por categorias desplegables. */
@@ -24,6 +25,22 @@ type PartsTableProps = {
   onDelete: (part: Part) => void;
   emptyMessage?: string;
 };
+
+/** Unidades en categoría para la cabecera del acordeón: mapa global o suma del stock visible. */
+function categoryUnitsDisplay(
+  category: string,
+  items: Part[],
+  categoryStockTotals?: Map<PartCategory, number>
+): string {
+  const mapped = categoryStockTotals?.get(category as PartCategory);
+  if (mapped !== undefined) return String(mapped);
+  const sum = items.reduce((acc, p) => {
+    if (p.category && isNonStockCategory(p.category)) return acc;
+    const q = p.stock;
+    return acc + (typeof q === "number" && Number.isFinite(q) ? q : 0);
+  }, 0);
+  return String(sum);
+}
 
 function formatMoney(value: number | string): string {
   return `${Number(value).toFixed(2)} EUR`;
@@ -80,6 +97,7 @@ function ChevronCategory({ open, className = "text-slate-400" }: { open: boolean
 function CategoryAccordionTrigger({
   categoryKey,
   pieceSummary,
+  summaryAriaLabel,
   expanded,
   panelId,
   onToggle,
@@ -88,6 +106,8 @@ function CategoryAccordionTrigger({
 }: {
   categoryKey: PartCategory;
   pieceSummary: string;
+  /** Texto accesible; en pantalla solo se muestra `pieceSummary` (número). */
+  summaryAriaLabel: string;
   expanded: boolean;
   panelId: string;
   onToggle: () => void;
@@ -104,6 +124,7 @@ function CategoryAccordionTrigger({
       onClick={onToggle}
       aria-expanded={expanded}
       aria-controls={panelId}
+      aria-label={summaryAriaLabel}
     >
       <span
         className={`flex shrink-0 items-center justify-center rounded-xl border ${compact ? "h-9 w-9" : "h-10 w-10"} ${style.chipBorder} ${style.chipBg}`}
@@ -153,18 +174,14 @@ function PartCard({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h3 className="min-w-0 flex-1 text-base font-semibold leading-snug text-slate-100">{part.name}</h3>
           <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={() => onEdit(part)}
-              className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20"
-            >
+            <button type="button" onClick={() => onEdit(part)} className={SECONDARY_GHOST_SM}>
               Editar
             </button>
             <button
               type="button"
               onClick={() => onDelete(part)}
               disabled={deletingId === part.id}
-              className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              className={DESTRUCTIVE_BUTTON_SM}
             >
               {deletingId === part.id ? "Eliminando..." : "Eliminar"}
             </button>
@@ -267,10 +284,7 @@ function MobilePartsByCategory({
         const panelId = `inv-cat-${category}`;
         const catStyle = getInventoryCategoryStyle(category);
         const unitTotal = categoryStockTotals?.get(category as PartCategory);
-        let pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"} en esta pagina`;
-        if (unitTotal !== undefined) {
-          pieceSummary += ` · ${unitTotal} u. en categoría`;
-        }
+        const pieceSummary = categoryUnitsDisplay(category, items, categoryStockTotals);
         const categoryLowStock =
           unitTotal !== undefined && unitTotal < categoryStockThreshold;
         return (
@@ -281,6 +295,7 @@ function MobilePartsByCategory({
             <CategoryAccordionTrigger
               categoryKey={category as PartCategory}
               pieceSummary={pieceSummary}
+              summaryAriaLabel={`${catStyle.label}: ${pieceSummary} unidades en categoría`}
               expanded={expanded}
               panelId={panelId}
               onToggle={() => toggle(category)}
@@ -356,10 +371,7 @@ function DesktopPartsByCategory({
         const panelId = `inv-desktop-cat-${category}`;
         const catStyle = getInventoryCategoryStyle(category);
         const unitTotal = categoryStockTotals?.get(category as PartCategory);
-        let pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"}`;
-        if (unitTotal !== undefined) {
-          pieceSummary += ` · ${unitTotal} u. en categoría`;
-        }
+        const pieceSummary = categoryUnitsDisplay(category, items, categoryStockTotals);
         const categoryLowStock =
           unitTotal !== undefined && unitTotal < categoryStockThreshold;
         return (
@@ -370,6 +382,7 @@ function DesktopPartsByCategory({
             <CategoryAccordionTrigger
               categoryKey={category as PartCategory}
               pieceSummary={pieceSummary}
+              summaryAriaLabel={`${catStyle.label}: ${pieceSummary} unidades en categoría`}
               expanded={expanded}
               panelId={panelId}
               onToggle={() => toggle(category)}
@@ -403,18 +416,14 @@ function DesktopPartsByCategory({
                         </td>
                         <td className={cell}>
                           <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => onEdit(part)}
-                              className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20"
-                            >
+                            <button type="button" onClick={() => onEdit(part)} className={SECONDARY_GHOST_SM}>
                               Editar
                             </button>
                             <button
                               type="button"
                               onClick={() => onDelete(part)}
                               disabled={deletingId === part.id}
-                              className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              className={DESTRUCTIVE_BUTTON_SM}
                             >
                               {deletingId === part.id ? "Eliminando..." : "Eliminar"}
                             </button>

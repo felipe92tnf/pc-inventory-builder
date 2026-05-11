@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import * as salesApi from "../../api/sales";
 import type { CreateSaleFromBuildPayload, SaleDetail } from "../../types/sale";
+import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
 
 type RegisterSaleFormProps = {
   buildId: string;
@@ -157,7 +158,7 @@ export function RegisterSaleForm({
         <button
           type="submit"
           disabled={disabled || submitting}
-          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/30 transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className={PRIMARY_ACTION_BUTTON}
         >
           {submitting ? "Registrando..." : submitLabel ?? "Registrar venta"}
         </button>

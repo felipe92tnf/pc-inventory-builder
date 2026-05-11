@@ -1,5 +1,11 @@
 import { Link } from "react-router-dom";
 import type { Build } from "../../types/build";
+import {
+  PRIMARY_ACTION_BUTTON_COMPACT,
+  SECONDARY_GHOST_SM,
+  SECONDARY_BUTTON_SM,
+  DESTRUCTIVE_BUTTON_SM
+} from "../../theme/actionButtons";
 
 function isInventoryPrebuiltBuild(build: Build): boolean {
   return build.items?.length === 1 && build.items[0]?.part?.inventoryKind === "PREBUILT_PC";
@@ -80,14 +86,14 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               to={`/builds/${build.id}`}
-              className="inline-flex rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500"
+              className={`${SECONDARY_GHOST_SM} px-4 py-2 text-sm`}
             >
               Ver detalle
             </Link>
             {build.status === "CONFIRMED" ? (
               <Link
                 to={`/builds/${build.id}#registrar-venta`}
-                className="inline-flex rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/30 transition hover:bg-cyan-500"
+                className={PRIMARY_ACTION_BUTTON_COMPACT}
               >
                 Registrar venta
               </Link>
@@ -96,7 +102,7 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
               type="button"
               onClick={() => onEdit(build)}
               disabled={updatingId === build.id || build.status === "SOLD"}
-              className="inline-flex rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className={`${SECONDARY_BUTTON_SM} px-4 py-2 text-sm disabled:cursor-not-allowed`}
             >
               {updatingId === build.id ? "Guardando..." : "Editar"}
             </button>
@@ -104,7 +110,7 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
               type="button"
               onClick={() => onDelete(build)}
               disabled={deletingId === build.id || build.status === "SOLD"}
-              className="inline-flex rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className={`${DESTRUCTIVE_BUTTON_SM} px-4 py-2 text-sm disabled:cursor-not-allowed`}
             >
               {deletingId === build.id ? "Eliminando..." : "Eliminar"}
             </button>

@@ -6,6 +6,11 @@ import { PcConfiguratorForm } from "../components/builds/PcConfiguratorForm";
 import { SellPcModal } from "../components/sales/SellPcModal";
 import { useBuildDetail } from "../hooks/useBuildDetail";
 import { isConfiguratorPart } from "../types/part";
+import {
+  PRIMARY_ACTION_BUTTON,
+  PRIMARY_ACTION_BUTTON_COMPACT,
+  SECONDARY_BUTTON_SM
+} from "../theme/actionButtons";
 
 function money(value: number): string {
   return `${value.toFixed(2)} EUR`;
@@ -148,7 +153,7 @@ export function BuildDetailPage() {
                   setSellFormKey((k) => k + 1);
                   setSellModalOpen(true);
                 }}
-                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/30 transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className={PRIMARY_ACTION_BUTTON_COMPACT}
               >
                 Vender PC
               </button>
@@ -242,7 +247,7 @@ export function BuildDetailPage() {
                 const rounded = Math.round(normalized * 100) / 100;
                 void updateBuildFields({ saleTotalOverride: rounded });
               }}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className={SECONDARY_BUTTON_SM}
             >
               Guardar precio (total manual)
             </button>
@@ -322,7 +327,7 @@ export function BuildDetailPage() {
               onClick={() => {
                 void confirm();
               }}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className={PRIMARY_ACTION_BUTTON}
             >
               {build.status === "SOLD"
                 ? "Vendido"

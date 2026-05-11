@@ -4,6 +4,7 @@ import * as quotesApi from "../api/quotes";
 import type { CreateQuotePayload, Quote, QuoteStatus } from "../types/quote";
 import { QUOTE_STATUSES } from "../types/quote";
 import { aggregateQuoteFinancials } from "../utils/quoteFinancials";
+import { PRIMARY_ACTION_BUTTON, SECONDARY_GHOST_SM } from "../theme/actionButtons";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -120,12 +121,15 @@ export function QuotesPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
-        <h1 className="text-2xl font-bold">Presupuestos</h1>
-        <p className="mt-2 text-sm text-slate-300">
-          Propuestas para clientes con lineas desde inventario o manuales. No descuenta stock hasta convertirlo en
-          venta u operacion posterior.
-        </p>
+      <section className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)] sm:flex-row sm:items-start sm:justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Presupuestos</h1>
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className={PRIMARY_ACTION_BUTTON}
+        >
+          {showForm ? "Ocultar formulario" : "Nuevo presupuesto"}
+        </button>
       </section>
 
       {error ? (
@@ -140,16 +144,6 @@ export function QuotesPage() {
           </button>
         </div>
       ) : null}
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500"
-        >
-          {showForm ? "Ocultar formulario" : "Nuevo presupuesto"}
-        </button>
-      </div>
 
       {showForm ? (
         <form
@@ -199,7 +193,7 @@ export function QuotesPage() {
             <button
               type="submit"
               disabled={creating}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-emerald-500 disabled:opacity-50"
+              className={PRIMARY_ACTION_BUTTON}
             >
               {creating ? "Creando..." : "Crear y editar despues"}
             </button>
@@ -207,8 +201,8 @@ export function QuotesPage() {
         </form>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-        <h2 className="text-lg font-semibold text-slate-100">Buscar y filtrar</h2>
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
+        <h2 className="text-xl font-semibold text-slate-100">Buscar y filtrar</h2>
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
           <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200 md:col-span-2">
             Buscar por cliente o titulo
@@ -295,10 +289,7 @@ export function QuotesPage() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-400">{formatDate(row.createdAt)}</td>
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          to={`/quotes/${row.id}`}
-                          className="inline-flex rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:bg-indigo-500"
-                        >
+                        <Link to={`/quotes/${row.id}`} className={SECONDARY_GHOST_SM}>
                           Ver detalle
                         </Link>
                       </td>
@@ -330,36 +321,13 @@ export function QuotesPage() {
                     {STATUS_LABELS[row.status]}
                   </span>
                 </div>
-                <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-800 pt-3 text-sm">
-                  <div>
-                    <dt className="text-xs text-slate-500">Coste total</dt>
-                    <dd className="text-slate-300">
-                      {money(fin.totalCost)}
-                      {fin.linesWithoutCost > 0 ? (
-                        <span className="text-[10px] text-amber-400/90"> *</span>
-                      ) : null}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">Total venta</dt>
-                    <dd className="font-semibold text-emerald-300">{money(row.total)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">Beneficio</dt>
-                    <dd
-                      className={`font-semibold ${fin.profitNet >= 0 ? "text-violet-300" : "text-rose-300"}`}
-                    >
-                      {money(fin.profitNet)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">Fecha</dt>
-                    <dd className="text-slate-300">{formatDate(row.createdAt)}</dd>
-                  </div>
-                </dl>
+                <div className="mt-3 border-t border-slate-800 pt-3">
+                  <p className="text-sm text-slate-500">Total</p>
+                  <p className="mt-1 text-xl font-bold text-emerald-300">{money(row.total)}</p>
+                </div>
                 <Link
                   to={`/quotes/${row.id}`}
-                  className="mt-4 flex w-full justify-center rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white"
+                  className={`${SECONDARY_GHOST_SM} mt-4 flex w-full min-h-[44px] justify-center py-2.5 text-sm`}
                 >
                   Ver detalle
                 </Link>
