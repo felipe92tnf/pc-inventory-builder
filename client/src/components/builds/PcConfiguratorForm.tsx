@@ -11,6 +11,8 @@ export type ConfiguratorSlotId =
   | "CASE"
   | "COOLING"
   | "FANS"
+  | "MONITOR"
+  | "PERIPHERAL"
   | "OS"
   | "LABOR"
   | "OTHER";
@@ -31,6 +33,8 @@ const CONFIGURATOR_SLOTS: SlotDef[] = [
   { id: "CASE", label: "Case", categories: ["CASE"] },
   { id: "COOLING", label: "Cooling", categories: ["COOLER"] },
   { id: "FANS", label: "Fans", categories: ["FAN"] },
+  { id: "MONITOR", label: "Monitor", categories: ["MONITOR"] },
+  { id: "PERIPHERAL", label: "Periférico", categories: ["PERIPHERAL"] },
   { id: "OS", label: "Sistema operativo", categories: ["OS"] },
   { id: "LABOR", label: "Mano de obra", categories: ["LABOR"] },
   { id: "OTHER", label: "Other", categories: ["OTHER", "NETWORK"] }
@@ -51,6 +55,17 @@ type PcConfiguratorFormProps = {
   parts: ConfiguratorPart[];
   disabled: boolean;
   onAddSelected: (items: ConfiguratorAddItem[]) => Promise<void>;
+  /**
+   * Solo precio de catalogo por linea (p. ej. presupuestos). Oculta el campo "Venta montaje"
+   * y no envia `unitSalePrice` en el callback.
+   */
+  catalogSaleOnly?: boolean;
+  /** Titulo de la seccion (por defecto: configurar montaje). */
+  heading?: string;
+  /** Texto introductorio bajo el titulo. */
+  lead?: string;
+  /** Ranuras mas compactas (menos padding y espacio entre filas). */
+  compact?: boolean;
 };
 
 function emptySelections(): Record<ConfiguratorSlotId, string> {
@@ -77,7 +92,15 @@ function emptySaleDrafts(): Partial<Record<ConfiguratorSlotId, string>> {
   return {};
 }
 
-export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfiguratorFormProps) {
+export function PcConfiguratorForm({
+  parts,
+  disabled,
+  onAddSelected,
+  catalogSaleOnly = false,
+  heading = "Configurar montaje",
+  lead = "Elige pieza y cantidad por ranura (opcional). Puedes ajustar el precio de venta unitario para este montaje (por defecto es el del inventario). En sistema operativo y mano de obra no hay stock y la cantidad es 1. Pulsa el boton para anadirlas al montaje.",
+  compact = false
+}: PcConfiguratorFormProps) {
   const [selections, setSelections] = useState<Record<ConfiguratorSlotId, string>>(emptySelections);
   const [quantities, setQuantities] = useState<Record<ConfiguratorSlotId, number>>(emptyQuantities);
   const [saleDraftBySlot, setSaleDraftBySlot] = useState<Partial<Record<ConfiguratorSlotId, string>>>(() =>
@@ -171,7 +194,7 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
       const rawDraft = saleDraftBySlot[slot.id]?.trim();
       const base = Number(part.salePrice);
       let unitSalePrice: number | undefined;
-      if (rawDraft !== undefined && rawDraft !== "") {
+      if (!catalogSaleOnly && rawDraft !== undefined && rawDraft !== "") {
         const n = Number(rawDraft.replace(",", "."));
         if (Number.isFinite(n) && n >= 0 && Math.abs(n - base) >= 0.005) {
           unitSalePrice = Math.round(n * 100) / 100;
@@ -217,15 +240,19 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
   const busy = disabled || submitting;
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-      <h2 className="mb-1 text-lg font-semibold text-slate-100">Configurar montaje</h2>
-      <p className="mb-4 text-sm text-slate-400">
-        Elige pieza y cantidad por ranura (opcional). Puedes ajustar el precio de venta unitario para este montaje (por
-        defecto es el del inventario). En sistema operativo y mano de obra no hay stock y la cantidad es 1. Pulsa el boton
-        para anadirlas al montaje.
-      </p>
+    <section
+      className={
+        compact
+          ? "rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/40 sm:p-4"
+          : "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40"
+      }
+    >
+      <h2 className={compact ? "mb-0.5 text-base font-semibold text-slate-100" : "mb-1 text-lg font-semibold text-slate-100"}>
+        {heading}
+      </h2>
+      <p className={compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-4 text-sm text-slate-400"}>{lead}</p>
 
-      <div className="space-y-4">
+      <div className={compact ? "space-y-2" : "space-y-4"}>
         {CONFIGURATOR_SLOTS.map((slot) => {
           const options = partsBySlot.get(slot.id) ?? [];
           const selected = selectedPartBySlot.get(slot.id) ?? null;
@@ -240,15 +267,29 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
           return (
             <div
               key={slot.id}
-              className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4 lg:flex-row lg:items-end lg:gap-4"
+              className={
+                compact
+                  ? "flex flex-col gap-2 rounded-lg border border-slate-800/90 bg-slate-950/40 p-2.5 lg:flex-row lg:items-center lg:gap-2"
+                  : "flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4 lg:flex-row lg:items-end lg:gap-4"
+              }
             >
-              <label className="min-w-0 flex-1 flex flex-col gap-1 text-sm font-medium text-slate-200">
+              <label
+                className={
+                  compact
+                    ? "min-w-0 flex-1 flex flex-col gap-0.5 text-xs font-medium text-slate-200"
+                    : "min-w-0 flex-1 flex flex-col gap-1 text-sm font-medium text-slate-200"
+                }
+              >
                 {slot.label}
                 <select
                   value={selectValue}
                   onChange={(event) => handleSelectChange(slot.id, event.target.value)}
                   disabled={busy || options.length === 0}
-                  className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                  className={
+                    compact
+                      ? "rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                      : "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                  }
                 >
                   <option value="">{options.length === 0 ? "Sin stock en esta categoria" : "Sin seleccionar"}</option>
                   {options.map((part) => (
@@ -259,7 +300,13 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
                 </select>
               </label>
 
-              <label className="flex w-full flex-col gap-1 text-sm font-medium text-slate-200 lg:w-36">
+              <label
+                className={
+                  compact
+                    ? "flex w-full flex-col gap-0.5 text-xs font-medium text-slate-200 lg:w-24 shrink-0"
+                    : "flex w-full flex-col gap-1 text-sm font-medium text-slate-200 lg:w-36"
+                }
+              >
                 Cantidad
                 <select
                   value={
@@ -267,7 +314,11 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
                   }
                   onChange={(event) => handleQuantityChange(slot.id, Number(event.target.value))}
                   disabled={busy || !selected || maxQty < 1}
-                  className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                  className={
+                    compact
+                      ? "rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                      : "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                  }
                 >
                   {!selected || maxQty < 1 ? (
                     <option value="">—</option>
@@ -281,58 +332,98 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected }: PcConfigu
                 </select>
               </label>
 
-              <div className="flex flex-wrap gap-4 text-sm lg:shrink-0 lg:flex-1 lg:justify-end">
+              <div
+                className={
+                  compact
+                    ? "flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] lg:shrink-0 lg:flex-1 lg:justify-end"
+                    : "flex flex-wrap gap-4 text-sm lg:shrink-0 lg:flex-1 lg:justify-end"
+                }
+              >
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Stock</p>
-                  <p className="font-medium text-slate-200">
+                  <p
+                    className={
+                      compact
+                        ? "text-[10px] uppercase tracking-wide text-slate-500"
+                        : "text-xs uppercase tracking-wide text-slate-500"
+                    }
+                  >
+                    Stock
+                  </p>
+                  <p className={compact ? "font-medium leading-tight text-slate-200" : "font-medium text-slate-200"}>
                     {selected ? (isNonStockCategory(selected.category) ? "N/A" : selected.stock) : "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Coste inv.</p>
-                  <p className="font-medium text-slate-200">{selected ? formatMoney(selected.costPrice) : "—"}</p>
+                  <p
+                    className={
+                      compact
+                        ? "text-[10px] uppercase tracking-wide text-slate-500"
+                        : "text-xs uppercase tracking-wide text-slate-500"
+                    }
+                  >
+                    Coste inv.
+                  </p>
+                  <p className={compact ? "font-medium leading-tight text-slate-200" : "font-medium text-slate-200"}>
+                    {selected ? formatMoney(selected.costPrice) : "—"}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Venta inv.</p>
-                  <p className="font-medium text-slate-400">{selected ? formatMoney(selected.salePrice) : "—"}</p>
+                  <p
+                    className={
+                      compact
+                        ? "text-[10px] uppercase tracking-wide text-slate-500"
+                        : "text-xs uppercase tracking-wide text-slate-500"
+                    }
+                  >
+                    Venta inv.
+                  </p>
+                  <p className={compact ? "font-medium leading-tight text-slate-400" : "font-medium text-slate-400"}>
+                    {selected ? formatMoney(selected.salePrice) : "—"}
+                  </p>
                 </div>
-                <label className="flex min-w-[9rem] flex-col gap-1">
-                  <span className="text-xs uppercase tracking-wide text-slate-500">Venta montaje</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      selected
-                        ? (saleDraftBySlot[slot.id] ?? Number(selected.salePrice).toFixed(2))
-                        : ""
-                    }
-                    onChange={(event) =>
-                      setSaleDraftBySlot((prev) => ({
-                        ...prev,
-                        [slot.id]: event.target.value
-                      }))
-                    }
-                    disabled={busy || !selected}
-                    placeholder="EUR"
-                    className="rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-sm font-medium text-emerald-200/95 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
-                  />
-                </label>
+                {!catalogSaleOnly ? (
+                  <label className="flex min-w-[9rem] flex-col gap-1">
+                    <span className="text-xs uppercase tracking-wide text-slate-500">Venta montaje</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={
+                        selected
+                          ? (saleDraftBySlot[slot.id] ?? Number(selected.salePrice).toFixed(2))
+                          : ""
+                      }
+                      onChange={(event) =>
+                        setSaleDraftBySlot((prev) => ({
+                          ...prev,
+                          [slot.id]: event.target.value
+                        }))
+                      }
+                      disabled={busy || !selected}
+                      placeholder="EUR"
+                      className="rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-sm font-medium text-emerald-200/95 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div className={compact ? "mt-3 flex flex-wrap items-center gap-2" : "mt-6 flex flex-wrap items-center gap-3"}>
         <button
           type="button"
           onClick={() => {
             void handleAddSelected();
           }}
           disabled={busy || !hasAnySelection}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className={
+            compact
+              ? "rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-900/35 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              : "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          }
         >
-          {submitting ? "Anadiendo..." : "Anadir piezas seleccionadas"}
+          {submitting ? "Anadiendo..." : catalogSaleOnly ? "Anadir al presupuesto" : "Anadir piezas seleccionadas"}
         </button>
       </div>
     </section>

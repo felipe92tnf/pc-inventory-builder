@@ -84,15 +84,8 @@ function inventoryTotals(parts: Part[]) {
   };
 }
 
-const LOW_STOCK_MAX = 3;
-
-function isLowStock(part: Part): boolean {
-  if (part.inventoryKind === "PREBUILT_PC") {
-    return part.stock > 0 && part.stock <= LOW_STOCK_MAX;
-  }
-  if (!part.category || isNonStockCategory(part.category)) return false;
-  return part.stock > 0 && part.stock <= LOW_STOCK_MAX;
-}
+/** Alerta cuando la suma de unidades en una categoría es menor que este valor (p. ej. menos de 3 CPUs en total). */
+const LOW_STOCK_CATEGORY_THRESHOLD = 3;
 
 function listedInInventory(part: Part): boolean {
   if (part.inventoryKind === "PREBUILT_PC") return true;
@@ -240,12 +233,47 @@ export function InventoryPage() {
     conditionFilter !== "ALL" ||
     stockFilter !== "ALL";
 
-  const lowStockItems = useMemo(() => {
-    return partsListed.filter(isLowStock).sort((a, b) => {
-      if (a.stock !== b.stock) return a.stock - b.stock;
-      return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
-    });
+  /** Suma de stock físico por categoría (solo piezas PART; OS/LABOR excluidas). */
+  const categoryStockTotals = useMemo(() => {
+    const map = new Map<PartCategory, number>();
+    for (const p of partsListed) {
+      if (p.inventoryKind !== "PART") continue;
+      const cat = (p.category ?? "OTHER") as PartCategory;
+      if (isNonStockCategory(cat)) continue;
+      map.set(cat, (map.get(cat) ?? 0) + p.stock);
+    }
+    return map;
   }, [partsListed]);
+
+  const lowStockCategories = useMemo(() => {
+    const rows: { category: PartCategory; total: number }[] = [];
+    for (const [category, total] of categoryStockTotals) {
+      if (total < LOW_STOCK_CATEGORY_THRESHOLD) {
+        rows.push({ category, total });
+      }
+    }
+    rows.sort((a, b) => {
+      if (a.total !== b.total) return a.total - b.total;
+      return partCategoryLabel(a.category).localeCompare(partCategoryLabel(b.category), "es", {
+        sensitivity: "base"
+      });
+    });
+    return rows;
+  }, [categoryStockTotals]);
+
+  const prebuiltStockTotal = useMemo(() => {
+    return partsListed
+      .filter((p) => p.inventoryKind === "PREBUILT_PC")
+      .reduce((sum, p) => sum + p.stock, 0);
+  }, [partsListed]);
+
+  const hasPrebuiltLines = useMemo(
+    () => partsListed.some((p) => p.inventoryKind === "PREBUILT_PC"),
+    [partsListed]
+  );
+
+  const prebuiltStockLow =
+    hasPrebuiltLines && prebuiltStockTotal < LOW_STOCK_CATEGORY_THRESHOLD;
 
   const recentParts = useMemo(() => {
     return [...partsListed]
@@ -358,26 +386,38 @@ export function InventoryPage() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-sm font-semibold text-slate-100">Stock bajo</h2>
               <span className="text-xs text-amber-200/90">
-                Stock 1–{LOW_STOCK_MAX} unidades (piezas con inventario fisico)
+                Menos de {LOW_STOCK_CATEGORY_THRESHOLD} u. sumadas por categoría (inventario físico)
               </span>
             </div>
-            {lowStockItems.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-400">No hay líneas por debajo del umbral.</p>
+            {lowStockCategories.length === 0 && !prebuiltStockLow ? (
+              <p className="mt-3 text-sm text-slate-400">Ninguna categoría por debajo del umbral.</p>
             ) : (
               <>
-                <p className="mt-1 text-xs text-slate-500">{lowStockItems.length} línea(s)</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {lowStockCategories.length + (prebuiltStockLow ? 1 : 0)} aviso(s)
+                </p>
                 <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-sm">
-                  {lowStockItems.map((p) => (
+                  {lowStockCategories.map(({ category, total }) => (
                     <li
-                      key={p.id}
+                      key={category}
                       className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2"
                     >
-                      <span className="min-w-0 font-medium text-slate-200">{p.name}</span>
+                      <span className="min-w-0 font-medium text-slate-200">
+                        {partCategoryLabel(category)}
+                      </span>
                       <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-200">
-                        {p.stock} u.
+                        {total} u. en categoría
                       </span>
                     </li>
                   ))}
+                  {prebuiltStockLow ? (
+                    <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2">
+                      <span className="min-w-0 font-medium text-slate-200">PCs completos (premontados)</span>
+                      <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-200">
+                        {prebuiltStockTotal} u. en total
+                      </span>
+                    </li>
+                  ) : null}
                 </ul>
               </>
             )}
@@ -547,6 +587,8 @@ export function InventoryPage() {
             compact
             loading={loading}
             deletingId={deletingId}
+            categoryStockTotals={categoryStockTotals}
+            categoryStockThreshold={LOW_STOCK_CATEGORY_THRESHOLD}
             onEdit={setSelectedPart}
             emptyMessage={
               hasActiveFilters ? "No hay piezas que coincidan con los filtros." : undefined

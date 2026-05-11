@@ -7,10 +7,12 @@ import {
   HardDrive,
   Laptop,
   MemoryStick,
+  Monitor,
   MonitorCog,
   Network,
   Package,
   PlugZap,
+  Usb,
   Wrench
 } from "lucide-react";
 import type { PartCategory } from "../../types/part";
@@ -182,6 +184,34 @@ export const INVENTORY_CATEGORY_STYLES: Record<PartCategory, InventoryCategorySt
     chipBg: "bg-indigo-500/12",
     chipBorder: "border-indigo-400/35",
     chipText: "text-indigo-200"
+  },
+  MONITOR: {
+    label: "Monitor",
+    Icon: Monitor,
+    accentText: "text-pink-200/95",
+    accentIcon: "text-pink-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-pink-500/35",
+    panelHover: "hover:border-pink-400/45",
+    headerBg: "bg-gradient-to-r from-pink-950/50 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-pink-950/65 hover:via-slate-950/50",
+    chipBg: "bg-pink-500/12",
+    chipBorder: "border-pink-400/35",
+    chipText: "text-pink-200"
+  },
+  PERIPHERAL: {
+    label: "Periférico",
+    Icon: Usb,
+    accentText: "text-lime-200/95",
+    accentIcon: "text-lime-400",
+    panelBg: "bg-slate-950/40",
+    panelBorder: "border-lime-500/35",
+    panelHover: "hover:border-lime-400/45",
+    headerBg: "bg-gradient-to-r from-lime-950/45 via-slate-950/40 to-transparent",
+    headerHover: "hover:from-lime-950/60 hover:via-slate-950/50",
+    chipBg: "bg-lime-500/12",
+    chipBorder: "border-lime-400/35",
+    chipText: "text-lime-200"
   },
   OS: {
     label: "Sistema Operativo",

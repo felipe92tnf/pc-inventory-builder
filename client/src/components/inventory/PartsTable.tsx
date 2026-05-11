@@ -16,6 +16,10 @@ type PartsTableProps = {
   compact?: boolean;
   loading: boolean;
   deletingId: string | null;
+  /** Suma de stock por categoría (inventario global); para aviso "Stock bajo" en cabecera de categoría. */
+  categoryStockTotals?: Map<PartCategory, number>;
+  /** Umbral estricto: alerta si unidades en categoría &lt; este valor (p. ej. 3). */
+  categoryStockThreshold?: number;
   onEdit: (part: Part) => void;
   onDelete: (part: Part) => void;
   emptyMessage?: string;
@@ -55,16 +59,7 @@ function StockBadges({ part }: { part: Part }) {
     return <span className="text-slate-500">No aplica</span>;
   }
   if (part.stock === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="font-medium text-slate-100">{part.stock}</span>
-      {part.stock <= 2 ? (
-        <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
-          Stock bajo
-        </span>
-      ) : null}
-    </div>
-  );
+  return <span className="font-medium text-slate-100">{part.stock}</span>;
 }
 
 function ChevronCategory({ open, className = "text-slate-400" }: { open: boolean; className?: string }) {
@@ -88,7 +83,8 @@ function CategoryAccordionTrigger({
   expanded,
   panelId,
   onToggle,
-  compact = false
+  compact = false,
+  categoryLowStock = false
 }: {
   categoryKey: PartCategory;
   pieceSummary: string;
@@ -96,6 +92,7 @@ function CategoryAccordionTrigger({
   panelId: string;
   onToggle: () => void;
   compact?: boolean;
+  categoryLowStock?: boolean;
 }) {
   const style = getInventoryCategoryStyle(categoryKey);
   const Icon = style.Icon;
@@ -120,6 +117,11 @@ function CategoryAccordionTrigger({
         {style.label}
       </span>
       <span className={`min-w-0 flex-1 text-sm tabular-nums ${style.accentText}`}>{pieceSummary}</span>
+      {categoryLowStock ? (
+        <span className="shrink-0 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+          Stock bajo
+        </span>
+      ) : null}
       <ChevronCategory open={expanded} className={style.accentIcon} />
     </button>
   );
@@ -232,13 +234,17 @@ function MobilePartsByCategory({
   deletingId,
   onEdit,
   onDelete,
-  compact = false
+  compact = false,
+  categoryStockTotals,
+  categoryStockThreshold = 3
 }: {
   parts: Part[];
   deletingId: string | null;
   onEdit: (part: Part) => void;
   onDelete: (part: Part) => void;
   compact?: boolean;
+  categoryStockTotals?: Map<PartCategory, number>;
+  categoryStockThreshold?: number;
 }) {
   const groups = useMemo(() => groupPartsByCategory(parts), [parts]);
 
@@ -260,7 +266,13 @@ function MobilePartsByCategory({
         const expanded = isOpen(category);
         const panelId = `inv-cat-${category}`;
         const catStyle = getInventoryCategoryStyle(category);
-        const pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"} en esta pagina`;
+        const unitTotal = categoryStockTotals?.get(category as PartCategory);
+        let pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"} en esta pagina`;
+        if (unitTotal !== undefined) {
+          pieceSummary += ` · ${unitTotal} u. en categoría`;
+        }
+        const categoryLowStock =
+          unitTotal !== undefined && unitTotal < categoryStockThreshold;
         return (
           <div
             key={category}
@@ -273,6 +285,7 @@ function MobilePartsByCategory({
               panelId={panelId}
               onToggle={() => toggle(category)}
               compact={compact}
+              categoryLowStock={categoryLowStock}
             />
             <div
               id={panelId}
@@ -308,13 +321,17 @@ function DesktopPartsByCategory({
   deletingId,
   onEdit,
   onDelete,
-  compact = false
+  compact = false,
+  categoryStockTotals,
+  categoryStockThreshold = 3
 }: {
   parts: Part[];
   deletingId: string | null;
   onEdit: (part: Part) => void;
   onDelete: (part: Part) => void;
   compact?: boolean;
+  categoryStockTotals?: Map<PartCategory, number>;
+  categoryStockThreshold?: number;
 }) {
   const groups = useMemo(() => groupPartsByCategoryOrdered(parts), [parts]);
 
@@ -338,7 +355,13 @@ function DesktopPartsByCategory({
         const expanded = isOpen(category);
         const panelId = `inv-desktop-cat-${category}`;
         const catStyle = getInventoryCategoryStyle(category);
-        const pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"}`;
+        const unitTotal = categoryStockTotals?.get(category as PartCategory);
+        let pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"}`;
+        if (unitTotal !== undefined) {
+          pieceSummary += ` · ${unitTotal} u. en categoría`;
+        }
+        const categoryLowStock =
+          unitTotal !== undefined && unitTotal < categoryStockThreshold;
         return (
           <div
             key={category}
@@ -351,6 +374,7 @@ function DesktopPartsByCategory({
               panelId={panelId}
               onToggle={() => toggle(category)}
               compact={compact}
+              categoryLowStock={categoryLowStock}
             />
             <div id={panelId} className={expanded ? "border-t border-slate-800" : "hidden"}>
               <div className="overflow-x-auto">
@@ -415,6 +439,8 @@ export function PartsTable({
   compact = false,
   loading,
   deletingId,
+  categoryStockTotals,
+  categoryStockThreshold = 3,
   onEdit,
   onDelete,
   emptyMessage
@@ -445,6 +471,8 @@ export function PartsTable({
         onEdit={onEdit}
         onDelete={onDelete}
         compact={compact}
+        categoryStockTotals={categoryStockTotals}
+        categoryStockThreshold={categoryStockThreshold}
       />
 
       {/* Movil: tarjetas agrupadas por categoria (acordeon); opcionalmente paginado */}
@@ -454,6 +482,8 @@ export function PartsTable({
         onEdit={onEdit}
         onDelete={onDelete}
         compact={compact}
+        categoryStockTotals={categoryStockTotals}
+        categoryStockThreshold={categoryStockThreshold}
       />
     </>
   );

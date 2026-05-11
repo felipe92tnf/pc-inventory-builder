@@ -6,6 +6,8 @@ import { BuildDetailPage } from "../pages/BuildDetailPage";
 import { SalesPage } from "../pages/SalesPage";
 import { SaleDetailPage } from "../pages/SaleDetailPage";
 import { ServicesPage } from "../pages/ServicesPage";
+import { QuotesPage } from "../pages/QuotesPage";
+import { QuoteDetailPage } from "../pages/QuoteDetailPage";
 
 function PackageIcon({ className }: { className?: string }) {
   return (
@@ -49,6 +51,20 @@ function WrenchIcon({ className }: { className?: string }) {
   );
 }
 
+function QuotesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+      />
+    </svg>
+  );
+}
+
 function CpuIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -84,7 +100,7 @@ export function AppRouter() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">PC Inventory Builder</p>
               <p className="text-lg font-bold text-white md:text-xl">Navegación principal</p>
               <p className="max-w-md text-sm text-blue-100/75">
-                Inventario, montajes, ventas de PCs y servicios tecnicos en un solo sitio.
+                Inventario, presupuestos, montajes, servicios y ventas en un solo sitio.
               </p>
             </div>
             <nav
@@ -105,6 +121,20 @@ export function AppRouter() {
               >
                 <PackageIcon className="h-7 w-7 shrink-0 opacity-90" />
                 <span>Inventario</span>
+              </NavLink>
+              <NavLink
+                to="/quotes"
+                className={({ isActive }) =>
+                  [
+                    navLinkClass,
+                    isActive
+                      ? "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35"
+                      : "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white"
+                  ].join(" ")
+                }
+              >
+                <QuotesIcon className="h-7 w-7 shrink-0 opacity-90" />
+                <span>Presupuestos</span>
               </NavLink>
               <NavLink
                 to="/builds"
@@ -160,6 +190,8 @@ export function AppRouter() {
           <Route path="/builds/:id" element={<BuildDetailPage />} />
           <Route path="/sales" element={<SalesPage />} />
           <Route path="/sales/:id" element={<SaleDetailPage />} />
+          <Route path="/quotes" element={<QuotesPage />} />
+          <Route path="/quotes/:id" element={<QuoteDetailPage />} />
           <Route path="/services" element={<ServicesPage />} />
         </Routes>
       </main>

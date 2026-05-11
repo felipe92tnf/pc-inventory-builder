@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "PartCategory" ADD VALUE 'MONITOR';
+ALTER TYPE "PartCategory" ADD VALUE 'PERIPHERAL';

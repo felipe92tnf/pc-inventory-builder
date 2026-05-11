@@ -11,6 +11,8 @@ const PART_CATEGORY_ENUM = z.enum([
   "COOLER",
   "FAN",
   "NETWORK",
+  "MONITOR",
+  "PERIPHERAL",
   "OS",
   "LABOR",
   "OTHER"

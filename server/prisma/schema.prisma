@@ -18,6 +18,8 @@ enum PartCategory {
   COOLER
   FAN
   NETWORK
+  MONITOR
+  PERIPHERAL
   OS
   LABOR
   OTHER
@@ -58,6 +60,20 @@ enum ServiceStatus {
   CANCELLED
 }
 
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum QuoteItemType {
+  INVENTORY_PART
+  MANUAL_ITEM
+  SERVICE
+}
+
 model Part {
   id              String         @id @default(cuid())
   inventoryKind   InventoryKind  @default(PART)
@@ -76,6 +92,7 @@ model Part {
 
   buildItems          BuildPartItem[]
   sparePartServices   Service[]       @relation("SparePart")
+  quoteItems          QuoteItem[]
 
   @@index([category])
   @@index([condition])
@@ -128,6 +145,8 @@ model Build {
   items BuildPartItem[]
   sale  Sale?
 
+  convertedFromQuote Quote? @relation("QuoteConvertedBuild")
+
   @@index([status])
   @@index([name])
 }
@@ -168,5 +187,54 @@ model BuildPartItem {
 
   @@unique([buildId, partId])
   @@index([buildId])
+  @@index([partId])
+}
+
+model Quote {
+  id              String       @id @default(cuid())
+  quoteNumber     Int          @unique @default(autoincrement())
+  customerName    String
+  customerPhone   String?
+  customerEmail   String?
+  title           String
+  description     String?
+  status          QuoteStatus  @default(DRAFT)
+  validUntil      DateTime?
+  subtotal        Decimal
+  discountAmount  Decimal      @default(0)
+  total           Decimal
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  convertedToBuildId String?   @unique
+  convertedAt        DateTime?
+
+  items QuoteItem[]
+
+  convertedBuild Build? @relation("QuoteConvertedBuild", fields: [convertedToBuildId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model QuoteItem {
+  id             String        @id @default(cuid())
+  quoteId        String
+  partId         String?
+  itemType       QuoteItemType
+  name           String
+  description    String?
+  quantity       Int
+  unitCost       Decimal?
+  unitSalePrice  Decimal
+  total          Decimal
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  part  Part? @relation(fields: [partId], references: [id], onDelete: SetNull)
+
+  @@index([quoteId])
   @@index([partId])
 }

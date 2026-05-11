@@ -37,6 +37,7 @@ export function BuildDetailPage() {
   const [linkedSaleId, setLinkedSaleId] = useState<string | null>(null);
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [sellFormKey, setSellFormKey] = useState(0);
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!build) return;
@@ -65,6 +66,13 @@ export function BuildDetailPage() {
       cancelled = true;
     };
   }, [build?.id, build?.status]);
+
+  useEffect(() => {
+    const msg = (location.state as { flash?: string } | null)?.flash;
+    if (!msg) return;
+    setFlashMessage(msg);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     if (loading || build?.status !== "CONFIRMED") return;
@@ -113,6 +121,18 @@ export function BuildDetailPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
+      {flashMessage ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
+          <span>{flashMessage}</span>
+          <button
+            type="button"
+            onClick={() => setFlashMessage(null)}
+            className="rounded-lg border border-emerald-600/50 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/40"
+          >
+            Cerrar
+          </button>
+        </div>
+      ) : null}
       <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

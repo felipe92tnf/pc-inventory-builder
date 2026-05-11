@@ -9,6 +9,8 @@ export const PART_CATEGORIES = [
   "COOLER",
   "FAN",
   "NETWORK",
+  "MONITOR",
+  "PERIPHERAL",
   "OS",
   "LABOR",
   "OTHER"
@@ -29,6 +31,8 @@ export function isNonStockCategory(category: PartCategory): boolean {
 }
 
 const CATEGORY_LABELS: Partial<Record<PartCategory, string>> = {
+  MONITOR: "Monitor",
+  PERIPHERAL: "Periférico",
   OS: "Sistema Operativo",
   LABOR: "Mano de obra"
 };
