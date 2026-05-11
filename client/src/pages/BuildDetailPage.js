@@ -21,6 +21,7 @@ export function BuildDetailPage() {
     const [linkedSaleId, setLinkedSaleId] = useState(null);
     const [sellModalOpen, setSellModalOpen] = useState(false);
     const [sellFormKey, setSellFormKey] = useState(0);
+    const [flashMessage, setFlashMessage] = useState(null);
     useEffect(() => {
         if (!build)
             return;
@@ -47,6 +48,13 @@ export function BuildDetailPage() {
             cancelled = true;
         };
     }, [build?.id, build?.status]);
+    useEffect(() => {
+        const msg = location.state?.flash;
+        if (!msg)
+            return;
+        setFlashMessage(msg);
+        navigate(location.pathname, { replace: true, state: {} });
+    }, [location.pathname, location.state, navigate]);
     useEffect(() => {
         if (loading || build?.status !== "CONFIRMED")
             return;
@@ -76,7 +84,7 @@ export function BuildDetailPage() {
     if (!build) {
         return (_jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40", children: _jsx("p", { className: "text-sm text-slate-300", children: "No se encontro el montaje solicitado." }) }));
     }
-    return (_jsxs("div", { className: "mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4", children: [_jsxs("section", { className: "rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]", children: [_jsxs("div", { className: "flex flex-wrap items-start justify-between gap-3", children: [_jsxs("div", { children: [_jsx("h1", { className: "text-2xl font-bold", children: build.name }), _jsx("p", { className: "mt-1 text-sm text-slate-300", children: build.notes || "Sin descripcion." })] }), _jsxs("div", { className: "flex flex-wrap items-center justify-end gap-2", children: [build.status === "CONFIRMED" ? (_jsx("button", { type: "button", disabled: actionLoading, onClick: () => {
+    return (_jsxs("div", { className: "mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4", children: [flashMessage ? (_jsxs("div", { className: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100", children: [_jsx("span", { children: flashMessage }), _jsx("button", { type: "button", onClick: () => setFlashMessage(null), className: "rounded-lg border border-emerald-600/50 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/40", children: "Cerrar" })] })) : null, _jsxs("section", { className: "rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]", children: [_jsxs("div", { className: "flex flex-wrap items-start justify-between gap-3", children: [_jsxs("div", { children: [_jsx("h1", { className: "text-2xl font-bold", children: build.name }), _jsx("p", { className: "mt-1 text-sm text-slate-300", children: build.notes || "Sin descripcion." })] }), _jsxs("div", { className: "flex flex-wrap items-center justify-end gap-2", children: [build.status === "CONFIRMED" ? (_jsx("button", { type: "button", disabled: actionLoading, onClick: () => {
                                             setSellFormKey((k) => k + 1);
                                             setSellModalOpen(true);
                                         }, className: "rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/30 transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50", children: "Vender PC" })) : null, _jsx("span", { className: `rounded-full border px-2.5 py-1 text-xs font-semibold ${build.status === "SOLD"

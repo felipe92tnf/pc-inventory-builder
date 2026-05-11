@@ -118,7 +118,6 @@ export function ServicesPage() {
   const [title, setTitle] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
   const [description, setDescription] = useState("");
   const [selectedPartId, setSelectedPartId] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -156,7 +155,6 @@ export function ServicesPage() {
     setTitle("");
     setCustomerName("");
     setCustomerPhone("");
-    setCustomerEmail("");
     setDescription("");
     setSelectedPartId("");
     setQuantity(1);
@@ -177,7 +175,6 @@ export function ServicesPage() {
       title: title.trim(),
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
-      customerEmail: customerEmail.trim() || null,
       description: description.trim(),
       isHomeService,
       homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
@@ -346,16 +343,6 @@ export function ServicesPage() {
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 required
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-              Email (opcional)
-              <input
-                type="email"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
                 className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
               />
             </label>

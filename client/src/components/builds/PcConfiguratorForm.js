@@ -11,6 +11,8 @@ const CONFIGURATOR_SLOTS = [
     { id: "CASE", label: "Case", categories: ["CASE"] },
     { id: "COOLING", label: "Cooling", categories: ["COOLER"] },
     { id: "FANS", label: "Fans", categories: ["FAN"] },
+    { id: "MONITOR", label: "Monitor", categories: ["MONITOR"] },
+    { id: "PERIPHERAL", label: "Periférico", categories: ["PERIPHERAL"] },
     { id: "OS", label: "Sistema operativo", categories: ["OS"] },
     { id: "LABOR", label: "Mano de obra", categories: ["LABOR"] },
     { id: "OTHER", label: "Other", categories: ["OTHER", "NETWORK"] }

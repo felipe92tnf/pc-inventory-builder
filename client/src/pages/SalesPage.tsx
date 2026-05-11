@@ -1,7 +1,9 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSales } from "../hooks/useSales";
 import type { MonthlySalesSummaryRow, SaleListRow } from "../types/sale";
+import type { ServiceRow, ServiceType } from "../types/service";
+import * as servicesApi from "../api/services";
 import {
   combinePcMonthWithServices,
   extendYearRangeWithServices,
@@ -36,30 +38,8 @@ function profitClass(value: number): string {
   return value >= 0 ? "text-emerald-400" : "text-rose-400";
 }
 
-function groupSalesByMonth(sales: SaleListRow[]): { key: string; label: string; items: SaleListRow[] }[] {
-  const map = new Map<string, SaleListRow[]>();
-  for (const sale of sales) {
-    const d = new Date(sale.soldAt);
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
-    const key = `${y}-${String(m).padStart(2, "0")}`;
-    const list = map.get(key) ?? [];
-    list.push(sale);
-    map.set(key, list);
-  }
-  for (const arr of map.values()) {
-    arr.sort((a, b) => new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime());
-  }
-  return [...map.entries()]
-    .sort(([a], [b]) => (a < b ? 1 : -1))
-    .map(([key, items]) => {
-      const [ys, ms] = key.split("-");
-      return {
-        key,
-        label: monthLabel(Number(ms), Number(ys)),
-        items
-      };
-    });
+function isPartSaleType(type: ServiceType | string): boolean {
+  return type === "SPARE_PART_SALE" || type === "PART_SALE";
 }
 
 const CHART_BAR_MAX_PX = 168;
@@ -126,6 +106,9 @@ function YearRevenueChart({ series, year }: { series: { month: number; revenue: 
 
 export function SalesPage() {
   const { sales, summary, servicesSummary, loading, error, reload } = useSales();
+  const [completedServices, setCompletedServices] = useState<ServiceRow[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [servicesError, setServicesError] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
@@ -222,6 +205,106 @@ export function SalesPage() {
     [sales, selectedYear, selectedMonth]
   );
 
+  useEffect(() => {
+    let active = true;
+    setServicesLoading(true);
+    setServicesError(null);
+    void servicesApi
+      .listServices({ month: selectedMonth, year: selectedYear, status: "COMPLETED" })
+      .then((rows) => {
+        if (!active) return;
+        setCompletedServices(rows);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setServicesError(err instanceof Error ? err.message : "No se pudieron cargar los servicios completados.");
+        setCompletedServices([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setServicesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedMonth, selectedYear]);
+
+  const partSales = useMemo(
+    () => completedServices.filter((row) => isPartSaleType(row.type)),
+    [completedServices]
+  );
+  const technicalServices = useMemo(
+    () => completedServices.filter((row) => !isPartSaleType(row.type)),
+    [completedServices]
+  );
+
+  const pcMonthTotals = useMemo(() => {
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let totalProfit = 0;
+    for (const sale of salesInSelectedMonth) {
+      totalRevenue += sale.finalSalePrice;
+      totalCost += sale.totalCost;
+      totalProfit += sale.profit;
+    }
+    return {
+      totalRevenue,
+      totalCost,
+      totalProfit,
+      totalOperations: salesInSelectedMonth.length
+    };
+  }, [salesInSelectedMonth]);
+
+  const technicalTotals = useMemo(() => {
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let totalProfit = 0;
+    for (const row of technicalServices) {
+      totalRevenue += row.salePrice;
+      totalCost += row.costPrice;
+      totalProfit += row.profit;
+    }
+    return {
+      totalRevenue,
+      totalCost,
+      totalProfit,
+      totalOperations: technicalServices.length
+    };
+  }, [technicalServices]);
+
+  const partSalesTotals = useMemo(() => {
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let totalProfit = 0;
+    for (const row of partSales) {
+      totalRevenue += row.salePrice;
+      totalCost += row.costPrice;
+      totalProfit += row.profit;
+    }
+    return {
+      totalRevenue,
+      totalCost,
+      totalProfit,
+      totalOperations: partSales.length
+    };
+  }, [partSales]);
+
+  const globalMonthSummary = useMemo(
+    () => ({
+      totalRevenue:
+        pcMonthTotals.totalRevenue + technicalTotals.totalRevenue + partSalesTotals.totalRevenue,
+      totalCost: pcMonthTotals.totalCost + technicalTotals.totalCost + partSalesTotals.totalCost,
+      totalProfit:
+        pcMonthTotals.totalProfit + technicalTotals.totalProfit + partSalesTotals.totalProfit,
+      totalOperations:
+        pcMonthTotals.totalOperations + technicalTotals.totalOperations + partSalesTotals.totalOperations,
+      pcProfit: pcMonthTotals.totalProfit,
+      serviceProfit: technicalTotals.totalProfit,
+      partSaleProfit: partSalesTotals.totalProfit
+    }),
+    [pcMonthTotals, technicalTotals, partSalesTotals]
+  );
+
   const topBuilds = useMemo(() => rankBuildsByProfit(salesInSelectedMonth, 10), [salesInSelectedMonth]);
   const topClients = useMemo(() => rankClientsBySpend(salesInSelectedMonth, 10), [salesInSelectedMonth]);
 
@@ -238,8 +321,6 @@ export function SalesPage() {
     [selectedMonthStats.totalProfit, previousMonthStats.totalProfit]
   );
 
-  const grouped = useMemo(() => groupSalesByMonth(sales), [sales]);
-
   const [mobileSalesOpen, setMobileSalesOpen] = useState({
     stats: false,
     compare: false,
@@ -254,12 +335,21 @@ export function SalesPage() {
     setMobileSalesOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const [openSaleMonths, setOpenSaleMonths] = useState<Record<string, boolean>>({});
-  const toggleSaleMonth = (monthKey: string) => {
-    setOpenSaleMonths((prev) => ({
-      ...prev,
-      [monthKey]: !(prev[monthKey] === true)
-    }));
+  const [salesSectionsOpen, setSalesSectionsOpen] = useState({
+    pcs: false,
+    services: false,
+    parts: false
+  });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  useEffect(() => {
+    setSalesSectionsOpen({
+      pcs: salesInSelectedMonth.length <= 6,
+      services: technicalServices.length <= 6,
+      parts: partSales.length <= 6
+    });
+  }, [salesInSelectedMonth.length, technicalServices.length, partSales.length]);
+  const toggleSalesSection = (key: "pcs" | "services" | "parts") => {
+    setSalesSectionsOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -342,368 +432,54 @@ export function SalesPage() {
           </button>
         </div>
       ) : null}
-
-      {/* KPIs mes seleccionado */}
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg shadow-slate-950/30 md:border-0 md:bg-transparent md:shadow-none">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left md:hidden"
-          onClick={() => toggleMobileSales("stats")}
-          aria-expanded={mobileSalesOpen.stats}
-        >
-          <div>
-            <span className="text-sm font-semibold text-slate-100">Estadisticas del mes</span>
-            <p className="mt-0.5 text-xs capitalize text-slate-500">{monthLabel(selectedMonth, selectedYear)}</p>
-          </div>
-          <ChevronSales open={mobileSalesOpen.stats} />
-        </button>
-        <div
-          className={
-            mobileSalesOpen.stats
-              ? "block"
-              : "hidden md:block"
-          }
-        >
-          <div className="px-4 pb-4 pt-1 md:px-0 md:pb-0 md:pt-0">
-            <h2 className="mb-3 hidden text-sm font-semibold uppercase tracking-wider text-slate-400 md:block">
-              Estadisticas del mes seleccionado
-            </h2>
-            <p className="mb-4 hidden text-sm text-slate-500 capitalize md:block">
-              {monthLabel(selectedMonth, selectedYear)}
-            </p>
-            {loading ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">
-                {[
-                  { k: "a", span: "xl:col-span-3" },
-                  { k: "b", span: "xl:col-span-3" },
-                  { k: "c", span: "xl:col-span-4" },
-                  { k: "d", span: "xl:col-span-2" }
-                ].map(({ k, span }) => (
-                  <div
-                    key={k}
-                    className={`h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60 ${span}`}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12 xl:items-stretch xl:gap-5">
-                <article className="rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 shadow-md shadow-black/20 xl:col-span-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Ingresos</p>
-                  <p className="mt-2 text-xl font-bold text-emerald-400/95">{money(selectedMonthStats.totalRevenue)}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {selectedMonthPcOnly.salesCount} ventas PC · {selectedMonthSvcRow?.servicesCount ?? 0} servicios
-                    completados
-                  </p>
-                </article>
-                <article className="rounded-2xl border border-slate-700/80 bg-slate-900/75 p-5 shadow-md shadow-black/20 xl:col-span-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Costes</p>
-                  <p className="mt-2 text-xl font-bold text-slate-300">{money(selectedMonthStats.totalCost)}</p>
-                  <p className="mt-1 text-xs text-slate-500">Coste acumulado del mes</p>
-                </article>
-                <article className="relative overflow-hidden rounded-2xl border border-emerald-400/40 bg-gradient-to-br from-emerald-950/90 via-slate-900/95 to-slate-950 p-5 shadow-md shadow-emerald-950/25 ring-1 ring-emerald-500/20 sm:p-6 xl:col-span-4">
-                  <div
-                    className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-500/10 blur-xl"
-                    aria-hidden
-                  />
-                  <p className="relative text-xs font-bold uppercase tracking-wider text-emerald-400/95">Beneficio neto</p>
-                  <p
-                    className={`relative mt-2.5 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl ${profitClass(selectedMonthStats.totalProfit)}`}
-                  >
-                    {money(selectedMonthStats.totalProfit)}
-                  </p>
-                  <p className="relative mt-2.5 text-xs text-emerald-200/65">
-                    Ventas PC + servicios completados · ingresos menos costes
-                  </p>
-                </article>
-                <article className="rounded-2xl border border-indigo-500/20 bg-slate-900/80 p-5 shadow-md shadow-black/20 xl:col-span-2 xl:min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Margen</p>
-                  <p className="mt-2 text-xl font-bold text-indigo-300">{marginSelected.toFixed(1)} %</p>
-                  <p className="mt-1 text-[11px] leading-snug text-slate-500">Sobre ingresos del mes</p>
-                </article>
-              </div>
-            )}
-          </div>
+      {servicesError ? (
+        <div className="rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
+          {servicesError}
         </div>
-      </section>
+      ) : null}
 
-      {/* Comparativa mes anterior */}
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left md:hidden"
-          onClick={() => toggleMobileSales("compare")}
-          aria-expanded={mobileSalesOpen.compare}
-        >
-          <span className="text-sm font-semibold text-slate-100">Comparativa vs mes anterior</span>
-          <ChevronSales open={mobileSalesOpen.compare} />
-        </button>
-        <div className={mobileSalesOpen.compare ? "block" : "hidden md:block"}>
-          <div className="p-5 pt-4 md:pt-5">
-            <h2 className="hidden text-lg font-semibold text-slate-100 md:block">Comparativa vs mes anterior</h2>
-            <p className="mt-1 hidden text-sm text-slate-400 md:block">
-              Variacion respecto a <span className="capitalize text-slate-300">{monthLabel(prevYM.month, prevYM.year)}</span>.
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
+        <h2 className="text-lg font-semibold text-slate-100">
+          Resumen global de ingresos ({monthLabel(selectedMonth, selectedYear)})
+        </h2>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Ingresos totales</p>
+            <p className="mt-1 text-xl font-bold text-emerald-300">{money(globalMonthSummary.totalRevenue)}</p>
+          </article>
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Coste total</p>
+            <p className="mt-1 text-xl font-bold text-slate-200">{money(globalMonthSummary.totalCost)}</p>
+          </article>
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Beneficio total</p>
+            <p className={`mt-1 text-xl font-bold ${profitClass(globalMonthSummary.totalProfit)}`}>
+              {money(globalMonthSummary.totalProfit)}
             </p>
-            <p className="mt-1 text-xs text-slate-500 md:hidden">
-              Vs. <span className="capitalize text-slate-400">{monthLabel(prevYM.month, prevYM.year)}</span>
-            </p>
-            {loading ? (
-              <p className="mt-4 text-sm text-slate-500">Cargando...</p>
-            ) : (
-              <dl className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-700/80 bg-slate-950/50 p-4">
-                  <dt className="text-xs uppercase tracking-wide text-slate-500">Ingresos</dt>
-                  <dd className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="text-lg font-semibold text-emerald-400">{money(selectedMonthStats.totalRevenue)}</span>
-                    <DeltaBadge value={deltaRevenue} />
-                  </dd>
-                  <p className="mt-1 text-xs text-slate-500">Anterior: {money(previousMonthStats.totalRevenue)}</p>
-                </div>
-                <div className="rounded-xl border border-slate-700/80 bg-slate-950/50 p-4">
-                  <dt className="text-xs uppercase tracking-wide text-slate-500">Costes</dt>
-                  <dd className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="text-lg font-semibold text-slate-200">{money(selectedMonthStats.totalCost)}</span>
-                    <DeltaBadge value={deltaCost} invert />
-                  </dd>
-                  <p className="mt-1 text-xs text-slate-500">Anterior: {money(previousMonthStats.totalCost)}</p>
-                </div>
-                <div className="relative overflow-hidden rounded-xl border border-emerald-400/40 bg-gradient-to-br from-emerald-950/85 to-slate-950 p-4 shadow-md shadow-emerald-950/25 sm:col-span-2 sm:p-5">
-                  <div
-                    className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-full bg-emerald-400/10 blur-xl"
-                    aria-hidden
-                  />
-                  <dt className="relative text-xs font-bold uppercase tracking-wider text-emerald-400">Beneficio neto</dt>
-                  <dd className="relative mt-2 flex flex-wrap items-end gap-3">
-                    <span
-                      className={`text-2xl font-extrabold tracking-tight sm:text-3xl ${profitClass(selectedMonthStats.totalProfit)}`}
-                    >
-                      {money(selectedMonthStats.totalProfit)}
-                    </span>
-                    <DeltaBadge value={deltaProfit} />
-                  </dd>
-                  <p className="relative mt-2 text-xs text-emerald-200/65">
-                    Mes anterior: {money(previousMonthStats.totalProfit)}
-                  </p>
-                </div>
-              </dl>
-            )}
-          </div>
+          </article>
+          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Operaciones</p>
+            <p className="mt-1 text-xl font-bold text-slate-100">{globalMonthSummary.totalOperations}</p>
+          </article>
         </div>
-      </section>
-
-      {/* Total anual + grafico */}
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 md:border-0 md:bg-transparent md:shadow-none">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left md:hidden"
-          onClick={() => toggleMobileSales("annual")}
-          aria-expanded={mobileSalesOpen.annual}
-        >
-          <div>
-            <span className="text-sm font-semibold text-slate-100">Totales del ano e ingresos por mes</span>
-            <p className="mt-0.5 text-xs text-slate-500">Acumulado {selectedYear} y grafico</p>
-          </div>
-          <ChevronSales open={mobileSalesOpen.annual} />
-        </button>
-        <div className={mobileSalesOpen.annual ? "block" : "hidden md:block"}>
-          <div className="grid grid-cols-1 gap-6 p-4 pt-2 md:grid md:p-0 xl:grid-cols-3 xl:gap-6">
-        <article className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-slate-900/95 to-amber-950/20 p-5 shadow-lg shadow-slate-950/40 xl:col-span-1">
-          <h2 className="text-lg font-semibold text-slate-100">Total acumulado del ano {selectedYear}</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Suma del ano en ventas PC y servicios completados (mismo criterio que el beneficio total).
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+            Beneficio PCs: <span className={profitClass(globalMonthSummary.pcProfit)}>{money(globalMonthSummary.pcProfit)}</span>
           </p>
-          {loading ? (
-            <div className="mt-4 h-24 animate-pulse rounded-lg bg-slate-800/60" />
-          ) : (
-            <dl className="mt-5 space-y-3 text-sm">
-              <div className="flex justify-between gap-2 border-b border-slate-800/80 pb-2">
-                <dt className="text-slate-500">Ingresos anuales</dt>
-                <dd className="text-base font-semibold text-emerald-400">{money(annualTotals.totalRevenue)}</dd>
-              </div>
-              <div className="flex justify-between gap-2 border-b border-slate-800/80 pb-2">
-                <dt className="text-slate-500">Costes anuales</dt>
-                <dd className="text-base font-semibold text-slate-300">{money(annualTotals.totalCost)}</dd>
-              </div>
-              <div className="relative overflow-hidden rounded-xl border border-emerald-400/35 bg-gradient-to-r from-emerald-950/75 to-slate-950 px-3 py-3 shadow-inner shadow-emerald-950/30 sm:px-4 sm:py-3.5">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                  <dt className="text-xs font-bold uppercase tracking-wider text-emerald-400">Beneficio anual</dt>
-                  <dd
-                    className={`text-xl font-extrabold tracking-tight sm:text-2xl ${profitClass(annualTotals.totalProfit)}`}
-                  >
-                    {money(annualTotals.totalProfit)}
-                  </dd>
-                </div>
-                <p className="mt-2 text-[11px] text-emerald-200/55">Resultado tras costes (PC + servicios)</p>
-              </div>
-              <div className="flex justify-between gap-2 pt-1">
-                <dt className="text-slate-500">Margen medio anual</dt>
-                <dd className="font-semibold text-amber-200/90">{marginAnnual.toFixed(1)} %</dd>
-              </div>
-              <div className="flex justify-between gap-2 text-xs text-slate-500">
-                <dt>Operaciones (ano)</dt>
-                <dd>{annualTotals.salesCount}</dd>
-              </div>
-              <div className="flex justify-between gap-2 text-[11px] leading-snug text-slate-600">
-                <dt>Ventas PC / servicios</dt>
-                <dd>
-                  {annualTotalsPcOnly.salesCount} / {annualServicesCount}
-                </dd>
-              </div>
-            </dl>
-          )}
-        </article>
-
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 xl:col-span-2">
-          <h2 className="text-lg font-semibold text-slate-100">Ingresos por mes ({selectedYear})</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Ventas PC + ingresos por servicios completados en cada mes.
+          <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+            Beneficio servicios:{" "}
+            <span className={profitClass(globalMonthSummary.serviceProfit)}>{money(globalMonthSummary.serviceProfit)}</span>
           </p>
-          {loading ? (
-            <div className="mt-8 h-48 animate-pulse rounded-lg bg-slate-800/50" />
-          ) : (
-            <div className="mt-6">
-              <YearRevenueChart series={revenueSeries} year={selectedYear} />
-            </div>
-          )}
-        </article>
-          </div>
+          <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+            Beneficio piezas sueltas:{" "}
+            <span className={profitClass(globalMonthSummary.partSaleProfit)}>
+              {money(globalMonthSummary.partSaleProfit)}
+            </span>
+          </p>
         </div>
       </section>
 
-      {/* Rankings */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left lg:hidden"
-            onClick={() => toggleMobileSales("builds")}
-            aria-expanded={mobileSalesOpen.builds}
-          >
-            <span className="text-sm font-semibold text-slate-100">Montajes mas rentables</span>
-            <ChevronSales open={mobileSalesOpen.builds} />
-          </button>
-          <div className={mobileSalesOpen.builds ? "block" : "hidden lg:block"}>
-            <div className="p-5">
-              <h2 className="hidden text-lg font-semibold text-slate-100 lg:block">Montajes mas rentables</h2>
-              <p className="mt-1 hidden text-sm text-slate-400 capitalize lg:block">
-                Por beneficio acumulado en {monthLabel(selectedMonth, selectedYear)}.
-              </p>
-              <p className="text-xs text-slate-500 lg:hidden">
-                {monthLabel(selectedMonth, selectedYear)}
-              </p>
-              {loading ? (
-                <p className="mt-4 text-sm text-slate-500">Cargando...</p>
-              ) : topBuilds.length === 0 ? (
-                <p className="mt-4 text-sm text-slate-500">Sin ventas este mes.</p>
-              ) : (
-                <ol className="mt-4 space-y-3">
-                  {topBuilds.map((row, idx) => (
-                    <li
-                      key={row.buildId}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-slate-800/80 bg-slate-950/40 px-3 py-2.5"
-                    >
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-xs font-bold text-indigo-300">
-                          {idx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-100">{row.name}</p>
-                          <p className="text-xs text-slate-500">
-                            {row.salesCount} venta{row.salesCount === 1 ? "" : "s"} · Ingresos {money(row.revenue)}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`shrink-0 text-sm font-semibold ${profitClass(row.profit)}`}>{money(row.profit)}</span>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </div>
-        </article>
-
-        <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left lg:hidden"
-            onClick={() => toggleMobileSales("clients")}
-            aria-expanded={mobileSalesOpen.clients}
-          >
-            <span className="text-sm font-semibold text-slate-100">Top clientes por gasto</span>
-            <ChevronSales open={mobileSalesOpen.clients} />
-          </button>
-          <div className={mobileSalesOpen.clients ? "block" : "hidden lg:block"}>
-            <div className="p-5">
-              <h2 className="hidden text-lg font-semibold text-slate-100 lg:block">Top clientes por gasto</h2>
-              <p className="mt-1 hidden text-sm text-slate-400 capitalize lg:block">
-                Total facturado en {monthLabel(selectedMonth, selectedYear)} (nombre + telefono).
-              </p>
-              <p className="text-xs text-slate-500 lg:hidden">{monthLabel(selectedMonth, selectedYear)}</p>
-              {loading ? (
-                <p className="mt-4 text-sm text-slate-500">Cargando...</p>
-              ) : topClients.length === 0 ? (
-                <p className="mt-4 text-sm text-slate-500">Sin ventas este mes.</p>
-              ) : (
-                <ol className="mt-4 space-y-3">
-                  {topClients.map((row, idx) => (
-                    <li
-                      key={`${row.displayName}-${row.phone}`}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-slate-800/80 bg-slate-950/40 px-3 py-2.5"
-                    >
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-300">
-                          {idx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-100">{row.displayName}</p>
-                          <p className="truncate text-xs text-slate-500">{row.phone}</p>
-                          <p className="text-xs text-slate-500">
-                            {row.orders} pedido{row.orders === 1 ? "" : "s"}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="shrink-0 text-sm font-semibold text-emerald-400">{money(row.spend)}</span>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </div>
-        </article>
-      </section>
-
-      {/* Resumen mensual historico */}
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left md:hidden"
-          onClick={() => toggleMobileSales("history")}
-          aria-expanded={mobileSalesOpen.history}
-        >
-          <span className="text-sm font-semibold text-slate-100">Resumen mensual (historico)</span>
-          <ChevronSales open={mobileSalesOpen.history} />
-        </button>
-        <div className={mobileSalesOpen.history ? "block" : "hidden md:block"}>
-          <div className="p-5">
-            <h2 className="hidden text-lg font-semibold text-slate-100 md:block">Resumen mensual (historico)</h2>
-            <p className="mt-1 hidden text-sm text-slate-400 md:block">
-              Totales por mes: ventas PC (fecha venta) + servicios completados (fecha servicio).
-            </p>
-            {loading ? (
-              <p className="mt-4 text-sm text-slate-400">Cargando resumenes...</p>
-            ) : mergedHistoricSummary.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-400">Sin datos de ventas ni servicios todavia.</p>
-            ) : (
-              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {mergedHistoricSummary.map((row) => (
-                  <MonthlySummaryCard key={`${row.year}-${row.month}`} row={row} />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Listado agrupado por mes */}
+      {/* Listado global por secciones */}
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
         <button
           type="button"
@@ -712,114 +488,309 @@ export function SalesPage() {
           aria-expanded={mobileSalesOpen.salesList}
         >
           <div>
-            <span className="text-sm font-semibold text-slate-100">Ventas por mes</span>
+            <span className="text-sm font-semibold text-slate-100">Detalle de operaciones</span>
             <p className="mt-0.5 text-xs text-slate-500">
-              {grouped.length} mes{grouped.length === 1 ? "" : "es"} con ventas
+              PCs, servicios tecnicos y piezas sueltas
             </p>
           </div>
           <ChevronSales open={mobileSalesOpen.salesList} />
         </button>
         <div className={mobileSalesOpen.salesList ? "block" : "hidden md:block"}>
           <div className="p-5 pt-4 md:pt-5">
-            <h2 className="hidden text-lg font-semibold text-slate-100 md:block">Ventas por mes</h2>
+            <h2 className="hidden text-lg font-semibold text-slate-100 md:block">Detalle global de ventas</h2>
             <p className="mt-1 hidden text-sm text-slate-400 md:block">
-              Detalle de cada venta con montaje, cliente y economicos.
+              Muestra separada de PCs vendidos, servicios completados y piezas sueltas vendidas.
             </p>
-            {loading ? (
-              <p className="mt-4 text-sm text-slate-400">Cargando ventas...</p>
-            ) : grouped.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-400">
-                No hay ventas registradas. Desde Montajes, en un PC ensamblado, usa &quot;Vender PC&quot;.
-              </p>
+            {loading || servicesLoading ? (
+              <p className="mt-4 text-sm text-slate-400">Cargando operaciones...</p>
+            ) : globalMonthSummary.totalOperations === 0 ? (
+              <p className="mt-4 text-sm text-slate-400">No hay operaciones registradas en el periodo seleccionado.</p>
             ) : (
-              <div className="mt-6 space-y-4 md:space-y-10">
-                {grouped.map((group) => {
-                  const monthOpen = openSaleMonths[group.key] === true;
-                  return (
-                    <div key={group.key}>
-                      <button
-                        type="button"
-                        className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-3 text-left md:hidden"
-                        onClick={() => toggleSaleMonth(group.key)}
-                        aria-expanded={monthOpen}
-                      >
-                        <div className="min-w-0">
-                          <span className="block font-semibold capitalize text-slate-100">{group.label}</span>
-                          <span className="text-xs text-slate-500">
-                            {group.items.length} venta{group.items.length === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                        <ChevronSales open={monthOpen} />
-                      </button>
-                      <div className="mb-3 hidden flex-wrap items-center gap-2 md:flex">
-                        <h3 className="text-base font-semibold capitalize text-slate-100">{group.label}</h3>
-                        <span className="rounded-full border border-slate-600 bg-slate-950/80 px-2.5 py-0.5 text-xs font-medium text-slate-400">
-                          {group.items.length} venta{group.items.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      <div className={monthOpen ? "block" : "hidden md:block"}>
-                        <div className="overflow-x-auto rounded-xl border border-slate-800">
-                          <table className="min-w-[920px] w-full text-left text-sm">
-                    <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-400">
-                      <tr>
-                        <th className="px-3 py-3 font-semibold">Montaje</th>
-                        <th className="px-3 py-3 font-semibold">Cliente</th>
-                        <th className="px-3 py-3 font-semibold">Telefono</th>
-                        <th className="px-3 py-3 font-semibold text-right">Precio final</th>
-                        <th className="px-3 py-3 font-semibold text-right">Coste</th>
-                        <th className="px-3 py-3 font-semibold text-right">Beneficio</th>
-                        <th className="px-3 py-3 font-semibold">Fecha venta</th>
-                        <th className="px-3 py-3 font-semibold">Pago</th>
-                        <th className="px-3 py-3 font-semibold">Garantia</th>
-                        <th className="min-w-[140px] px-3 py-3 font-semibold">Notas</th>
-                        <th className="px-3 py-3 text-right font-semibold" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800 bg-slate-900/40">
-                      {group.items.map((sale) => (
-                        <tr key={sale.id} className="transition hover:bg-slate-800/40">
-                          <td className="px-3 py-3 font-medium text-slate-100">{sale.build.name}</td>
-                          <td className="px-3 py-3 text-slate-300">{sale.customerName}</td>
-                          <td className="px-3 py-3 text-slate-400">{sale.customerPhone}</td>
-                          <td className="px-3 py-3 text-right font-medium text-emerald-400">{money(sale.finalSalePrice)}</td>
-                          <td className="px-3 py-3 text-right text-slate-400">{money(sale.totalCost)}</td>
-                          <td className={`px-3 py-3 text-right font-semibold ${profitClass(sale.profit)}`}>
-                            {money(sale.profit)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 text-slate-400">
-                            {new Date(sale.soldAt).toLocaleString("es-ES", {
-                              dateStyle: "short",
-                              timeStyle: "short"
-                            })}
-                          </td>
-                          <td className="px-3 py-3 text-slate-400">{sale.paymentMethod ?? "—"}</td>
-                          <td className="px-3 py-3 text-slate-400">
-                            {sale.warrantyMonths != null ? `${sale.warrantyMonths} meses` : "—"}
-                          </td>
-                          <td className="max-w-[200px] truncate px-3 py-3 text-slate-500" title={sale.notes ?? undefined}>
-                            {sale.notes ?? "—"}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            <Link
-                              to={`/sales/${sale.id}`}
-                              className="inline-flex rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
-                            >
-                              Ver / editar
-                            </Link>
-                          </td>
+              <div className="mt-4 space-y-4">
+                <SalesOverviewSection
+                  title="PCs vendidos"
+                  subtitle="Ventas de montajes / equipos confirmados."
+                  count={pcMonthTotals.totalOperations}
+                  totalRevenue={pcMonthTotals.totalRevenue}
+                  totalProfit={pcMonthTotals.totalProfit}
+                  open={salesSectionsOpen.pcs}
+                  onToggle={() => toggleSalesSection("pcs")}
+                  desktopTable={
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-400">
+                        <tr>
+                          <th className="px-3 py-3 font-semibold">Fecha</th>
+                          <th className="px-3 py-3 font-semibold">Cliente</th>
+                          <th className="px-3 py-3 font-semibold">Montaje</th>
+                          <th className="px-3 py-3 font-semibold text-right">Coste</th>
+                          <th className="px-3 py-3 font-semibold text-right">Venta</th>
+                          <th className="px-3 py-3 font-semibold text-right">Beneficio</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      </thead>
+                      <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                        {salesInSelectedMonth.map((sale) => (
+                          <tr key={sale.id} className="transition hover:bg-slate-800/40">
+                            <td className="px-3 py-3 text-slate-400">
+                              {new Date(sale.soldAt).toLocaleDateString("es-ES")}
+                            </td>
+                            <td className="px-3 py-3 text-slate-300">{sale.customerName}</td>
+                            <td className="px-3 py-3 font-medium text-slate-100">{sale.build.name}</td>
+                            <td className="px-3 py-3 text-right text-slate-400">{money(sale.totalCost)}</td>
+                            <td className="px-3 py-3 text-right text-emerald-400">{money(sale.finalSalePrice)}</td>
+                            <td className={`px-3 py-3 text-right font-semibold ${profitClass(sale.profit)}`}>
+                              {money(sale.profit)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  }
+                  mobileCards={salesInSelectedMonth.map((sale) => (
+                    <article key={sale.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                      <p className="text-xs text-slate-500">{new Date(sale.soldAt).toLocaleDateString("es-ES")}</p>
+                      <p className="mt-1 font-semibold text-slate-100">{sale.build.name}</p>
+                      <p className="text-sm text-slate-300">{sale.customerName}</p>
+                      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                        <div><dt className="text-slate-500">Coste</dt><dd className="text-slate-300">{money(sale.totalCost)}</dd></div>
+                        <div><dt className="text-slate-500">Venta</dt><dd className="text-emerald-300">{money(sale.finalSalePrice)}</dd></div>
+                        <div><dt className="text-slate-500">Beneficio</dt><dd className={profitClass(sale.profit)}>{money(sale.profit)}</dd></div>
+                      </dl>
+                    </article>
+                  ))}
+                />
+
+                <SalesOverviewSection
+                  title="Servicios técnicos"
+                  subtitle="Solo servicios completados, excluyendo pieza suelta."
+                  count={technicalTotals.totalOperations}
+                  totalRevenue={technicalTotals.totalRevenue}
+                  totalProfit={technicalTotals.totalProfit}
+                  open={salesSectionsOpen.services}
+                  onToggle={() => toggleSalesSection("services")}
+                  desktopTable={
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-400">
+                        <tr>
+                          <th className="px-3 py-3 font-semibold">Fecha</th>
+                          <th className="px-3 py-3 font-semibold">Cliente</th>
+                          <th className="px-3 py-3 font-semibold">Telefono</th>
+                          <th className="px-3 py-3 font-semibold">Tipo</th>
+                          <th className="px-3 py-3 font-semibold">Descripcion</th>
+                          <th className="px-3 py-3 font-semibold text-right">Coste</th>
+                          <th className="px-3 py-3 font-semibold text-right">Venta</th>
+                          <th className="px-3 py-3 font-semibold text-right">Beneficio</th>
+                          <th className="px-3 py-3 font-semibold">Pago</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                        {technicalServices.map((row) => (
+                          <tr key={row.id} className="transition hover:bg-slate-800/40">
+                            <td className="px-3 py-3 text-slate-400">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</td>
+                            <td className="px-3 py-3 text-slate-300">{row.customerName}</td>
+                            <td className="px-3 py-3 text-slate-400">{row.customerPhone || "—"}</td>
+                            <td className="px-3 py-3 text-slate-400">{row.title}</td>
+                            <td className="max-w-[280px] truncate px-3 py-3 text-slate-300" title={row.description || row.title}>
+                              {row.description || row.title}
+                            </td>
+                            <td className="px-3 py-3 text-right text-slate-400">{money(row.costPrice)}</td>
+                            <td className="px-3 py-3 text-right text-emerald-400">{money(row.salePrice)}</td>
+                            <td className={`px-3 py-3 text-right font-semibold ${profitClass(row.profit)}`}>{money(row.profit)}</td>
+                            <td className="px-3 py-3 text-slate-400">{row.paymentMethod || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  }
+                  mobileCards={technicalServices.map((row) => (
+                    <article key={row.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                      <p className="text-xs text-slate-500">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</p>
+                      <p className="mt-1 font-semibold text-slate-100">{row.title}</p>
+                      <p className="text-sm text-slate-300">{row.customerName} · {row.customerPhone || "—"}</p>
+                      <p className="mt-1 text-xs text-slate-400">{row.description || row.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">Pago: {row.paymentMethod || "—"}</p>
+                      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                        <div><dt className="text-slate-500">Coste</dt><dd className="text-slate-300">{money(row.costPrice)}</dd></div>
+                        <div><dt className="text-slate-500">Venta</dt><dd className="text-emerald-300">{money(row.salePrice)}</dd></div>
+                        <div><dt className="text-slate-500">Beneficio</dt><dd className={profitClass(row.profit)}>{money(row.profit)}</dd></div>
+                      </dl>
+                    </article>
+                  ))}
+                />
+
+                <SalesOverviewSection
+                  title="Piezas sueltas vendidas"
+                  subtitle="Registros de venta de pieza suelta completados."
+                  count={partSalesTotals.totalOperations}
+                  totalRevenue={partSalesTotals.totalRevenue}
+                  totalProfit={partSalesTotals.totalProfit}
+                  open={salesSectionsOpen.parts}
+                  onToggle={() => toggleSalesSection("parts")}
+                  desktopTable={
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-400">
+                        <tr>
+                          <th className="px-3 py-3 font-semibold">Fecha</th>
+                          <th className="px-3 py-3 font-semibold">Cliente</th>
+                          <th className="px-3 py-3 font-semibold">Telefono</th>
+                          <th className="px-3 py-3 font-semibold">Tipo</th>
+                          <th className="px-3 py-3 font-semibold">Pieza / descripcion</th>
+                          <th className="px-3 py-3 font-semibold text-right">Coste</th>
+                          <th className="px-3 py-3 font-semibold text-right">Venta</th>
+                          <th className="px-3 py-3 font-semibold text-right">Beneficio</th>
+                          <th className="px-3 py-3 font-semibold">Pago</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                        {partSales.map((row) => (
+                          <tr key={row.id} className="transition hover:bg-slate-800/40">
+                            <td className="px-3 py-3 text-slate-400">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</td>
+                            <td className="px-3 py-3 text-slate-300">{row.customerName}</td>
+                            <td className="px-3 py-3 text-slate-400">{row.customerPhone || "—"}</td>
+                            <td className="px-3 py-3 text-slate-400">{row.title}</td>
+                            <td className="max-w-[280px] truncate px-3 py-3 text-slate-300" title={row.selectedPart?.name ?? row.description}>
+                              {row.selectedPart?.name ?? row.description ?? row.title}
+                            </td>
+                            <td className="px-3 py-3 text-right text-slate-400">{money(row.costPrice)}</td>
+                            <td className="px-3 py-3 text-right text-emerald-400">{money(row.salePrice)}</td>
+                            <td className={`px-3 py-3 text-right font-semibold ${profitClass(row.profit)}`}>{money(row.profit)}</td>
+                            <td className="px-3 py-3 text-slate-400">{row.paymentMethod || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  }
+                  mobileCards={partSales.map((row) => (
+                    <article key={row.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                      <p className="text-xs text-slate-500">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</p>
+                      <p className="mt-1 font-semibold text-slate-100">{row.selectedPart?.name ?? row.title}</p>
+                      <p className="text-sm text-slate-300">{row.customerName} · {row.customerPhone || "—"}</p>
+                      <p className="mt-1 text-xs text-slate-400">{row.description || row.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">Pago: {row.paymentMethod || "—"}</p>
+                      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                        <div><dt className="text-slate-500">Coste</dt><dd className="text-slate-300">{money(row.costPrice)}</dd></div>
+                        <div><dt className="text-slate-500">Venta</dt><dd className="text-emerald-300">{money(row.salePrice)}</dd></div>
+                        <div><dt className="text-slate-500">Beneficio</dt><dd className={profitClass(row.profit)}>{money(row.profit)}</dd></div>
+                      </dl>
+                    </article>
+                  ))}
+                />
               </div>
             )}
           </div>
         </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left"
+          onClick={() => setAdvancedOpen((prev) => !prev)}
+          aria-expanded={advancedOpen}
+        >
+          <div>
+            <span className="text-sm font-semibold text-slate-100">Estadísticas avanzadas</span>
+            <p className="mt-0.5 text-xs text-slate-500">Comparativas, acumulado anual, rankings y histórico</p>
+          </div>
+          <ChevronSales open={advancedOpen} />
+        </button>
+        {advancedOpen ? (
+          <div className="space-y-6 p-4 md:p-5">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+              <h3 className="text-base font-semibold text-slate-100">Comparativa vs mes anterior</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Vs. <span className="capitalize">{monthLabel(prevYM.month, prevYM.year)}</span>
+              </p>
+              <dl className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                  <dt className="text-xs text-slate-500">Ingresos</dt>
+                  <dd className="mt-1 flex items-center gap-2 text-emerald-300">
+                    <span>{money(selectedMonthStats.totalRevenue)}</span>
+                    <DeltaBadge value={deltaRevenue} />
+                  </dd>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                  <dt className="text-xs text-slate-500">Costes</dt>
+                  <dd className="mt-1 flex items-center gap-2 text-slate-300">
+                    <span>{money(selectedMonthStats.totalCost)}</span>
+                    <DeltaBadge value={deltaCost} invert />
+                  </dd>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                  <dt className="text-xs text-slate-500">Beneficio</dt>
+                  <dd className={`mt-1 flex items-center gap-2 ${profitClass(selectedMonthStats.totalProfit)}`}>
+                    <span>{money(selectedMonthStats.totalProfit)}</span>
+                    <DeltaBadge value={deltaProfit} />
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <article className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <h3 className="text-base font-semibold text-slate-100">Acumulado anual {selectedYear}</h3>
+                <dl className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between"><dt className="text-slate-500">Ingresos</dt><dd>{money(annualTotals.totalRevenue)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Costes</dt><dd>{money(annualTotals.totalCost)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Beneficio</dt><dd className={profitClass(annualTotals.totalProfit)}>{money(annualTotals.totalProfit)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Margen</dt><dd>{marginAnnual.toFixed(1)} %</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Operaciones</dt><dd>{annualTotals.salesCount}</dd></div>
+                </dl>
+              </article>
+              <article className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 xl:col-span-2">
+                <h3 className="text-base font-semibold text-slate-100">Ingresos por mes ({selectedYear})</h3>
+                <div className="mt-3">
+                  <YearRevenueChart series={revenueSeries} year={selectedYear} />
+                </div>
+              </article>
+            </div>
+
+            <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <article className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <h3 className="text-base font-semibold text-slate-100">Montajes más rentables</h3>
+                {topBuilds.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">Sin ventas este mes.</p>
+                ) : (
+                  <ol className="mt-3 space-y-2">
+                    {topBuilds.map((row, idx) => (
+                      <li key={row.buildId} className="flex justify-between rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
+                        <span className="truncate text-slate-200">{idx + 1}. {row.name}</span>
+                        <span className={profitClass(row.profit)}>{money(row.profit)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </article>
+              <article className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <h3 className="text-base font-semibold text-slate-100">Top clientes por gasto</h3>
+                {topClients.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">Sin ventas este mes.</p>
+                ) : (
+                  <ol className="mt-3 space-y-2">
+                    {topClients.map((row, idx) => (
+                      <li key={`${row.displayName}-${row.phone}`} className="flex justify-between rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
+                        <span className="truncate text-slate-200">{idx + 1}. {row.displayName}</span>
+                        <span className="text-emerald-300">{money(row.spend)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </article>
+            </section>
+
+            <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+              <h3 className="text-base font-semibold text-slate-100">Resumen mensual histórico</h3>
+              {mergedHistoricSummary.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">Sin datos de ventas ni servicios todavía.</p>
+              ) : (
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {mergedHistoricSummary.map((row) => (
+                    <MonthlySummaryCard key={`${row.year}-${row.month}`} row={row} />
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -852,6 +823,76 @@ function MonthlySummaryCard({ row }: { row: MonthlySalesSummaryRow }) {
           <dd className="font-medium text-indigo-300/90">{margin.toFixed(1)} %</dd>
         </div>
       </dl>
+    </article>
+  );
+}
+
+function SalesOverviewSection({
+  title,
+  subtitle,
+  count,
+  totalRevenue,
+  totalProfit,
+  open,
+  onToggle,
+  desktopTable,
+  mobileCards
+}: {
+  title: string;
+  subtitle: string;
+  count: number;
+  totalRevenue: number;
+  totalProfit: number;
+  open: boolean;
+  onToggle: () => void;
+  desktopTable: ReactNode;
+  mobileCards: ReactNode[];
+}) {
+  return (
+    <article className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        aria-expanded={open}
+      >
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-100">{title}</p>
+          <p className="text-xs text-slate-500">{subtitle}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="inline-flex rounded-full border border-indigo-500/40 bg-indigo-500/15 px-2.5 py-1 text-xs font-semibold text-indigo-200">
+              {count} registro{count === 1 ? "" : "s"}
+            </span>
+            <span className="inline-flex rounded-full border border-cyan-500/40 bg-cyan-500/15 px-2.5 py-1 text-xs font-semibold text-cyan-200">
+              Venta {money(totalRevenue)}
+            </span>
+            <span
+              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                totalProfit >= 0
+                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                  : "border-rose-500/40 bg-rose-500/15 text-rose-200"
+              }`}
+            >
+              Beneficio {money(totalProfit)}
+            </span>
+          </div>
+        </div>
+        <ChevronSales open={open} />
+      </button>
+      {open ? (
+        <div className="border-t border-slate-800 p-3">
+          {count === 0 ? (
+            <p className="text-sm text-slate-500">Sin registros en este periodo.</p>
+          ) : (
+            <>
+              <div className="hidden overflow-x-auto rounded-lg border border-slate-800 md:block">
+                {desktopTable}
+              </div>
+              <div className="space-y-2 md:hidden">{mobileCards}</div>
+            </>
+          )}
+        </div>
+      ) : null}
     </article>
   );
 }

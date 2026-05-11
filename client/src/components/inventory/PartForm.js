@@ -3,6 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { OS_PART_CONDITION, PART_CATEGORIES, PART_CONDITIONS, isNonStockCategory, partCategoryLabel } from "../../types/part";
 import { calculateSalePrice } from "../../utils/pricing";
 const STOCK_QUICK_OPTIONS = [1, 2, 3, 4, 5];
+const PREBUILT_DESCRIPTION_TEMPLATE = `CPU:
+GPU:
+RAM:
+PSU:
+PLACA:
+ALMACENAMIENTO:
+CASE:
+COOLER:
+OTRO:`;
 const defaultValues = {
     inventoryKind: "PART",
     name: "",
@@ -47,7 +56,9 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
                 manualSalePrice: true,
                 stock: selectedPart.stock,
                 notes: selectedPart.notes ?? "",
-                description: selectedPart.description ?? ""
+                description: selectedPart.description?.trim()
+                    ? selectedPart.description
+                    : PREBUILT_DESCRIPTION_TEMPLATE
             });
             return;
         }
@@ -109,6 +120,7 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
                                         manualSalePrice: true,
                                         name: prev.name,
                                         notes: prev.notes,
+                                        description: PREBUILT_DESCRIPTION_TEMPLATE,
                                         salePrice: calculateSalePrice(prev.costPrice || 0, "USED"),
                                         condition: "USED"
                                     }));

@@ -30,15 +30,15 @@ function StockBadges({ part }) {
     }
     if (part.stock === 0)
         return null;
-    return (_jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [_jsx("span", { className: "font-medium text-slate-100", children: part.stock }), part.stock <= 2 ? (_jsx("span", { className: "rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300", children: "Stock bajo" })) : null] }));
+    return _jsx("span", { className: "font-medium text-slate-100", children: part.stock });
 }
 function ChevronCategory({ open, className = "text-slate-400" }) {
     return (_jsx("svg", { className: `h-5 w-5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""} ${className}`, fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) }));
 }
-function CategoryAccordionTrigger({ categoryKey, pieceSummary, expanded, panelId, onToggle, compact = false }) {
+function CategoryAccordionTrigger({ categoryKey, pieceSummary, expanded, panelId, onToggle, compact = false, categoryLowStock = false }) {
     const style = getInventoryCategoryStyle(categoryKey);
     const Icon = style.Icon;
-    return (_jsxs("button", { type: "button", className: `flex w-full items-center gap-3 text-left transition-colors duration-200 ${compact ? "px-3 py-2.5" : "px-4 py-3.5"} ${style.headerBg} ${style.headerHover}`, onClick: onToggle, "aria-expanded": expanded, "aria-controls": panelId, children: [_jsx("span", { className: `flex shrink-0 items-center justify-center rounded-xl border ${compact ? "h-9 w-9" : "h-10 w-10"} ${style.chipBorder} ${style.chipBg}`, "aria-hidden": true, children: _jsx(Icon, { className: `${compact ? "h-4 w-4" : "h-[1.125rem] w-[1.125rem]"} ${style.accentIcon}`, strokeWidth: 2 }) }), _jsx("span", { className: `inline-flex max-w-[min(100%,14rem)] shrink-0 truncate rounded-full border px-2.5 py-1 text-xs font-semibold ${style.chipBg} ${style.chipBorder} ${style.chipText}`, children: style.label }), _jsx("span", { className: `min-w-0 flex-1 text-sm tabular-nums ${style.accentText}`, children: pieceSummary }), _jsx(ChevronCategory, { open: expanded, className: style.accentIcon })] }));
+    return (_jsxs("button", { type: "button", className: `flex w-full items-center gap-3 text-left transition-colors duration-200 ${compact ? "px-3 py-2.5" : "px-4 py-3.5"} ${style.headerBg} ${style.headerHover}`, onClick: onToggle, "aria-expanded": expanded, "aria-controls": panelId, children: [_jsx("span", { className: `flex shrink-0 items-center justify-center rounded-xl border ${compact ? "h-9 w-9" : "h-10 w-10"} ${style.chipBorder} ${style.chipBg}`, "aria-hidden": true, children: _jsx(Icon, { className: `${compact ? "h-4 w-4" : "h-[1.125rem] w-[1.125rem]"} ${style.accentIcon}`, strokeWidth: 2 }) }), _jsx("span", { className: `inline-flex max-w-[min(100%,14rem)] shrink-0 truncate rounded-full border px-2.5 py-1 text-xs font-semibold ${style.chipBg} ${style.chipBorder} ${style.chipText}`, children: style.label }), _jsx("span", { className: `min-w-0 flex-1 text-sm tabular-nums ${style.accentText}`, children: pieceSummary }), categoryLowStock ? (_jsx("span", { className: "shrink-0 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300", children: "Stock bajo" })) : null, _jsx(ChevronCategory, { open: expanded, className: style.accentIcon })] }));
 }
 function PartCard({ part, deletingId, onEdit, onDelete, showCategoryBadge = true, compact = false }) {
     const catStyle = getInventoryCategoryStyle((part.category ?? "OTHER"));
@@ -64,7 +64,7 @@ function groupPartsByCategoryOrdered(parts) {
     }
     return result;
 }
-function MobilePartsByCategory({ parts, deletingId, onEdit, onDelete, compact = false }) {
+function MobilePartsByCategory({ parts, deletingId, onEdit, onDelete, compact = false, categoryStockTotals, categoryStockThreshold = 3 }) {
     const groups = useMemo(() => groupPartsByCategory(parts), [parts]);
     /** Solo true = abierto (por defecto cerrado en movil) */
     const [openMap, setOpenMap] = useState({});
@@ -79,13 +79,18 @@ function MobilePartsByCategory({ parts, deletingId, onEdit, onDelete, compact = 
             const expanded = isOpen(category);
             const panelId = `inv-cat-${category}`;
             const catStyle = getInventoryCategoryStyle(category);
-            const pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"} en esta pagina`;
-            return (_jsxs("div", { className: `overflow-hidden rounded-2xl border shadow-lg shadow-black/25 transition-colors duration-200 ${catStyle.panelBg} ${catStyle.panelBorder} ${catStyle.panelHover}`, children: [_jsx(CategoryAccordionTrigger, { categoryKey: category, pieceSummary: pieceSummary, expanded: expanded, panelId: panelId, onToggle: () => toggle(category), compact: compact }), _jsx("div", { id: panelId, className: expanded
+            const unitTotal = categoryStockTotals?.get(category);
+            let pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"} en esta pagina`;
+            if (unitTotal !== undefined) {
+                pieceSummary += ` · ${unitTotal} u. en categoría`;
+            }
+            const categoryLowStock = unitTotal !== undefined && unitTotal < categoryStockThreshold;
+            return (_jsxs("div", { className: `overflow-hidden rounded-2xl border shadow-lg shadow-black/25 transition-colors duration-200 ${catStyle.panelBg} ${catStyle.panelBorder} ${catStyle.panelHover}`, children: [_jsx(CategoryAccordionTrigger, { categoryKey: category, pieceSummary: pieceSummary, expanded: expanded, panelId: panelId, onToggle: () => toggle(category), compact: compact, categoryLowStock: categoryLowStock }), _jsx("div", { id: panelId, className: expanded
                             ? `border-t border-slate-800 px-3 pt-1 ${compact ? "pb-2" : "pb-3"}`
                             : "hidden", children: _jsx("div", { className: `pt-2 ${compact ? "space-y-2" : "space-y-3"}`, children: items.map((part) => (_jsx(PartCard, { part: part, deletingId: deletingId, onEdit: onEdit, onDelete: onDelete, showCategoryBadge: false, compact: compact }, part.id))) }) })] }, category));
         }) }));
 }
-function DesktopPartsByCategory({ parts, deletingId, onEdit, onDelete, compact = false }) {
+function DesktopPartsByCategory({ parts, deletingId, onEdit, onDelete, compact = false, categoryStockTotals, categoryStockThreshold = 3 }) {
     const groups = useMemo(() => groupPartsByCategoryOrdered(parts), [parts]);
     /** Solo true = abierto (por defecto plegado, igual que en movil) */
     const [openMap, setOpenMap] = useState({});
@@ -101,11 +106,16 @@ function DesktopPartsByCategory({ parts, deletingId, onEdit, onDelete, compact =
             const expanded = isOpen(category);
             const panelId = `inv-desktop-cat-${category}`;
             const catStyle = getInventoryCategoryStyle(category);
-            const pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"}`;
-            return (_jsxs("div", { className: `overflow-hidden rounded-2xl border shadow-lg shadow-black/25 transition-colors duration-200 ${catStyle.panelBg} ${catStyle.panelBorder} ${catStyle.panelHover}`, children: [_jsx(CategoryAccordionTrigger, { categoryKey: category, pieceSummary: pieceSummary, expanded: expanded, panelId: panelId, onToggle: () => toggle(category), compact: compact }), _jsx("div", { id: panelId, className: expanded ? "border-t border-slate-800" : "hidden", children: _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: `min-w-full text-left text-slate-200 ${compact ? "text-xs" : "text-sm"}`, children: [_jsx("thead", { className: "bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400", children: _jsxs("tr", { children: [_jsx("th", { className: cell, children: "Nombre" }), _jsx("th", { className: cell, children: "Estado" }), _jsx("th", { className: cell, children: "Precio coste" }), _jsx("th", { className: cell, children: "Precio venta" }), _jsx("th", { className: cell, children: "Stock" }), _jsx("th", { className: `${cell} text-right`, children: "Acciones" })] }) }), _jsx("tbody", { className: "divide-y divide-slate-800", children: items.map((part) => (_jsxs("tr", { className: "transition hover:bg-slate-800/50", children: [_jsx("td", { className: `${cell} font-medium text-slate-100`, children: part.name }), _jsx("td", { className: cell, children: _jsx(PartConditionBadge, { part: part }) }), _jsx("td", { className: `${cell} text-slate-300`, children: formatCostPrice(part.costPrice) }), _jsx("td", { className: `${cell} text-slate-300`, children: formatMoney(part.salePrice) }), _jsx("td", { className: cell, children: _jsx(StockBadges, { part: part }) }), _jsx("td", { className: cell, children: _jsxs("div", { className: "flex justify-end gap-2", children: [_jsx("button", { type: "button", onClick: () => onEdit(part), className: "rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20", children: "Editar" }), _jsx("button", { type: "button", onClick: () => onDelete(part), disabled: deletingId === part.id, className: "rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60", children: deletingId === part.id ? "Eliminando..." : "Eliminar" })] }) })] }, part.id))) })] }) }) })] }, category));
+            const unitTotal = categoryStockTotals?.get(category);
+            let pieceSummary = `${items.length} pieza${items.length === 1 ? "" : "s"}`;
+            if (unitTotal !== undefined) {
+                pieceSummary += ` · ${unitTotal} u. en categoría`;
+            }
+            const categoryLowStock = unitTotal !== undefined && unitTotal < categoryStockThreshold;
+            return (_jsxs("div", { className: `overflow-hidden rounded-2xl border shadow-lg shadow-black/25 transition-colors duration-200 ${catStyle.panelBg} ${catStyle.panelBorder} ${catStyle.panelHover}`, children: [_jsx(CategoryAccordionTrigger, { categoryKey: category, pieceSummary: pieceSummary, expanded: expanded, panelId: panelId, onToggle: () => toggle(category), compact: compact, categoryLowStock: categoryLowStock }), _jsx("div", { id: panelId, className: expanded ? "border-t border-slate-800" : "hidden", children: _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: `min-w-full text-left text-slate-200 ${compact ? "text-xs" : "text-sm"}`, children: [_jsx("thead", { className: "bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400", children: _jsxs("tr", { children: [_jsx("th", { className: cell, children: "Nombre" }), _jsx("th", { className: cell, children: "Estado" }), _jsx("th", { className: cell, children: "Precio coste" }), _jsx("th", { className: cell, children: "Precio venta" }), _jsx("th", { className: cell, children: "Stock" }), _jsx("th", { className: `${cell} text-right`, children: "Acciones" })] }) }), _jsx("tbody", { className: "divide-y divide-slate-800", children: items.map((part) => (_jsxs("tr", { className: "transition hover:bg-slate-800/50", children: [_jsx("td", { className: `${cell} font-medium text-slate-100`, children: part.name }), _jsx("td", { className: cell, children: _jsx(PartConditionBadge, { part: part }) }), _jsx("td", { className: `${cell} text-slate-300`, children: formatCostPrice(part.costPrice) }), _jsx("td", { className: `${cell} text-slate-300`, children: formatMoney(part.salePrice) }), _jsx("td", { className: cell, children: _jsx(StockBadges, { part: part }) }), _jsx("td", { className: cell, children: _jsxs("div", { className: "flex justify-end gap-2", children: [_jsx("button", { type: "button", onClick: () => onEdit(part), className: "rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20", children: "Editar" }), _jsx("button", { type: "button", onClick: () => onDelete(part), disabled: deletingId === part.id, className: "rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60", children: deletingId === part.id ? "Eliminando..." : "Eliminar" })] }) })] }, part.id))) })] }) }) })] }, category));
         }) }));
 }
-export function PartsTable({ parts, partsMobilePage, compact = false, loading, deletingId, onEdit, onDelete, emptyMessage }) {
+export function PartsTable({ parts, partsMobilePage, compact = false, loading, deletingId, categoryStockTotals, categoryStockThreshold = 3, onEdit, onDelete, emptyMessage }) {
     if (loading) {
         return (_jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40", children: _jsx("p", { className: "text-sm text-slate-300", children: "Cargando piezas..." }) }));
     }
@@ -113,5 +123,5 @@ export function PartsTable({ parts, partsMobilePage, compact = false, loading, d
     if (parts.length === 0) {
         return (_jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40", children: _jsx("p", { className: "text-sm text-slate-300", children: emptyMessage ?? "No hay piezas en inventario todavia." }) }));
     }
-    return (_jsxs(_Fragment, { children: [_jsx(DesktopPartsByCategory, { parts: parts, deletingId: deletingId, onEdit: onEdit, onDelete: onDelete, compact: compact }), _jsx(MobilePartsByCategory, { parts: mobileParts, deletingId: deletingId, onEdit: onEdit, onDelete: onDelete, compact: compact })] }));
+    return (_jsxs(_Fragment, { children: [_jsx(DesktopPartsByCategory, { parts: parts, deletingId: deletingId, onEdit: onEdit, onDelete: onDelete, compact: compact, categoryStockTotals: categoryStockTotals, categoryStockThreshold: categoryStockThreshold }), _jsx(MobilePartsByCategory, { parts: mobileParts, deletingId: deletingId, onEdit: onEdit, onDelete: onDelete, compact: compact, categoryStockTotals: categoryStockTotals, categoryStockThreshold: categoryStockThreshold })] }));
 }

@@ -9,6 +9,8 @@ export const PART_CATEGORIES = [
     "COOLER",
     "FAN",
     "NETWORK",
+    "MONITOR",
+    "PERIPHERAL",
     "OS",
     "LABOR",
     "OTHER"
@@ -20,6 +22,8 @@ export function isNonStockCategory(category) {
     return NON_STOCK_PART_CATEGORIES.has(category);
 }
 const CATEGORY_LABELS = {
+    MONITOR: "Monitor",
+    PERIPHERAL: "Periférico",
     OS: "Sistema Operativo",
     LABOR: "Mano de obra"
 };

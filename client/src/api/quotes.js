@@ -45,3 +45,8 @@ export function deleteQuoteItem(quoteId, itemId) {
         method: "DELETE"
     });
 }
+export function convertQuoteToBuild(quoteId) {
+    return http(`/quotes/${quoteId}/convert-to-build`, {
+        method: "POST"
+    });
+}
