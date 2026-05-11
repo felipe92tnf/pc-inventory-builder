@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import * as buildsApi from "../api/builds";
 import { PartForm } from "../components/inventory/PartForm";
 import { PartsTable } from "../components/inventory/PartsTable";
 import { PrebuiltInventoryTable } from "../components/inventory/PrebuiltInventoryTable";
@@ -88,7 +89,7 @@ function inventoryTotals(parts: Part[]) {
 const LOW_STOCK_CATEGORY_THRESHOLD = 3;
 
 function listedInInventory(part: Part): boolean {
-  if (part.inventoryKind === "PREBUILT_PC") return true;
+  if (part.inventoryKind === "PREBUILT_PC") return part.stock > 0;
   if (!part.category) return part.stock > 0;
   return part.stock > 0 || isNonStockCategory(part.category);
 }
@@ -119,6 +120,7 @@ const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
 
 export function InventoryPage() {
   const { parts, loading, error, submitting, deletingId, createPart, updatePart, deletePart, reload } = useParts();
+  const [partIdsInBuiltPcs, setPartIdsInBuiltPcs] = useState<Set<string>>(new Set());
   const [selectedPart, setSelectedPart] = useState<Part | null>(null);
   const [activeTab, setActiveTab] = useState<InventoryTabId>("summary");
   const [query, setQuery] = useState("");
@@ -134,6 +136,31 @@ export function InventoryPage() {
       setActiveTab("add");
     }
   }, [selectedPart]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void buildsApi
+      .listBuilds()
+      .then((rows) => {
+        if (cancelled) return;
+        const ids = new Set<string>();
+        for (const build of rows) {
+          if (build.status === "DRAFT") continue;
+          for (const item of build.items ?? []) {
+            if (item.part?.inventoryKind === "PART") {
+              ids.add(item.partId);
+            }
+          }
+        }
+        setPartIdsInBuiltPcs(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setPartIdsInBuiltPcs(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (values: PartFormValues) => {
     const payload = toPayload(values);
@@ -158,7 +185,13 @@ export function InventoryPage() {
 
   const totals = useMemo(() => inventoryTotals(parts), [parts]);
 
-  const partsListed = useMemo(() => parts.filter(listedInInventory), [parts]);
+  const partsListed = useMemo(() => {
+    return parts.filter((part) => {
+      if (!listedInInventory(part)) return false;
+      if (part.inventoryKind === "PART" && partIdsInBuiltPcs.has(part.id)) return false;
+      return true;
+    });
+  }, [parts, partIdsInBuiltPcs]);
 
   const filteredParts = useMemo(() => {
     return partsListed.filter((part) => {

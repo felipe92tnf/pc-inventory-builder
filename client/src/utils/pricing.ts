@@ -2,5 +2,6 @@ import type { PartCondition } from "../types/part";
 
 export function calculateSalePrice(costPrice: number, condition: PartCondition): number {
   const multiplier = condition === "NEW" ? 1.18 : 1.3;
-  return Math.round(costPrice * multiplier * 100) / 100;
+  // Evita precios "feos" (p. ej. 34.97) en el modo automatico.
+  return Math.round(costPrice * multiplier);
 }
