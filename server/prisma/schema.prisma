@@ -90,9 +90,10 @@ model Part {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  buildItems          BuildPartItem[]
-  sparePartServices   Service[]       @relation("SparePart")
-  quoteItems          QuoteItem[]
+  buildItems             BuildPartItem[]
+  sparePartServices      Service[]             @relation("SparePart")
+  serviceSparePartLines  ServiceSparePartLine[]
+  quoteItems             QuoteItem[]
 
   @@index([category])
   @@index([condition])
@@ -124,11 +125,25 @@ model Service {
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
-  selectedPart Part? @relation("SparePart", fields: [selectedPartId], references: [id], onDelete: SetNull)
+  selectedPart   Part?                  @relation("SparePart", fields: [selectedPartId], references: [id], onDelete: SetNull)
+  sparePartLines ServiceSparePartLine[]
 
   @@index([type])
   @@index([status])
   @@index([serviceDate])
+}
+
+model ServiceSparePartLine {
+  id        String @id @default(cuid())
+  serviceId String
+  partId    String
+  quantity  Int
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  part    Part    @relation(fields: [partId], references: [id], onDelete: Restrict)
+
+  @@index([serviceId])
+  @@index([partId])
 }
 
 model Build {

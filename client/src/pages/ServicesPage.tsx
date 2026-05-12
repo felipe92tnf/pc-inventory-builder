@@ -3,7 +3,7 @@ import * as servicesApi from "../api/services";
 import { useParts } from "../hooks/useParts";
 import { useServices } from "../hooks/useServices";
 import type { CreateServicePayload, ServiceRow, ServiceStatus, ServiceType } from "../types/service";
-import { isPartPiece } from "../types/part";
+import { isPartPiece, PART_CATEGORIES, partCategoryLabel, type PartCategory } from "../types/part";
 import { SERVICE_TYPES, SERVICE_STATUSES } from "../types/service";
 import {
   PRIMARY_ACTION_BUTTON,
@@ -90,6 +90,19 @@ function partitionCompleted(completed: ServiceRow[]) {
   return { spare, home, technical };
 }
 
+function spareSaleSummary(s: ServiceRow): string | null {
+  if (!isSparePartSale(s)) return null;
+  if (s.sparePartLines?.length) {
+    return s.sparePartLines.map((l) => `${l.part.name} × ${l.quantity}`).join(", ");
+  }
+  if (s.selectedPart && s.quantity) {
+    return `${s.selectedPart.name} × ${s.quantity}`;
+  }
+  return null;
+}
+
+type SpareLineDraft = { partId: string; quantity: number };
+
 export function ServicesPage() {
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState(now.getMonth() + 1);
@@ -119,6 +132,25 @@ export function ServicesPage() {
     () => parts.filter((p) => isPartPiece(p) && p.stock > 0),
     [parts]
   );
+
+  /** Piezas con stock para venta suelta, agrupadas por categoría (orden fijo) y nombre dentro de cada grupo */
+  const sparePartsByCategory = useMemo(() => {
+    const byCat = new Map<PartCategory, typeof partsForSpare>();
+    for (const p of partsForSpare) {
+      const cat = (p.category ?? "OTHER") as PartCategory;
+      const list = byCat.get(cat);
+      if (list) list.push(p);
+      else byCat.set(cat, [p]);
+    }
+    for (const list of byCat.values()) {
+      list.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+    }
+    return PART_CATEGORIES.filter((c) => byCat.has(c)).map((category) => ({
+      category,
+      label: partCategoryLabel(category),
+      parts: byCat.get(category)!
+    }));
+  }, [partsForSpare]);
 
   const [monthlyRows, setMonthlyRows] = useState<Awaited<ReturnType<typeof servicesApi.getMonthlyServicesSummary>>>(
     []
@@ -167,8 +199,7 @@ export function ServicesPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedPartId, setSelectedPartId] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [spareLines, setSpareLines] = useState<SpareLineDraft[]>([{ partId: "", quantity: 1 }]);
   const [costPrice, setCostPrice] = useState<number | "">("");
   const [salePrice, setSalePrice] = useState<number | "">("");
   const [isHomeService, setIsHomeService] = useState(false);
@@ -178,24 +209,36 @@ export function ServicesPage() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [notes, setNotes] = useState("");
 
-  const selectedPart = useMemo(
-    () => parts.find((p) => p.id === selectedPartId),
-    [parts, selectedPartId]
-  );
+  const spareInventoryCost = useMemo(() => {
+    if (formType !== "SPARE_PART_SALE") return null;
+    let cost = 0;
+    let anyLine = false;
+    for (const line of spareLines) {
+      if (!line.partId || line.quantity < 1) continue;
+      const p = parts.find((x) => x.id === line.partId);
+      if (!p) continue;
+      anyLine = true;
+      cost += Number(p.costPrice) * line.quantity;
+    }
+    return anyLine ? cost : null;
+  }, [formType, spareLines, parts]);
 
   const sparePreview = useMemo(() => {
-    if (formType !== "SPARE_PART_SALE" || !selectedPart || !quantity || quantity < 1) {
+    if (formType !== "SPARE_PART_SALE" || spareInventoryCost === null) {
       return null;
     }
     const sup = typeof homeServiceSupplement === "number" ? homeServiceSupplement : 0;
-    const cost = Number(selectedPart.costPrice) * quantity;
     const manual = typeof salePrice === "number" && !Number.isNaN(salePrice) ? salePrice : null;
     if (manual === null) {
-      return { cost, sale: null as number | null, profit: null as number | null };
+      return {
+        cost: spareInventoryCost,
+        sale: null as number | null,
+        profit: null as number | null
+      };
     }
     const sale = manual + sup;
-    return { cost, sale, profit: sale - cost };
-  }, [formType, selectedPart, quantity, homeServiceSupplement, salePrice]);
+    return { cost: spareInventoryCost, sale, profit: sale - spareInventoryCost };
+  }, [formType, spareInventoryCost, homeServiceSupplement, salePrice]);
 
   const resetForm = () => {
     setFormType("DIAGNOSTIC");
@@ -203,8 +246,7 @@ export function ServicesPage() {
     setCustomerName("");
     setCustomerPhone("");
     setDescription("");
-    setSelectedPartId("");
-    setQuantity(1);
+    setSpareLines([{ partId: "", quantity: 1 }]);
     setCostPrice("");
     setSalePrice("");
     setIsHomeService(false);
@@ -217,6 +259,18 @@ export function ServicesPage() {
 
   const closeModal = () => {
     setCreateModalOpen(false);
+  };
+
+  const updateSpareLine = (index: number, patch: Partial<SpareLineDraft>) => {
+    setSpareLines((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  };
+
+  const addSpareLine = () => {
+    setSpareLines((prev) => [...prev, { partId: "", quantity: 1 }]);
+  };
+
+  const removeSpareLine = (index: number) => {
+    setSpareLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -240,8 +294,11 @@ export function ServicesPage() {
 
     try {
       if (formType === "SPARE_PART_SALE") {
-        if (!selectedPartId) {
-          window.alert("Selecciona una pieza.");
+        const lines = spareLines
+          .filter((l) => l.partId.trim() !== "" && l.quantity >= 1)
+          .map((l) => ({ partId: l.partId.trim(), quantity: l.quantity }));
+        if (lines.length === 0) {
+          window.alert("Añade al menos una pieza con cantidad.");
           return;
         }
         const manualSale = typeof salePrice === "number" ? salePrice : NaN;
@@ -251,9 +308,10 @@ export function ServicesPage() {
         }
         await createService({
           ...base,
-          selectedPartId,
-          quantity,
-          salePrice: manualSale
+          sparePartLines: lines,
+          salePrice: manualSale,
+          selectedPartId: null,
+          quantity: null
         });
       } else {
         const c = typeof costPrice === "number" ? costPrice : 0;
@@ -608,41 +666,68 @@ export function ServicesPage() {
 
                 {formType === "SPARE_PART_SALE" ? (
                   <>
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                      Pieza (stock disponible)
-                      <select
-                        value={selectedPartId}
-                        onChange={(e) => setSelectedPartId(e.target.value)}
-                        required
-                        className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                      >
-                        <option value="">Seleccionar...</option>
-                        {partsForSpare.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} — stock {p.stock}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-                      Cantidad
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={quantity}
-                        onChange={(e) => setQuantity(Number(e.target.value))}
-                        required
-                        className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                      />
-                    </label>
-                    {selectedPart && quantity >= 1 ? (
+                    <div className="space-y-3 md:col-span-2">
+                      <div className="flex flex-wrap items-end justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-200">Piezas (stock disponible)</p>
+                        <button type="button" onClick={() => addSpareLine()} className={SECONDARY_BUTTON_SM}>
+                          Añadir otra pieza
+                        </button>
+                      </div>
+                      {spareLines.map((line, idx) => (
+                        <div
+                          key={idx}
+                          className="flex flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950/40 p-3 sm:flex-row sm:flex-wrap sm:items-end"
+                        >
+                          <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-200">
+                            Pieza
+                            <select
+                              value={line.partId}
+                              onChange={(e) => updateSpareLine(idx, { partId: e.target.value })}
+                              required={idx === 0}
+                              className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                            >
+                              <option value="">Seleccionar...</option>
+                              {sparePartsByCategory.map(({ category, label, parts: groupParts }) => (
+                                <optgroup key={category} label={label}>
+                                  {groupParts.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name} — stock {p.stock}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="flex w-full flex-col gap-1 text-sm font-medium text-slate-200 sm:w-28">
+                            Cantidad
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={line.quantity}
+                              onChange={(e) =>
+                                updateSpareLine(idx, { quantity: Number(e.target.value) })
+                              }
+                              required={idx === 0}
+                              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                            />
+                          </label>
+                          {spareLines.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => removeSpareLine(idx)}
+                              className={DESTRUCTIVE_BUTTON_SM}
+                            >
+                              Quitar
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                    {spareInventoryCost !== null ? (
                       <div className="rounded-lg border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm md:col-span-2">
                         <p className="text-xs uppercase tracking-wide text-slate-500">Coste desde inventario</p>
-                        <p className="mt-0.5 font-medium text-slate-200">
-                          {money(Number(selectedPart.costPrice) * quantity)} (
-                          {money(Number(selectedPart.costPrice))} × {quantity})
-                        </p>
+                        <p className="mt-0.5 font-medium text-slate-200">{money(spareInventoryCost)}</p>
                       </div>
                     ) : null}
                     <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
@@ -953,11 +1038,19 @@ function ServiceTableRow({
 }) {
   const d = new Date(s.serviceDate);
   const dateStr = d.toLocaleDateString("es-ES");
+  const spareHint = spareSaleSummary(s);
   return (
     <tr className="transition hover:bg-slate-800/40">
       <td className="whitespace-nowrap px-2 py-2 text-slate-400">{dateStr}</td>
-      <td className="max-w-[140px] truncate px-2 py-2 font-medium text-slate-100" title={s.title}>
-        {s.title}
+      <td className="max-w-[200px] px-2 py-2">
+        <div className="truncate font-medium text-slate-100" title={s.title}>
+          {s.title}
+        </div>
+        {spareHint ? (
+          <div className="truncate text-[10px] text-slate-500" title={spareHint}>
+            {spareHint}
+          </div>
+        ) : null}
       </td>
       <td className="max-w-[100px] truncate px-2 py-2 text-[11px] text-slate-400" title={SERVICE_LABELS[s.type]}>
         {SERVICE_LABELS[s.type]}
@@ -1030,11 +1123,17 @@ function ServiceCard({
   onDelete: (id: string) => void;
 }) {
   const d = new Date(s.serviceDate);
+  const spareHint = spareSaleSummary(s);
   return (
     <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-slate-100">{s.title}</p>
+          {spareHint ? (
+            <p className="truncate text-[11px] text-slate-500" title={spareHint}>
+              {spareHint}
+            </p>
+          ) : null}
           <p className="text-[11px] text-slate-500">{d.toLocaleDateString("es-ES")}</p>
         </div>
         <span

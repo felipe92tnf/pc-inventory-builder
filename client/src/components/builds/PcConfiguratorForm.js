@@ -1,6 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useMemo, useState } from "react";
 import { isNonStockCategory } from "../../types/part";
+import { PRIMARY_ACTION_BUTTON, PRIMARY_ACTION_BUTTON_COMPACT } from "../../theme/actionButtons";
 const CONFIGURATOR_SLOTS = [
     { id: "CPU", label: "CPU", categories: ["CPU"] },
     { id: "MOTHERBOARD", label: "Motherboard", categories: ["MOTHERBOARD"] },
@@ -202,7 +203,5 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected, catalogSale
                                                 })), disabled: busy || !selected, placeholder: "EUR", className: "rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-sm font-medium text-emerald-200/95 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50" })] })) : null] })] }, slot.id));
                 }) }), _jsx("div", { className: compact ? "mt-3 flex flex-wrap items-center gap-2" : "mt-6 flex flex-wrap items-center gap-3", children: _jsx("button", { type: "button", onClick: () => {
                         void handleAddSelected();
-                    }, disabled: busy || !hasAnySelection, className: compact
-                        ? "rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-900/35 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                        : "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50", children: submitting ? "Anadiendo..." : catalogSaleOnly ? "Anadir al presupuesto" : "Anadir piezas seleccionadas" }) })] }));
+                    }, disabled: busy || !hasAnySelection, className: compact ? PRIMARY_ACTION_BUTTON_COMPACT : PRIMARY_ACTION_BUTTON, children: submitting ? "Anadiendo..." : catalogSaleOnly ? "Anadir al presupuesto" : "Anadir piezas seleccionadas" }) })] }));
 }

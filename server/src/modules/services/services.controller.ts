@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import type { Part, Service } from "@prisma/client";
+import type { Part, Service, ServiceSparePartLine } from "@prisma/client";
 import * as servicesService from "./services.service.js";
 
 function serializePart(part: Part) {
@@ -11,9 +11,26 @@ function serializePart(part: Part) {
   };
 }
 
-function serializeService(row: Service & { selectedPart: Part | null }) {
+function serializeSparePartLine(row: ServiceSparePartLine & { part: Part }) {
   return {
-    ...row,
+    id: row.id,
+    serviceId: row.serviceId,
+    partId: row.partId,
+    quantity: row.quantity,
+    part: serializePart(row.part)
+  };
+}
+
+function serializeService(
+  row: Service & {
+    selectedPart: Part | null;
+    sparePartLines: (ServiceSparePartLine & { part: Part })[];
+  }
+) {
+  const { sparePartLines: spareRows, selectedPart, ...rest } = row;
+  const sparePartLines = spareRows ?? [];
+  return {
+    ...rest,
     costPrice: Number(row.costPrice),
     salePrice: Number(row.salePrice),
     profit: Number(row.profit),
@@ -21,7 +38,8 @@ function serializeService(row: Service & { selectedPart: Part | null }) {
       row.homeServiceSupplement === null || row.homeServiceSupplement === undefined
         ? null
         : Number(row.homeServiceSupplement),
-    selectedPart: row.selectedPart ? serializePart(row.selectedPart) : null
+    selectedPart: selectedPart ? serializePart(selectedPart) : null,
+    sparePartLines: sparePartLines.filter((l) => l.part != null).map((l) => serializeSparePartLine(l))
   };
 }
 

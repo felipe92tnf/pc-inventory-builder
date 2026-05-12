@@ -1,6 +1,23 @@
 import { ServiceStatus, ServiceType } from "@prisma/client";
 import { z } from "zod";
 
+const sparePartLineSchema = z.object({
+  partId: z.string().min(1),
+  quantity: z.number().int().positive()
+});
+
+export function mergeSparePartLines(
+  lines: { partId: string; quantity: number }[]
+): { partId: string; quantity: number }[] {
+  const m = new Map<string, number>();
+  for (const { partId, quantity } of lines) {
+    const id = partId.trim();
+    if (!id || quantity < 1) continue;
+    m.set(id, (m.get(id) ?? 0) + quantity);
+  }
+  return [...m.entries()].map(([partId, quantity]) => ({ partId, quantity }));
+}
+
 export const createServiceSchema = z
   .object({
     type: z.nativeEnum(ServiceType),
@@ -11,6 +28,7 @@ export const createServiceSchema = z
     description: z.string().optional().default(""),
     selectedPartId: z.string().optional().nullable(),
     quantity: z.number().int().positive().optional().nullable(),
+    sparePartLines: z.array(sparePartLineSchema).optional(),
     costPrice: z.number().nonnegative().optional(),
     salePrice: z.number().nonnegative().optional(),
     isHomeService: z.boolean().optional().default(false),
@@ -22,18 +40,17 @@ export const createServiceSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.type === ServiceType.SPARE_PART_SALE) {
-      if (!data.selectedPartId) {
+      const merged = mergeSparePartLines(data.sparePartLines ?? []);
+      const legacySingle =
+        !!data.selectedPartId &&
+        data.quantity !== undefined &&
+        data.quantity !== null &&
+        data.quantity >= 1;
+      if (merged.length === 0 && !legacySingle) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Selecciona una pieza del inventario",
-          path: ["selectedPartId"]
-        });
-      }
-      if (data.quantity === undefined || data.quantity === null || data.quantity < 1) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Indica la cantidad",
-          path: ["quantity"]
+          message: "Indica al menos una pieza y cantidad",
+          path: ["sparePartLines"]
         });
       }
       if (data.salePrice === undefined || data.salePrice === null) {
@@ -71,6 +88,7 @@ export const patchServiceSchema = z
     description: z.string().optional(),
     selectedPartId: z.string().optional().nullable(),
     quantity: z.number().int().positive().optional().nullable(),
+    sparePartLines: z.array(sparePartLineSchema).optional(),
     costPrice: z.number().nonnegative().optional(),
     salePrice: z.number().nonnegative().optional(),
     profit: z.number().optional(),

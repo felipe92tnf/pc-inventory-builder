@@ -1,10 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { InventoryKind, Prisma, ServiceStatus, ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import {
   createServiceSchema,
   listServicesQuerySchema,
+  mergeSparePartLines,
   patchServiceSchema
 } from "./services.validators.js";
+
+const serviceInclude = {
+  selectedPart: true,
+  sparePartLines: { include: { part: true } }
+} as const;
 
 function moneyDecimal(value: number): Prisma.Decimal {
   return new Prisma.Decimal(Math.round(value * 100) / 100);
@@ -25,6 +32,55 @@ function normNotes(value: string | null | undefined): string | null {
   return t === "" ? null : t;
 }
 
+type SpareLine = { partId: string; quantity: number };
+
+async function validateSpareLinesStock(lines: SpareLine[]): Promise<void> {
+  const parts = await prisma.part.findMany({
+    where: { id: { in: lines.map((l) => l.partId) } }
+  });
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  for (const line of lines) {
+    const part = byId.get(line.partId);
+    if (!part) {
+      throw new Error("PART_NOT_FOUND");
+    }
+    if (part.inventoryKind !== InventoryKind.PART) {
+      throw new Error("SPARE_PART_REQUIRES_PART_KIND");
+    }
+    if (part.stock < line.quantity) {
+      throw new Error("INSUFFICIENT_STOCK");
+    }
+  }
+}
+
+function spareCostTotal(lines: SpareLine[], parts: { id: string; costPrice: Prisma.Decimal }[]): number {
+  const byId = new Map(parts.map((p) => [p.id, Number(p.costPrice)]));
+  let total = 0;
+  for (const line of lines) {
+    const unit = byId.get(line.partId);
+    if (unit === undefined) {
+      throw new Error("PART_NOT_FOUND");
+    }
+    total += unit * line.quantity;
+  }
+  return total;
+}
+
+function resolveCreateSpareLines(data: {
+  sparePartLines?: SpareLine[] | undefined;
+  selectedPartId?: string | null;
+  quantity?: number | null;
+}): SpareLine[] {
+  const merged = mergeSparePartLines(data.sparePartLines ?? []);
+  if (merged.length > 0) {
+    return merged;
+  }
+  if (data.selectedPartId && data.quantity !== undefined && data.quantity !== null && data.quantity >= 1) {
+    return [{ partId: data.selectedPartId, quantity: data.quantity }];
+  }
+  return [];
+}
+
 export async function createService(payload: unknown) {
   const data = createServiceSchema.parse(payload);
 
@@ -32,20 +88,13 @@ export async function createService(payload: unknown) {
   const supplement = data.homeServiceSupplement ?? 0;
 
   if (data.type === ServiceType.SPARE_PART_SALE) {
-    const part = await prisma.part.findUnique({ where: { id: data.selectedPartId! } });
-    if (!part) {
-      throw new Error("PART_NOT_FOUND");
-    }
-    if (part.inventoryKind !== InventoryKind.PART) {
-      throw new Error("SPARE_PART_REQUIRES_PART_KIND");
-    }
-    const qty = data.quantity!;
-    if (part.stock < qty) {
-      throw new Error("INSUFFICIENT_STOCK");
-    }
+    const lines = resolveCreateSpareLines(data);
+    await validateSpareLinesStock(lines);
 
-    const unitCost = Number(part.costPrice);
-    const costTotal = unitCost * qty;
+    const parts = await prisma.part.findMany({
+      where: { id: { in: lines.map((l) => l.partId) } }
+    });
+    const costTotal = spareCostTotal(lines, parts);
     const manualSale = data.salePrice!;
     const saleTotal = manualSale + supplement;
     const profit = saleTotal - costTotal;
@@ -58,8 +107,8 @@ export async function createService(payload: unknown) {
         customerPhone: data.customerPhone.trim(),
         customerEmail,
         description: data.description?.trim() ?? "",
-        selectedPartId: data.selectedPartId,
-        quantity: qty,
+        selectedPartId: lines.length === 1 ? lines[0].partId : null,
+        quantity: lines.length === 1 ? lines[0].quantity : null,
         costPrice: moneyDecimal(costTotal),
         salePrice: moneyDecimal(saleTotal),
         profit: moneyDecimal(profit),
@@ -72,9 +121,15 @@ export async function createService(payload: unknown) {
         serviceDate: data.serviceDate,
         status: ServiceStatus.PENDING,
         paymentMethod: normNotes(data.paymentMethod),
-        notes: normNotes(data.notes)
+        notes: normNotes(data.notes),
+        sparePartLines: {
+          create: lines.map((l) => ({
+            partId: l.partId,
+            quantity: l.quantity
+          }))
+        }
       },
-      include: { selectedPart: true }
+      include: serviceInclude
     });
   }
 
@@ -105,7 +160,7 @@ export async function createService(payload: unknown) {
       paymentMethod: normNotes(data.paymentMethod),
       notes: normNotes(data.notes)
     },
-    include: { selectedPart: true }
+    include: serviceInclude
   });
 }
 
@@ -128,21 +183,55 @@ export async function listServices(query: Record<string, unknown>) {
   return prisma.service.findMany({
     where,
     orderBy: { serviceDate: "desc" },
-    include: { selectedPart: true }
+    include: serviceInclude
   });
 }
 
 export async function getService(id: string) {
   return prisma.service.findUnique({
     where: { id },
-    include: { selectedPart: true }
+    include: serviceInclude
   });
+}
+
+async function effectiveSpareLinesForPatch(
+  existing: {
+    type: ServiceType;
+    selectedPartId: string | null;
+    quantity: number | null;
+    sparePartLines: { partId: string; quantity: number }[];
+  },
+  data: ReturnType<typeof patchServiceSchema.parse>
+): Promise<SpareLine[]> {
+  if (data.sparePartLines !== undefined) {
+    const merged = mergeSparePartLines(data.sparePartLines);
+    if (merged.length === 0) {
+      throw new Error("SPARE_PART_INVALID");
+    }
+    return merged;
+  }
+
+  const rows = existing.sparePartLines?.map((r) => ({ partId: r.partId, quantity: r.quantity })) ?? [];
+  if (rows.length > 0) {
+    return rows;
+  }
+
+  const pid = data.selectedPartId !== undefined ? data.selectedPartId : existing.selectedPartId;
+  const qty = data.quantity !== undefined ? data.quantity : existing.quantity;
+  if (pid && qty !== undefined && qty !== null && qty >= 1) {
+    return [{ partId: pid, quantity: qty }];
+  }
+
+  throw new Error("SPARE_PART_INVALID");
 }
 
 export async function patchService(id: string, payload: unknown) {
   const data = patchServiceSchema.parse(payload);
 
-  const existing = await prisma.service.findUnique({ where: { id } });
+  const existing = await prisma.service.findUnique({
+    where: { id },
+    include: serviceInclude
+  });
   if (!existing) {
     throw new Error("SERVICE_NOT_FOUND");
   }
@@ -190,45 +279,54 @@ export async function patchService(id: string, payload: unknown) {
     data.type !== undefined ||
     data.selectedPartId !== undefined ||
     data.quantity !== undefined ||
+    data.sparePartLines !== undefined ||
     data.costPrice !== undefined ||
     data.salePrice !== undefined ||
     data.homeServiceSupplement !== undefined;
 
+  const leavesSpare =
+    existing.type === ServiceType.SPARE_PART_SALE && nextType !== ServiceType.SPARE_PART_SALE;
+  const entersSpare =
+    existing.type !== ServiceType.SPARE_PART_SALE && nextType === ServiceType.SPARE_PART_SALE;
+
+  if (entersSpare) {
+    const merged = mergeSparePartLines(data.sparePartLines ?? []);
+    const legacySingle =
+      !!data.selectedPartId &&
+      data.quantity !== undefined &&
+      data.quantity !== null &&
+      data.quantity >= 1;
+    if (merged.length === 0 && !legacySingle) {
+      throw new Error("SPARE_PART_INVALID");
+    }
+  }
+
+  let spareLinesSync: SpareLine[] | null = null;
+
   if (mustRecalcEconomics) {
     if (nextType === ServiceType.SPARE_PART_SALE) {
-      const partId = data.selectedPartId ?? existing.selectedPartId;
-      const qty = data.quantity ?? existing.quantity;
-      if (!partId || !qty || qty < 1) {
-        throw new Error("SPARE_PART_INVALID");
-      }
-      const part = await prisma.part.findUnique({ where: { id: partId } });
-      if (!part) {
-        throw new Error("PART_NOT_FOUND");
-      }
-      if (part.inventoryKind !== InventoryKind.PART) {
-        throw new Error("SPARE_PART_REQUIRES_PART_KIND");
-      }
-      if (part.stock < qty) {
-        throw new Error("INSUFFICIENT_STOCK");
-      }
-      const costTotal = Number(part.costPrice) * qty;
+      spareLinesSync = await effectiveSpareLinesForPatch(existing, data);
+      await validateSpareLinesStock(spareLinesSync);
+
+      const parts = await prisma.part.findMany({
+        where: { id: { in: spareLinesSync.map((l) => l.partId) } }
+      });
+      const costTotal = spareCostTotal(spareLinesSync, parts);
+
       const existingSaleTotal = Number(existing.salePrice);
       const manualSaleBase =
-        data.salePrice !== undefined
-          ? data.salePrice
-          : existingSaleTotal - existingSup;
+        data.salePrice !== undefined ? data.salePrice : existingSaleTotal - existingSup;
       const saleTotal = manualSaleBase + nextSup;
+
       patch.costPrice = moneyDecimal(costTotal);
       patch.salePrice = moneyDecimal(saleTotal);
       patch.profit = moneyDecimal(saleTotal - costTotal);
-      patch.selectedPartId = partId;
-      patch.quantity = qty;
+      patch.selectedPartId = spareLinesSync.length === 1 ? spareLinesSync[0].partId : null;
+      patch.quantity = spareLinesSync.length === 1 ? spareLinesSync[0].quantity : null;
     } else {
       const cost = data.costPrice ?? Number(existing.costPrice);
       const baseSale =
-        data.salePrice !== undefined
-          ? data.salePrice
-          : Number(existing.salePrice) - existingSup;
+        data.salePrice !== undefined ? data.salePrice : Number(existing.salePrice) - existingSup;
       const saleTotal = baseSale + nextSup;
       patch.costPrice = moneyDecimal(cost);
       patch.salePrice = moneyDecimal(saleTotal);
@@ -238,10 +336,26 @@ export async function patchService(id: string, payload: unknown) {
     }
   }
 
-  return prisma.service.update({
-    where: { id },
-    data: patch,
-    include: { selectedPart: true }
+  return prisma.$transaction(async (tx) => {
+    if (leavesSpare) {
+      await tx.serviceSparePartLine.deleteMany({ where: { serviceId: id } });
+    } else if (mustRecalcEconomics && nextType === ServiceType.SPARE_PART_SALE && spareLinesSync) {
+      await tx.serviceSparePartLine.deleteMany({ where: { serviceId: id } });
+      await tx.serviceSparePartLine.createMany({
+        data: spareLinesSync.map((l) => ({
+          id: randomUUID(),
+          serviceId: id,
+          partId: l.partId,
+          quantity: l.quantity
+        }))
+      });
+    }
+
+    return tx.service.update({
+      where: { id },
+      data: patch,
+      include: serviceInclude
+    });
   });
 }
 
@@ -253,10 +367,29 @@ export async function deleteService(id: string) {
   await prisma.service.delete({ where: { id } });
 }
 
+function linesForCompletion(existing: {
+  type: ServiceType;
+  selectedPartId: string | null;
+  quantity: number | null;
+  sparePartLines?: { partId: string; quantity: number }[];
+}): SpareLine[] {
+  if (existing.type !== ServiceType.SPARE_PART_SALE) {
+    return [];
+  }
+  const spl = existing.sparePartLines;
+  if (spl && spl.length > 0) {
+    return spl.map((l) => ({ partId: l.partId, quantity: l.quantity }));
+  }
+  if (existing.selectedPartId && existing.quantity) {
+    return [{ partId: existing.selectedPartId, quantity: existing.quantity }];
+  }
+  return [];
+}
+
 export async function completeService(id: string) {
   const existing = await prisma.service.findUnique({
     where: { id },
-    include: { selectedPart: true }
+    include: serviceInclude
   });
   if (!existing) {
     throw new Error("SERVICE_NOT_FOUND");
@@ -268,21 +401,23 @@ export async function completeService(id: string) {
     throw new Error("SERVICE_CANCELLED");
   }
 
+  const toShip = linesForCompletion(existing);
+
   return prisma.$transaction(async (tx) => {
-    if (existing.type === ServiceType.SPARE_PART_SALE && existing.selectedPartId && existing.quantity) {
-      const part = await tx.part.findUnique({ where: { id: existing.selectedPartId } });
+    for (const line of toShip) {
+      const part = await tx.part.findUnique({ where: { id: line.partId } });
       if (!part) {
         throw new Error("PART_NOT_FOUND");
       }
       if (part.inventoryKind !== InventoryKind.PART) {
         throw new Error("SPARE_PART_REQUIRES_PART_KIND");
       }
-      if (part.stock < existing.quantity) {
+      if (part.stock < line.quantity) {
         throw new Error("INSUFFICIENT_STOCK");
       }
       await tx.part.update({
-        where: { id: existing.selectedPartId },
-        data: { stock: part.stock - existing.quantity }
+        where: { id: line.partId },
+        data: { stock: part.stock - line.quantity }
       });
     }
 
@@ -293,7 +428,7 @@ export async function completeService(id: string) {
 
     return tx.service.findUnique({
       where: { id },
-      include: { selectedPart: true }
+      include: serviceInclude
     });
   });
 }

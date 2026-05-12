@@ -17,6 +17,14 @@ export type ServiceType = (typeof SERVICE_TYPES)[number];
 export const SERVICE_STATUSES = ["PENDING", "COMPLETED", "CANCELLED"] as const;
 export type ServiceStatus = (typeof SERVICE_STATUSES)[number];
 
+export type ServiceSparePartLineRow = {
+  id: string;
+  serviceId: string;
+  partId: string;
+  quantity: number;
+  part: Part;
+};
+
 export type ServiceRow = {
   id: string;
   type: ServiceType;
@@ -40,6 +48,7 @@ export type ServiceRow = {
   createdAt: string;
   updatedAt: string;
   selectedPart: Part | null;
+  sparePartLines?: ServiceSparePartLineRow[];
 };
 
 export type MonthlyServiceSummaryRow = {
@@ -51,6 +60,11 @@ export type MonthlyServiceSummaryRow = {
   totalProfit: number;
 };
 
+export type SparePartLinePayload = {
+  partId: string;
+  quantity: number;
+};
+
 export type CreateServicePayload = {
   type: ServiceType;
   title: string;
@@ -60,6 +74,7 @@ export type CreateServicePayload = {
   description?: string;
   selectedPartId?: string | null;
   quantity?: number | null;
+  sparePartLines?: SparePartLinePayload[];
   costPrice?: number;
   salePrice?: number;
   isHomeService?: boolean;

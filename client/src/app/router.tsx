@@ -1,13 +1,17 @@
-﻿import { NavLink, Route, Routes } from "react-router-dom";
+﻿import { LogOut } from "lucide-react";
+import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { ProtectedRoute } from "../components/auth/ProtectedRoute";
 import { PwaUpdateNotifier } from "../components/pwa/PwaUpdateNotifier";
-import { InventoryPage } from "../pages/InventoryPage";
-import { BuildsPage } from "../pages/BuildsPage";
+import { useAuth } from "../hooks/useAuth";
 import { BuildDetailPage } from "../pages/BuildDetailPage";
-import { SalesPage } from "../pages/SalesPage";
-import { SaleDetailPage } from "../pages/SaleDetailPage";
-import { ServicesPage } from "../pages/ServicesPage";
-import { QuotesPage } from "../pages/QuotesPage";
+import { BuildsPage } from "../pages/BuildsPage";
+import { InventoryPage } from "../pages/InventoryPage";
+import { LoginPage } from "../pages/LoginPage";
 import { QuoteDetailPage } from "../pages/QuoteDetailPage";
+import { QuotesPage } from "../pages/QuotesPage";
+import { SaleDetailPage } from "../pages/SaleDetailPage";
+import { SalesPage } from "../pages/SalesPage";
+import { ServicesPage } from "../pages/ServicesPage";
 
 function PackageIcon({ className }: { className?: string }) {
   return (
@@ -82,7 +86,15 @@ function CpuIcon({ className }: { className?: string }) {
 const navLinkClass =
   "group flex min-h-[3.25rem] flex-1 items-center justify-center gap-3 rounded-2xl border px-5 py-3.5 text-base font-semibold tracking-tight transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 sm:min-w-[11rem] sm:flex-none sm:justify-start";
 
-export function AppRouter() {
+const navInactive =
+  "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white";
+
+const navActive =
+  "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35";
+
+function AppShell() {
+  const { user, signOut } = useAuth();
+
   return (
     <div className="min-h-screen bg-blue-950">
       <PwaUpdateNotifier />
@@ -96,7 +108,7 @@ export function AppRouter() {
         />
         <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 md:py-8">
           <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div className="space-y-1">
+            <div className="min-w-0 flex-1 space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">PC Inventory Builder</p>
               <p className="text-lg font-bold text-white md:text-xl">Navegación principal</p>
               <p className="max-w-md text-sm text-blue-100/75">
@@ -104,97 +116,83 @@ export function AppRouter() {
               </p>
             </div>
             <nav
-              className="flex w-full flex-col gap-3 rounded-2xl border border-white/15 bg-blue-950/70 p-3 shadow-inner shadow-black/40 backdrop-blur-md sm:flex-row sm:items-stretch md:w-auto"
+              className="flex w-full flex-col gap-3 rounded-2xl border border-white/15 bg-blue-950/70 p-3 shadow-inner shadow-black/40 backdrop-blur-md sm:flex-row sm:flex-wrap sm:items-stretch md:w-auto"
               aria-label="Secciones"
             >
               <NavLink
                 to="/"
                 end
-                className={({ isActive }) =>
-                  [
-                    navLinkClass,
-                    isActive
-                      ? "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35"
-                      : "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white"
-                  ].join(" ")
-                }
+                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
               >
                 <PackageIcon className="h-7 w-7 shrink-0 opacity-90" />
                 <span>Inventario</span>
               </NavLink>
               <NavLink
                 to="/quotes"
-                className={({ isActive }) =>
-                  [
-                    navLinkClass,
-                    isActive
-                      ? "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35"
-                      : "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white"
-                  ].join(" ")
-                }
+                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
               >
                 <QuotesIcon className="h-7 w-7 shrink-0 opacity-90" />
                 <span>Presupuestos</span>
               </NavLink>
               <NavLink
                 to="/builds"
-                className={({ isActive }) =>
-                  [
-                    navLinkClass,
-                    isActive
-                      ? "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35"
-                      : "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white"
-                  ].join(" ")
-                }
+                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
               >
                 <CpuIcon className="h-7 w-7 shrink-0 opacity-90" />
                 <span>Montajes</span>
               </NavLink>
               <NavLink
                 to="/services"
-                className={({ isActive }) =>
-                  [
-                    navLinkClass,
-                    isActive
-                      ? "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35"
-                      : "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white"
-                  ].join(" ")
-                }
+                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
               >
                 <WrenchIcon className="h-7 w-7 shrink-0 opacity-90" />
                 <span>Servicios</span>
               </NavLink>
               <NavLink
                 to="/sales"
-                className={({ isActive }) =>
-                  [
-                    navLinkClass,
-                    isActive
-                      ? "border-cyan-400/55 bg-gradient-to-br from-blue-900 to-blue-950 text-white shadow-[0_8px_30px_-6px_rgba(34,211,238,0.35)] ring-2 ring-cyan-400/35"
-                      : "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white"
-                  ].join(" ")
-                }
+                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
               >
                 <SalesIcon className="h-7 w-7 shrink-0 opacity-90" />
                 <span>Ventas</span>
               </NavLink>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className={`${navLinkClass} ${navInactive} cursor-pointer`}
+                title={user?.email ?? "Cerrar sesión"}
+              >
+                <LogOut className="h-7 w-7 shrink-0 opacity-90" aria-hidden />
+                <span className="whitespace-nowrap">Cerrar sesión</span>
+              </button>
             </nav>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl p-4 sm:p-6 md:p-8">
-        <Routes>
-          <Route path="/" element={<InventoryPage />} />
-          <Route path="/builds" element={<BuildsPage />} />
-          <Route path="/builds/:id" element={<BuildDetailPage />} />
-          <Route path="/sales" element={<SalesPage />} />
-          <Route path="/sales/:id" element={<SaleDetailPage />} />
-          <Route path="/quotes" element={<QuotesPage />} />
-          <Route path="/quotes/:id" element={<QuoteDetailPage />} />
-          <Route path="/services" element={<ServicesPage />} />
-        </Routes>
+        <Outlet />
       </main>
     </div>
+  );
+}
+
+export function AppRouter() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppShell />}>
+          <Route index element={<InventoryPage />} />
+          <Route path="builds" element={<BuildsPage />} />
+          <Route path="builds/:id" element={<BuildDetailPage />} />
+          <Route path="sales" element={<SalesPage />} />
+          <Route path="sales/:id" element={<SaleDetailPage />} />
+          <Route path="quotes" element={<QuotesPage />} />
+          <Route path="quotes/:id" element={<QuoteDetailPage />} />
+          <Route path="services" element={<ServicesPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Route>
+    </Routes>
   );
 }
