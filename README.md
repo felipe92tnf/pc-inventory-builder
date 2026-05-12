@@ -1,64 +1,96 @@
-﻿# PC Inventory Builder
+﻿# SecondByte
 
-Aplicación web full stack para gestión de inventario, montaje y venta de ordenadores personalizados.
+Aplicación web desarrollada para la gestión de una tienda de informática y compraventa tecnológica.
 
-Desarrollada con React, TypeScript, TailwindCSS, Express y Prisma.
+SecondByte permite centralizar:
+- inventario de componentes y PCs completos
+- montajes personalizados
+- presupuestos para clientes
+- servicios técnicos
+- ventas y beneficios
+
+La aplicación está diseñada para funcionar tanto en ordenador como en móvil, con una interfaz moderna, responsive y enfocada a la productividad.
 
 ---
 
-# Características
+# Funcionalidades principales
 
-## Inventario de componentes
-- Crear, editar y eliminar piezas
+## Inventario
+- Gestión de piezas individuales
+- Gestión de PCs completos / premontados
 - Control de stock
-- Gestión de piezas nuevas, usadas y refurbished
-- Cálculo automático del precio de venta
-- Filtros por categoría, estado y stock
-- Responsive mobile-first
+- Cálculo automático de precios y beneficios
+- Clasificación por categorías
 
-## Montajes de PC
-- Crear configuraciones de PC
-- Añadir componentes al montaje
-- Cálculo automático de:
-  - coste total
-  - precio de venta
-  - beneficio
-- Confirmación de montaje
-- Descuento automático de stock
+## Presupuestos
+- Creación de presupuestos personalizados
+- Añadir productos desde inventario o manualmente
+- Estados:
+  - borrador
+  - enviado
+  - aceptado
+  - rechazado
+- Generación de PDF profesional
+- Conversión automática a montaje
+
+## Montajes
+- Creación de PCs personalizados
+- Asociación de componentes del inventario
+- Cálculo automático de costes y beneficios
+- Gestión de PCs listos para vender
+
+## Servicios
+- Reparaciones
+- Diagnósticos
+- Formateos
+- Instalación de sistemas operativos
+- Venta de piezas sueltas
+- Servicios a domicilio
 
 ## Ventas
-- Registrar PCs vendidos
-- Datos de cliente
-- Historial de ventas
-- Beneficio mensual
-- Organización por meses
-- Dashboard de estadísticas
-
-## Servicios técnicos
-- Venta de piezas sueltas
-- Limpieza de PC
-- Formateo
-- Instalación de sistema operativo
-- Servicio a domicilio
-- Gestión de ingresos y beneficios
+- Histórico de ventas
+- Beneficios mensuales
+- Estadísticas básicas
+- Separación entre:
+  - PCs vendidos
+  - servicios técnicos
+  - piezas sueltas
 
 ---
 
-# Tecnologías
+# Tecnologías utilizadas
 
 ## Frontend
 - React
 - TypeScript
+- Tailwind CSS
 - Vite
-- TailwindCSS
-- React Router
 
 ## Backend
 - Node.js
-- Express
-- Prisma ORM
+- Express.js
 
 ## Base de datos
-- SQLite (desarrollo)
+- PostgreSQL
+- Prisma ORM
+- Supabase
+
+## Despliegue
+- Vercel (frontend)
+- Render (backend)
+
+## Autenticación
+- Supabase Auth
 
 ---
+
+# Arquitectura
+
+```txt
+Frontend (React)
+        ↓
+Backend API (Express)
+        ↓
+Prisma ORM
+        ↓
+PostgreSQL (Supabase)

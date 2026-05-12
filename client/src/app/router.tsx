@@ -1,5 +1,6 @@
 ﻿import { LogOut } from "lucide-react";
 import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { SecondByteLogo } from "../components/brand/SecondByteLogo";
 import { ProtectedRoute } from "../components/auth/ProtectedRoute";
 import { PwaUpdateNotifier } from "../components/pwa/PwaUpdateNotifier";
 import { useAuth } from "../hooks/useAuth";
@@ -84,7 +85,7 @@ function CpuIcon({ className }: { className?: string }) {
 }
 
 const navLinkClass =
-  "group flex min-h-[3.25rem] flex-1 items-center justify-center gap-3 rounded-2xl border px-5 py-3.5 text-base font-semibold tracking-tight transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 sm:min-w-[11rem] sm:flex-none sm:justify-start";
+  "group flex min-h-[2.75rem] shrink-0 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold tracking-tight transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 sm:min-h-[3rem] sm:gap-2.5 sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-base";
 
 const navInactive =
   "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white";
@@ -106,66 +107,66 @@ function AppShell() {
               "radial-gradient(ellipse 80% 60% at 20% -20%, rgba(34, 211, 238, 0.22), transparent 55%), radial-gradient(ellipse 70% 50% at 100% 0%, rgba(14, 165, 233, 0.18), transparent 50%)"
           }}
         />
-        <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 md:py-8">
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">PC Inventory Builder</p>
-              <p className="text-lg font-bold text-white md:text-xl">Navegación principal</p>
-              <p className="max-w-md text-sm text-blue-100/75">
-                Inventario, presupuestos, montajes, servicios y ventas en un solo sitio.
-              </p>
-            </div>
-            <nav
-              className="flex w-full flex-col gap-3 rounded-2xl border border-white/15 bg-blue-950/70 p-3 shadow-inner shadow-black/40 backdrop-blur-md sm:flex-row sm:flex-wrap sm:items-stretch md:w-auto"
-              aria-label="Secciones"
-            >
-              <NavLink
-                to="/"
-                end
-                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
-              >
-                <PackageIcon className="h-7 w-7 shrink-0 opacity-90" />
-                <span>Inventario</span>
-              </NavLink>
-              <NavLink
-                to="/quotes"
-                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
-              >
-                <QuotesIcon className="h-7 w-7 shrink-0 opacity-90" />
-                <span>Presupuestos</span>
-              </NavLink>
-              <NavLink
-                to="/builds"
-                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
-              >
-                <CpuIcon className="h-7 w-7 shrink-0 opacity-90" />
-                <span>Montajes</span>
-              </NavLink>
-              <NavLink
-                to="/services"
-                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
-              >
-                <WrenchIcon className="h-7 w-7 shrink-0 opacity-90" />
-                <span>Servicios</span>
-              </NavLink>
-              <NavLink
-                to="/sales"
-                className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
-              >
-                <SalesIcon className="h-7 w-7 shrink-0 opacity-90" />
-                <span>Ventas</span>
-              </NavLink>
-              <button
-                type="button"
-                onClick={() => void signOut()}
-                className={`${navLinkClass} ${navInactive} cursor-pointer`}
-                title={user?.email ?? "Cerrar sesión"}
-              >
-                <LogOut className="h-7 w-7 shrink-0 opacity-90" aria-hidden />
-                <span className="whitespace-nowrap">Cerrar sesión</span>
-              </button>
-            </nav>
+        {/* Marca SecondByte de fondo (no ocupa layout; no intercepta clics) */}
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
+          aria-hidden
+        >
+          <div className="scale-[1.35] opacity-[0.11] blur-[7px] sm:scale-[1.55] sm:opacity-[0.14] sm:blur-[9px] md:scale-[1.75]">
+            <SecondByteLogo variant="header" className="select-none" />
           </div>
+        </div>
+        <div className="relative z-10 mx-auto max-w-7xl px-3 py-2.5 sm:px-5 sm:py-3">
+          <nav
+            className="flex flex-nowrap items-stretch justify-center gap-1.5 overflow-x-auto rounded-2xl border border-white/12 bg-blue-950/65 px-2 py-2 shadow-inner shadow-black/35 backdrop-blur-md [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-2 sm:px-2.5 [&::-webkit-scrollbar]:hidden"
+            aria-label="Secciones"
+          >
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
+            >
+              <PackageIcon className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" />
+              <span className="whitespace-nowrap">Inventario</span>
+            </NavLink>
+            <NavLink
+              to="/quotes"
+              className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
+            >
+              <QuotesIcon className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" />
+              <span className="whitespace-nowrap">Presupuestos</span>
+            </NavLink>
+            <NavLink
+              to="/builds"
+              className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
+            >
+              <CpuIcon className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" />
+              <span className="whitespace-nowrap">Montajes</span>
+            </NavLink>
+            <NavLink
+              to="/services"
+              className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
+            >
+              <WrenchIcon className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" />
+              <span className="whitespace-nowrap">Servicios</span>
+            </NavLink>
+            <NavLink
+              to="/sales"
+              className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
+            >
+              <SalesIcon className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" />
+              <span className="whitespace-nowrap">Ventas</span>
+            </NavLink>
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className={`${navLinkClass} ${navInactive} cursor-pointer`}
+              title={user?.email ?? "Cerrar sesión"}
+            >
+              <LogOut className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" aria-hidden />
+              <span className="whitespace-nowrap">Cerrar sesión</span>
+            </button>
+          </nav>
         </div>
       </header>
 
