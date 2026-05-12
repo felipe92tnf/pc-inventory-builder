@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
 
 type BuildFormProps = {
   loading: boolean;
@@ -69,11 +70,7 @@ export function BuildForm({
         </label>
 
         <div className="md:col-span-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <button type="submit" disabled={loading} className={PRIMARY_ACTION_BUTTON}>
             {loading ? loadingLabel : submitLabel}
           </button>
         </div>

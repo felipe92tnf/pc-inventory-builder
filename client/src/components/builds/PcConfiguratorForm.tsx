@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { isNonStockCategory, type ConfiguratorPart, type PartCategory } from "../../types/part";
+import { PRIMARY_ACTION_BUTTON, PRIMARY_ACTION_BUTTON_COMPACT } from "../../theme/actionButtons";
 
 export type ConfiguratorSlotId =
   | "CPU"
@@ -417,11 +418,7 @@ export function PcConfiguratorForm({
             void handleAddSelected();
           }}
           disabled={busy || !hasAnySelection}
-          className={
-            compact
-              ? "rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-900/35 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-              : "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-          }
+          className={compact ? PRIMARY_ACTION_BUTTON_COMPACT : PRIMARY_ACTION_BUTTON}
         >
           {submitting ? "Anadiendo..." : catalogSaleOnly ? "Anadir al presupuesto" : "Anadir piezas seleccionadas"}
         </button>

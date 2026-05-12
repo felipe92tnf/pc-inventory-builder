@@ -20,6 +20,15 @@ import {
 } from "../types/part";
 import { calculateSalePrice } from "../utils/pricing";
 import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
+import {
+  SUMMARY_CARD_GRID,
+  SUMMARY_CARD_LABEL,
+  SUMMARY_CARD_SHELL,
+  SUMMARY_VALUE_NEGATIVE,
+  SUMMARY_VALUE_NEUTRAL,
+  SUMMARY_VALUE_PROFIT_POS,
+  SUMMARY_VALUE_REVENUE
+} from "../theme/summaryCards";
 
 function finiteNonNegative(n: number, fallback: number): number {
   if (!Number.isFinite(n) || n < 0) return fallback;
@@ -422,26 +431,24 @@ export function InventoryPage() {
         hidden={activeTab !== "summary"}
         className={activeTab === "summary" ? "space-y-5" : "hidden"}
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Valor coste total</p>
-            <p className="mt-1 text-xl font-bold text-slate-100 md:text-2xl">{money(totals.totalCostValue)}</p>
+        <div className={SUMMARY_CARD_GRID}>
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Coste total</p>
+            <p className={SUMMARY_VALUE_NEUTRAL}>{money(totals.totalCostValue)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Valor venta estimado</p>
-            <p className="mt-1 text-xl font-bold text-emerald-300/95 md:text-2xl">{money(totals.totalSaleValue)}</p>
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Venta estimada</p>
+            <p className={SUMMARY_VALUE_REVENUE}>{money(totals.totalSaleValue)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Beneficio potencial</p>
-            <p
-              className={`mt-1 text-xl font-bold md:text-2xl ${totals.potentialProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}
-            >
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Beneficio</p>
+            <p className={totals.potentialProfit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE}>
               {money(totals.potentialProfit)}
             </p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Unidades en stock</p>
-            <p className="mt-1 text-xl font-bold text-slate-100 md:text-2xl">{totals.units}</p>
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Unidades</p>
+            <p className={SUMMARY_VALUE_NEUTRAL}>{totals.units}</p>
           </article>
         </div>
 

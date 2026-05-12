@@ -12,6 +12,15 @@ import {
   FILTER_TOGGLE_ROW,
   DESTRUCTIVE_BUTTON_SM
 } from "../theme/actionButtons";
+import {
+  SUMMARY_CARD_GRID,
+  SUMMARY_CARD_LABEL,
+  SUMMARY_CARD_SHELL,
+  SUMMARY_VALUE_NEGATIVE,
+  SUMMARY_VALUE_NEUTRAL,
+  SUMMARY_VALUE_PROFIT_CYAN,
+  SUMMARY_VALUE_REVENUE
+} from "../theme/summaryCards";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   SPARE_PART_SALE: "Venta de pieza suelta",
@@ -341,22 +350,24 @@ export function ServicesPage() {
       ) : null}
 
       {/* Resumen compacto */}
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:gap-3">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3 shadow-md md:px-5 md:py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ingresos (mes)</p>
-          <p className="mt-1 text-lg font-bold text-emerald-300 md:text-xl">{money(displayRevenue)}</p>
+      <section className={SUMMARY_CARD_GRID}>
+        <div className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Ingresos</p>
+          <p className={SUMMARY_VALUE_REVENUE}>{money(displayRevenue)}</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3 shadow-md md:px-5 md:py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Beneficio (mes)</p>
-          <p className="mt-1 text-lg font-bold text-cyan-300 md:text-xl">{money(displayProfit)}</p>
+        <div className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Beneficio</p>
+          <p className={displayProfit >= 0 ? SUMMARY_VALUE_PROFIT_CYAN : SUMMARY_VALUE_NEGATIVE}>
+            {money(displayProfit)}
+          </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3 shadow-md md:px-5 md:py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Completados</p>
-          <p className="mt-1 text-lg font-bold text-slate-100 md:text-xl">{displayCompleted}</p>
+        <div className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Completados</p>
+          <p className={SUMMARY_VALUE_NEUTRAL}>{displayCompleted}</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3 shadow-md md:px-5 md:py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pendientes</p>
-          <p className="mt-1 text-lg font-bold text-amber-300 md:text-xl">{statsFromList.pendingCount}</p>
+        <div className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Pendientes</p>
+          <p className={SUMMARY_VALUE_NEUTRAL}>{statsFromList.pendingCount}</p>
         </div>
       </section>
 

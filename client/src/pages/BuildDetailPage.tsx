@@ -11,6 +11,15 @@ import {
   PRIMARY_ACTION_BUTTON_COMPACT,
   SECONDARY_BUTTON_SM
 } from "../theme/actionButtons";
+import {
+  SUMMARY_CARD_GRID_THREE,
+  SUMMARY_CARD_LABEL,
+  SUMMARY_CARD_SHELL,
+  SUMMARY_CARD_SHELL_AUTO,
+  SUMMARY_VALUE_NEGATIVE,
+  SUMMARY_VALUE_NEUTRAL,
+  SUMMARY_VALUE_PROFIT_POS
+} from "../theme/summaryCards";
 
 function money(value: number): string {
   return `${value.toFixed(2)} EUR`;
@@ -203,13 +212,13 @@ export function BuildDetailPage() {
         </div>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Coste total</p>
-          <p className="mt-2 text-2xl font-bold text-slate-100">{money(build.totalCost)}</p>
+      <section className={SUMMARY_CARD_GRID_THREE}>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Coste total</p>
+          <p className={SUMMARY_VALUE_NEUTRAL}>{money(build.totalCost)}</p>
         </article>
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Precio venta total</p>
+        <article className={SUMMARY_CARD_SHELL_AUTO}>
+          <p className={SUMMARY_CARD_LABEL}>Precio venta total</p>
           <input
             type="text"
             inputMode="decimal"
@@ -265,12 +274,11 @@ export function BuildDetailPage() {
             ) : null}
           </div>
         </article>
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Beneficio estimado</p>
-          <p className={`mt-2 text-2xl font-bold ${build.profit >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Beneficio estimado</p>
+          <p className={build.profit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE}>
             {money(build.profit)}
           </p>
-          <p className="mt-2 text-xs text-slate-500">Precio venta total menos coste total</p>
         </article>
       </section>
 

@@ -2,6 +2,16 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
 import { useSaleDetail } from "../hooks/useSaleDetail";
+import { PRIMARY_ACTION_BUTTON } from "../theme/actionButtons";
+import {
+  SUMMARY_CARD_GRID_THREE,
+  SUMMARY_CARD_LABEL,
+  SUMMARY_CARD_SHELL,
+  SUMMARY_VALUE_NEGATIVE,
+  SUMMARY_VALUE_NEUTRAL,
+  SUMMARY_VALUE_PROFIT_POS,
+  SUMMARY_VALUE_REVENUE
+} from "../theme/summaryCards";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -11,10 +21,6 @@ function toDatetimeLocalValue(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function profitClass(value: number): string {
-  return value >= 0 ? "text-emerald-400" : "text-rose-400";
 }
 
 export function SaleDetailPage() {
@@ -174,18 +180,18 @@ export function SaleDetailPage() {
         </div>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Coste (instantanea)</p>
-          <p className="mt-2 text-2xl font-bold text-slate-100">{money(sale.totalCost)}</p>
+      <section className={SUMMARY_CARD_GRID_THREE}>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Coste</p>
+          <p className={SUMMARY_VALUE_NEUTRAL}>{money(sale.totalCost)}</p>
         </article>
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Precio venta final</p>
-          <p className="mt-2 text-2xl font-bold text-emerald-400">{money(sale.finalSalePrice)}</p>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Precio venta</p>
+          <p className={SUMMARY_VALUE_REVENUE}>{money(sale.finalSalePrice)}</p>
         </article>
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Beneficio</p>
-          <p className={`mt-2 text-2xl font-bold ${profitClass(sale.profit)}`}>{money(sale.profit)}</p>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Beneficio</p>
+          <p className={sale.profit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE}>{money(sale.profit)}</p>
         </article>
       </section>
 
@@ -279,7 +285,7 @@ export function SaleDetailPage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
+              className={PRIMARY_ACTION_BUTTON}
             >
               {saving ? "Guardando..." : "Guardar cambios"}
             </button>

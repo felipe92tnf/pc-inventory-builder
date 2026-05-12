@@ -21,6 +21,17 @@ import {
   yearTotalsFromSummary
 } from "../utils/salesStats";
 import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
+import {
+  SUMMARY_CARD_GRID,
+  SUMMARY_CARD_LABEL,
+  SUMMARY_CARD_SHELL,
+  SUMMARY_CARD_SHELL_MONTH,
+  SUMMARY_VALUE_NEGATIVE,
+  SUMMARY_VALUE_NEUTRAL,
+  SUMMARY_VALUE_PROFIT_CYAN,
+  SUMMARY_VALUE_PROFIT_POS,
+  SUMMARY_VALUE_REVENUE
+} from "../theme/summaryCards";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -435,24 +446,28 @@ export function SalesPage() {
         <h2 className="text-xl font-semibold text-slate-100">
           Resumen global · {monthLabel(selectedMonth, selectedYear)}
         </h2>
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Ingresos totales</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-300">{money(globalMonthSummary.totalRevenue)}</p>
+        <div className={`mt-5 ${SUMMARY_CARD_GRID}`}>
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Ingresos</p>
+            <p className={SUMMARY_VALUE_REVENUE}>{money(globalMonthSummary.totalRevenue)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Coste total</p>
-            <p className="mt-1 text-2xl font-bold text-slate-200">{money(globalMonthSummary.totalCost)}</p>
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Costes</p>
+            <p className={SUMMARY_VALUE_NEUTRAL}>{money(globalMonthSummary.totalCost)}</p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Beneficio total</p>
-            <p className={`mt-1 text-2xl font-bold ${profitClass(globalMonthSummary.totalProfit)}`}>
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Beneficio</p>
+            <p
+              className={
+                globalMonthSummary.totalProfit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE
+              }
+            >
               {money(globalMonthSummary.totalProfit)}
             </p>
           </article>
-          <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Operaciones</p>
-            <p className="mt-1 text-2xl font-bold text-slate-100">{globalMonthSummary.totalOperations}</p>
+          <article className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Operaciones</p>
+            <p className={SUMMARY_VALUE_NEUTRAL}>{globalMonthSummary.totalOperations}</p>
           </article>
         </div>
       </section>
@@ -667,25 +682,33 @@ export function SalesPage() {
               <h3 className="text-lg font-semibold text-slate-100">
                 Comparativa vs {monthLabel(prevYM.month, prevYM.year)}
               </h3>
-              <dl className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                  <dt className="text-xs text-slate-500">Ingresos</dt>
-                  <dd className="mt-1 flex items-center gap-2 text-emerald-300">
-                    <span>{money(selectedMonthStats.totalRevenue)}</span>
+              <dl className={`mt-4 ${SUMMARY_CARD_GRID}`}>
+                <div className={SUMMARY_CARD_SHELL}>
+                  <dt className={SUMMARY_CARD_LABEL}>Ingresos</dt>
+                  <dd className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className={SUMMARY_VALUE_REVENUE}>{money(selectedMonthStats.totalRevenue)}</span>
                     <DeltaBadge value={deltaRevenue} />
                   </dd>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                  <dt className="text-xs text-slate-500">Costes</dt>
-                  <dd className="mt-1 flex items-center gap-2 text-slate-300">
-                    <span>{money(selectedMonthStats.totalCost)}</span>
+                <div className={SUMMARY_CARD_SHELL}>
+                  <dt className={SUMMARY_CARD_LABEL}>Costes</dt>
+                  <dd className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className={SUMMARY_VALUE_NEUTRAL}>{money(selectedMonthStats.totalCost)}</span>
                     <DeltaBadge value={deltaCost} invert />
                   </dd>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                  <dt className="text-xs text-slate-500">Beneficio</dt>
-                  <dd className={`mt-1 flex items-center gap-2 ${profitClass(selectedMonthStats.totalProfit)}`}>
-                    <span>{money(selectedMonthStats.totalProfit)}</span>
+                <div className={SUMMARY_CARD_SHELL}>
+                  <dt className={SUMMARY_CARD_LABEL}>Beneficio</dt>
+                  <dd className="mt-2 flex flex-wrap items-center gap-2">
+                    <span
+                      className={
+                        selectedMonthStats.totalProfit >= 0
+                          ? SUMMARY_VALUE_PROFIT_POS
+                          : SUMMARY_VALUE_NEGATIVE
+                      }
+                    >
+                      {money(selectedMonthStats.totalProfit)}
+                    </span>
                     <DeltaBadge value={deltaProfit} />
                   </dd>
                 </div>
@@ -766,24 +789,28 @@ export function SalesPage() {
 function MonthlySummaryCard({ row }: { row: MonthlySalesSummaryRow }) {
   const margin = marginPercentOnRevenue(row.totalRevenue, row.totalProfit);
   return (
-    <article className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/90 p-6 shadow-inner shadow-black/20">
-      <p className="text-base font-semibold capitalize text-slate-100">{monthLabel(row.month, row.year)}</p>
-      <dl className="mt-4 space-y-3 text-sm">
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Operaciones</dt>
-          <dd className="font-semibold text-slate-200">{row.salesCount}</dd>
+    <article className={SUMMARY_CARD_SHELL_MONTH}>
+      <p className="text-sm font-semibold capitalize leading-tight text-slate-100">
+        {monthLabel(row.month, row.year)}
+      </p>
+      <dl className="mt-4 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <dt className={SUMMARY_CARD_LABEL}>Operaciones</dt>
+          <dd className={SUMMARY_VALUE_NEUTRAL}>{row.salesCount}</dd>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Ingresos</dt>
-          <dd className="text-lg font-semibold text-emerald-400">{money(row.totalRevenue)}</dd>
+        <div>
+          <dt className={SUMMARY_CARD_LABEL}>Ingresos</dt>
+          <dd className={SUMMARY_VALUE_REVENUE}>{money(row.totalRevenue)}</dd>
         </div>
-        <div className="flex justify-between gap-2 border-t border-slate-800 pt-3">
-          <dt className="text-slate-500">Beneficio</dt>
-          <dd className={`text-lg font-semibold ${profitClass(row.totalProfit)}`}>{money(row.totalProfit)}</dd>
+        <div>
+          <dt className={SUMMARY_CARD_LABEL}>Beneficio</dt>
+          <dd className={row.totalProfit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE}>
+            {money(row.totalProfit)}
+          </dd>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Margen</dt>
-          <dd className="font-medium text-indigo-300/90">{margin.toFixed(1)} %</dd>
+        <div>
+          <dt className={SUMMARY_CARD_LABEL}>Margen</dt>
+          <dd className={margin >= 0 ? SUMMARY_VALUE_PROFIT_CYAN : SUMMARY_VALUE_NEGATIVE}>{margin.toFixed(1)} %</dd>
         </div>
       </dl>
     </article>

@@ -12,6 +12,23 @@ import {
   itemLineProfit,
   moneyOrDash
 } from "../utils/quoteFinancials";
+import {
+  DESTRUCTIVE_BUTTON_SM,
+  PRIMARY_ACTION_BUTTON,
+  PRIMARY_ACTION_BUTTON_COMPACT,
+  SECONDARY_BUTTON_SM,
+  SECONDARY_GHOST_SM
+} from "../theme/actionButtons";
+import {
+  SUMMARY_CARD_GRID,
+  SUMMARY_CARD_LABEL,
+  SUMMARY_CARD_SHELL,
+  SUMMARY_CARD_SHELL_AUTO,
+  SUMMARY_VALUE_NEGATIVE,
+  SUMMARY_VALUE_NEUTRAL,
+  SUMMARY_VALUE_PROFIT_POS,
+  SUMMARY_VALUE_REVENUE
+} from "../theme/summaryCards";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -416,7 +433,7 @@ export function QuoteDetailPage() {
               type="button"
               onClick={() => void handleDownloadPdf()}
               disabled={pdfGenerating || actionLoading}
-              className="rounded-lg border border-slate-600 bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-100 shadow-sm transition hover:border-cyan-500/40 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className={PRIMARY_ACTION_BUTTON}
             >
               {pdfGenerating ? "Generando PDF…" : "Descargar PDF"}
             </button>
@@ -447,7 +464,7 @@ export function QuoteDetailPage() {
           </span>
           <Link
             to={`/builds/${quote.convertedToBuildId}`}
-            className="rounded-lg border border-emerald-500/50 bg-emerald-900/40 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/70"
+            className={`${SECONDARY_GHOST_SM} shrink-0 px-4 py-2 text-sm`}
           >
             Ver montaje generado
           </Link>
@@ -476,7 +493,7 @@ export function QuoteDetailPage() {
             type="button"
             disabled={actionLoading || statusDraft === quote.status}
             onClick={() => void handleStatusSave()}
-            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-md hover:bg-cyan-500 disabled:opacity-50"
+            className={PRIMARY_ACTION_BUTTON_COMPACT}
           >
             Actualizar estado
           </button>
@@ -485,7 +502,7 @@ export function QuoteDetailPage() {
               type="button"
               disabled={actionLoading}
               onClick={() => void handleAcceptAndCreateBuild()}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-500 disabled:opacity-50"
+              className={PRIMARY_ACTION_BUTTON}
             >
               Aceptar y crear montaje
             </button>
@@ -562,7 +579,7 @@ export function QuoteDetailPage() {
             type="button"
             disabled={actionLoading}
             onClick={() => void handleSaveMeta()}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+            className={PRIMARY_ACTION_BUTTON}
           >
             Guardar presupuesto
           </button>
@@ -585,58 +602,56 @@ export function QuoteDetailPage() {
             {quoteFinancials.linesWithoutCost === 1 ? "" : "s"} sin coste: el coste total y el beneficio son parciales.
           </p>
         ) : null}
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase text-slate-500">Subtotal venta</p>
-            <p className="mt-1 text-xl font-bold text-slate-100">{money(quote.subtotal)}</p>
+        <div className={`mt-4 ${SUMMARY_CARD_GRID}`}>
+          <div className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Subtotal venta</p>
+            <p className={SUMMARY_VALUE_NEUTRAL}>{money(quote.subtotal)}</p>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase text-slate-500">Total coste</p>
-            <p className="mt-1 text-xl font-bold text-slate-200">{money(quoteFinancials?.totalCost ?? 0)}</p>
+          <div className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Coste total</p>
+            <p className={SUMMARY_VALUE_NEUTRAL}>{money(quoteFinancials?.totalCost ?? 0)}</p>
           </div>
-          <div className="rounded-xl border border-sky-500/25 bg-sky-950/25 p-4">
-            <p className="text-xs uppercase text-sky-400/90">Beneficio bruto</p>
+          <div className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Beneficio bruto</p>
             <p
-              className={`mt-1 text-xl font-bold ${
-                (quoteFinancials?.profitGross ?? 0) >= 0 ? "text-sky-300" : "text-rose-300"
-              }`}
+              className={
+                (quoteFinancials?.profitGross ?? 0) >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE
+              }
             >
               {money(quoteFinancials?.profitGross ?? 0)}
             </p>
-            <p className="mt-1 text-[11px] text-slate-500">Subtotal venta menos coste</p>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase text-slate-500">Descuento</p>
+          <div className={SUMMARY_CARD_SHELL_AUTO}>
+            <p className={SUMMARY_CARD_LABEL}>Descuento</p>
             <input
               type="text"
               inputMode="decimal"
               value={discountDraft}
               onChange={(e) => setDiscountDraft(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xl font-bold text-amber-200 outline-none focus:border-indigo-400 focus:ring"
+              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xl font-bold text-amber-200 outline-none focus:border-indigo-400 focus:ring"
             />
             <button
               type="button"
               disabled={actionLoading}
               onClick={() => void handleSaveDiscount()}
-              className="mt-2 w-full rounded-lg border border-amber-500/40 bg-amber-500/10 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+              className={`${SECONDARY_BUTTON_SM} mt-2 w-full`}
             >
               Aplicar descuento
             </button>
           </div>
-          <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/30 p-4">
-            <p className="text-xs uppercase text-emerald-400/90">Total venta (cliente)</p>
-            <p className="mt-1 text-xl font-bold text-emerald-300">{money(quote.total)}</p>
+          <div className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Total venta</p>
+            <p className={SUMMARY_VALUE_REVENUE}>{money(quote.total)}</p>
           </div>
-          <div className="rounded-xl border border-violet-500/25 bg-violet-950/30 p-4">
-            <p className="text-xs uppercase text-violet-300/90">Beneficio neto</p>
+          <div className={SUMMARY_CARD_SHELL}>
+            <p className={SUMMARY_CARD_LABEL}>Beneficio neto</p>
             <p
-              className={`mt-1 text-xl font-bold ${
-                (quoteFinancials?.profitNet ?? 0) >= 0 ? "text-violet-200" : "text-rose-300"
-              }`}
+              className={
+                (quoteFinancials?.profitNet ?? 0) >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE
+              }
             >
               {money(quoteFinancials?.profitNet ?? 0)}
             </p>
-            <p className="mt-1 text-[11px] text-slate-500">Total cliente menos coste</p>
           </div>
         </div>
       </section>
@@ -695,7 +710,7 @@ export function QuoteDetailPage() {
                 type="button"
                 disabled={actionLoading || partsLoading || !prebuiltPartId}
                 onClick={() => void handleAddPrebuiltFromInventory()}
-                className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50 sm:shrink-0"
+                className={`${PRIMARY_ACTION_BUTTON_COMPACT} sm:shrink-0`}
               >
                 Anadir PC
               </button>
@@ -783,7 +798,7 @@ export function QuoteDetailPage() {
               type="button"
               disabled={actionLoading}
               onClick={() => void handleAddManual()}
-              className="rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              className={`${PRIMARY_ACTION_BUTTON} md:w-full`}
             >
               Anadir linea
             </button>
@@ -846,18 +861,14 @@ export function QuoteDetailPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditingItem(item)}
-                          className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-2 py-1 text-xs font-semibold text-indigo-200"
-                        >
+                        <button type="button" onClick={() => setEditingItem(item)} className={SECONDARY_GHOST_SM}>
                           Editar
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteItem(item)}
                           disabled={actionLoading}
-                          className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-200 disabled:opacity-50"
+                          className={DESTRUCTIVE_BUTTON_SM}
                         >
                           Eliminar
                         </button>
@@ -927,7 +938,7 @@ export function QuoteDetailPage() {
                   <button
                     type="button"
                     onClick={() => setEditingItem(item)}
-                    className="flex-1 rounded-lg border border-indigo-500/40 bg-indigo-500/10 py-2 text-xs font-semibold text-indigo-200"
+                    className={`${SECONDARY_GHOST_SM} flex-1 justify-center py-2`}
                   >
                     Editar
                   </button>
@@ -935,7 +946,7 @@ export function QuoteDetailPage() {
                     type="button"
                     onClick={() => handleDeleteItem(item)}
                     disabled={actionLoading}
-                    className="flex-1 rounded-lg border border-rose-500/40 bg-rose-500/10 py-2 text-xs font-semibold text-rose-200 disabled:opacity-50"
+                    className={`${DESTRUCTIVE_BUTTON_SM} flex-1 justify-center py-2`}
                   >
                     Eliminar
                   </button>
@@ -1011,18 +1022,14 @@ export function QuoteDetailPage() {
               </label>
             </div>
             <div className="mt-6 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingItem(null)}
-                className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-800"
-              >
+              <button type="button" onClick={() => setEditingItem(null)} className={SECONDARY_BUTTON_SM}>
                 Cancelar
               </button>
               <button
                 type="button"
                 disabled={actionLoading}
                 onClick={() => void handleSaveEditItem()}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                className={PRIMARY_ACTION_BUTTON_COMPACT}
               >
                 Guardar
               </button>
