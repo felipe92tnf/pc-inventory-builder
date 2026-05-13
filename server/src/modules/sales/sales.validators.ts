@@ -13,7 +13,9 @@ export const createSaleFromBuildSchema = z.object({
   paymentMethod: optionalTrimmed,
   warrantyMonths: z.number().int().nonnegative().optional(),
   notes: optionalTrimmed,
-  soldAt: z.coerce.date().optional()
+  soldAt: z.coerce.date().optional(),
+  /** Si true: cobro registrado pero el PC no se cuenta como entregado hasta confirmar recogida. */
+  pendingPickup: z.boolean().optional()
 });
 
 export const patchSaleSchema = z
@@ -25,7 +27,8 @@ export const patchSaleSchema = z
     paymentMethod: z.union([z.string().min(1), z.null()]).optional(),
     warrantyMonths: z.number().int().nonnegative().nullable().optional(),
     notes: z.union([z.string(), z.null()]).optional(),
-    soldAt: z.coerce.date().optional()
+    soldAt: z.coerce.date().optional(),
+    pickupConfirmedAt: z.coerce.date().optional().nullable()
   })
   .strict()
   .refine((body) => Object.values(body).some((v) => v !== undefined), {

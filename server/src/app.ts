@@ -7,6 +7,7 @@ import { salesRouter } from "./modules/sales/sales.routes.js";
 import { servicesRouter } from "./modules/services/services.routes.js";
 import { customersRouter } from "./modules/customers/customers.routes.js";
 import { quotesRouter } from "./modules/quotes/quotes.routes.js";
+import { extraTemplatesRouter } from "./modules/extra-templates/extra-templates.routes.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 
 export const app = express();
@@ -26,6 +27,7 @@ app.use("/api/v1/builds", buildsRouter);
 app.use("/api/v1/sales", salesRouter);
 app.use("/api/v1/services", servicesRouter);
 app.use("/api/v1/quotes", quotesRouter);
+app.use("/api/v1/extra-templates", extraTemplatesRouter);
 app.use("/api/v1/customers", customersRouter);
 
 app.use(notFoundHandler);

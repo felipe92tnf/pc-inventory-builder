@@ -35,8 +35,6 @@ import {
 import { PAGE_HERO, PAGE_OUTER_7XL_SALES, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
-import { SalesExcelImportPanel } from "../components/sales/SalesExcelImportPanel";
-import { SalesImportBatchesPanel } from "../components/sales/SalesImportBatchesPanel";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -111,18 +109,29 @@ function YearMonthlyProfitChart({ series, year }: { series: { month: number; pro
   const minV = Math.min(...values, 0);
   const maxV = Math.max(...values, 0);
   const span = allZero ? 1 : Math.max(maxV - minV, 1e-9);
+  const chartRowHeight = CHART_BAR_MAX_PX + 44;
 
   return (
     <div className="overflow-x-auto pb-2">
-      <div className="flex min-w-[640px] items-end gap-2 md:gap-3" style={{ height: CHART_BAR_MAX_PX + 28 }}>
+      <div className="flex min-w-[640px] items-end gap-2 md:gap-3" style={{ height: chartRowHeight }}>
         {series.map(({ month, profit }) => {
           const barH = allZero
             ? 0
             : Math.max(((profit - minV) / span) * CHART_BAR_MAX_PX, Math.abs(profit) > 1e-6 ? 3 : 0);
           return (
             <div key={month} className="flex min-w-0 flex-1 flex-col items-center justify-end">
+              <span className="text-center text-[10px] font-medium capitalize leading-tight text-slate-500">
+                {shortMonth(month, year)}
+              </span>
+              <span
+                className={`mt-0.5 text-center text-[10px] font-semibold tabular-nums leading-tight ${
+                  profit >= 0 ? "text-emerald-300/95" : "text-rose-300/95"
+                }`}
+              >
+                {money(profit)}
+              </span>
               <div
-                className={`w-full max-w-full rounded-t-md shadow-sm transition hover:opacity-90 ${
+                className={`mt-1 w-full max-w-full rounded-t-md shadow-sm transition hover:opacity-90 ${
                   profit >= 0
                     ? "bg-gradient-to-t from-indigo-700 to-emerald-500/75 shadow-indigo-900/40"
                     : "bg-gradient-to-t from-rose-900 to-rose-500/80 shadow-rose-950/40"
@@ -130,9 +139,6 @@ function YearMonthlyProfitChart({ series, year }: { series: { month: number; pro
                 style={{ height: barH }}
                 title={`${shortMonth(month, year)}: ${money(profit)}`}
               />
-              <span className="mt-2 text-center text-[10px] font-medium capitalize leading-tight text-slate-500">
-                {shortMonth(month, year)}
-              </span>
             </div>
           );
         })}
@@ -242,6 +248,16 @@ export function SalesPage() {
     [sales, selectedYear, selectedMonth]
   );
 
+  const deliveredPcSalesInMonth = useMemo(
+    () => salesInSelectedMonth.filter((s) => s.pickupConfirmedAt != null),
+    [salesInSelectedMonth]
+  );
+
+  const pendingPickupPcSalesInMonth = useMemo(
+    () => salesInSelectedMonth.filter((s) => s.pickupConfirmedAt == null),
+    [salesInSelectedMonth]
+  );
+
   useEffect(() => {
     let active = true;
     setServicesLoading(true);
@@ -291,6 +307,23 @@ export function SalesPage() {
       totalOperations: salesInSelectedMonth.length
     };
   }, [salesInSelectedMonth]);
+
+  const deliveredPcMonthTotals = useMemo(() => {
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let totalProfit = 0;
+    for (const sale of deliveredPcSalesInMonth) {
+      totalRevenue += sale.finalSalePrice;
+      totalCost += sale.totalCost;
+      totalProfit += sale.profit;
+    }
+    return {
+      totalRevenue,
+      totalCost,
+      totalProfit,
+      totalOperations: deliveredPcSalesInMonth.length
+    };
+  }, [deliveredPcSalesInMonth]);
 
   const technicalTotals = useMemo(() => {
     let totalRevenue = 0;
@@ -342,7 +375,7 @@ export function SalesPage() {
     [pcMonthTotals, technicalTotals, partSalesTotals]
   );
 
-  const topBuilds = useMemo(() => rankBuildsByProfit(salesInSelectedMonth, 10), [salesInSelectedMonth]);
+  const topBuilds = useMemo(() => rankBuildsByProfit(deliveredPcSalesInMonth, 10), [deliveredPcSalesInMonth]);
   const topClients = useMemo(() => rankClientsBySpend(salesInSelectedMonth, 10), [salesInSelectedMonth]);
 
   const deltaRevenue = useMemo(
@@ -399,7 +432,17 @@ export function SalesPage() {
 
       <section className={PAGE_HERO}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              <Link
+                to="/sales/import"
+                className="font-medium text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline"
+              >
+                Importación histórica (Excel) e historial de lotes
+              </Link>
+            </p>
+          </div>
 
           <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -446,12 +489,6 @@ export function SalesPage() {
         </div>
         </div>
       </section>
-
-      <SalesExcelImportPanel onImported={() => void reload()} />
-
-      <div className="mt-6">
-        <SalesImportBatchesPanel onReverted={() => void reload()} />
-      </div>
 
       {error ? (
         <div className="flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between">
@@ -526,10 +563,15 @@ export function SalesPage() {
             ) : (
               <div className="mt-4 space-y-4">
                 <SalesOverviewSection
-                  title="PCs vendidos"
-                  count={pcMonthTotals.totalOperations}
-                  totalRevenue={pcMonthTotals.totalRevenue}
-                  totalProfit={pcMonthTotals.totalProfit}
+                  title="PCs entregados"
+                  subtitle={
+                    pendingPickupPcSalesInMonth.length > 0
+                      ? `Más ${pendingPickupPcSalesInMonth.length} venta(s) cobrada(s) pendiente(s) de recogida: cuentan en ingresos del mes pero no aparecen aquí hasta confirmar la entrega.`
+                      : undefined
+                  }
+                  count={deliveredPcSalesInMonth.length}
+                  totalRevenue={deliveredPcMonthTotals.totalRevenue}
+                  totalProfit={deliveredPcMonthTotals.totalProfit}
                   open={salesSectionsOpen.pcs}
                   onToggle={() => toggleSalesSection("pcs")}
                   desktopTable={
@@ -545,7 +587,7 @@ export function SalesPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 bg-slate-900/40">
-                        {salesInSelectedMonth.map((sale) => (
+                        {deliveredPcSalesInMonth.map((sale) => (
                           <tr key={sale.id} className="transition hover:bg-slate-800/40">
                             <td className="px-3 py-2 text-slate-400">
                               {new Date(sale.soldAt).toLocaleDateString("es-ES")}
@@ -569,7 +611,7 @@ export function SalesPage() {
                       </tbody>
                     </table>
                   }
-                  mobileCards={salesInSelectedMonth.map((sale) => (
+                  mobileCards={deliveredPcSalesInMonth.map((sale) => (
                     <article key={sale.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <p className="text-xs text-slate-500">{new Date(sale.soldAt).toLocaleDateString("es-ES")}</p>
@@ -948,6 +990,7 @@ function MonthlySummaryCard({ row }: { row: MonthlySalesSummaryRow }) {
 
 function SalesOverviewSection({
   title,
+  subtitle,
   count,
   totalRevenue,
   totalProfit,
@@ -957,6 +1000,7 @@ function SalesOverviewSection({
   mobileCards
 }: {
   title: string;
+  subtitle?: string;
   count: number;
   totalRevenue: number;
   totalProfit: number;
@@ -975,6 +1019,7 @@ function SalesOverviewSection({
       >
         <div className="min-w-0">
           <p className="text-lg font-semibold text-slate-100">{title}</p>
+          {subtitle ? <p className="mt-1 text-xs text-slate-500">{subtitle}</p> : null}
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <StatusBadge variant="meta" size="detail" className="text-sm tabular-nums">
               {count}

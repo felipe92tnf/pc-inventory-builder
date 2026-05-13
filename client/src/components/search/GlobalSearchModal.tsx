@@ -12,6 +12,7 @@ import type { Quote } from "../../types/quote";
 import type { SaleListRow } from "../../types/sale";
 import type { ServiceRow } from "../../types/service";
 import { SECTION_SHELL } from "../../theme/layoutDensity";
+import { buildStatusLabelEs } from "../../utils/buildStatusLabel";
 
 const DEBOUNCE_MS = 280;
 const CACHE_MS = 120_000;
@@ -187,7 +188,7 @@ function rawHits(q: string, data: CacheBundle | null): SearchHit[] {
         key: `b-${build.id}`,
         category: "montaje",
         title: build.name,
-        subtitle: build.status === "SOLD" ? "Vendido" : build.status === "CONFIRMED" ? "Ensamblado" : "Borrador",
+        subtitle: buildStatusLabelEs(build.status),
         to: `/builds/${build.id}`
       });
     }

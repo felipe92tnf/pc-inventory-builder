@@ -1,14 +1,17 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, useEffect, type FormEvent, type ReactNode } from "react";
 import { useParts } from "../hooks/useParts";
 import { useServices } from "../hooks/useServices";
+import * as extraTemplatesApi from "../api/extraTemplates";
 import type {
   CreateServicePayload,
   PatchServicePayload,
+  ServiceExtraLinePayload,
   ServiceRow,
   ServiceStatus,
   ServiceType
 } from "../types/service";
 import { isPartPiece, PART_CATEGORIES, partCategoryLabel, type PartCategory } from "../types/part";
+import type { ExtraTemplate } from "../types/extraTemplate";
 import { SERVICE_TYPES, SERVICE_STATUSES } from "../types/service";
 import {
   PRIMARY_ACTION_BUTTON,
@@ -141,6 +144,16 @@ export function ServicesPage() {
 
   const { parts } = useParts();
 
+  useEffect(() => {
+    let cancelled = false;
+    void extraTemplatesApi.listExtraTemplates(true).then((rows) => {
+      if (!cancelled) setServiceExtraTemplates(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const partsForSpare = useMemo(
     () => parts.filter((p) => isPartPiece(p) && p.stock > 0),
     [parts]
@@ -186,6 +199,11 @@ export function ServicesPage() {
   const [serviceDate, setServiceDate] = useState(toIsoDate(new Date()));
   const [paymentMethod, setPaymentMethod] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [serviceExtraTemplates, setServiceExtraTemplates] = useState<ExtraTemplate[]>([]);
+  const [createExtraLines, setCreateExtraLines] = useState<ServiceExtraLinePayload[]>([]);
+  const [extraTplPickId, setExtraTplPickId] = useState("");
+  const [extraTplPickQty, setExtraTplPickQty] = useState(1);
 
   const spareInventoryCost = useMemo(() => {
     if (formType !== "SPARE_PART_SALE") return null;
@@ -233,6 +251,9 @@ export function ServicesPage() {
     setServiceDate(toIsoDate(new Date()));
     setPaymentMethod("");
     setNotes("");
+    setCreateExtraLines([]);
+    setExtraTplPickId("");
+    setExtraTplPickQty(1);
   };
 
   const closeModal = () => {
@@ -296,7 +317,8 @@ export function ServicesPage() {
           sparePartLines: lines,
           salePrice: manualSale,
           selectedPartId: null,
-          quantity: null
+          quantity: null,
+          ...(createExtraLines.length > 0 ? { extraLines: createExtraLines } : {})
         });
       } else {
         const c = typeof costPrice === "number" ? costPrice : 0;
@@ -306,7 +328,8 @@ export function ServicesPage() {
           costPrice: c,
           salePrice: s,
           selectedPartId: null,
-          quantity: null
+          quantity: null,
+          ...(createExtraLines.length > 0 ? { extraLines: createExtraLines } : {})
         });
       }
       resetForm();
@@ -731,6 +754,84 @@ export function ServicesPage() {
                     className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
                   />
                 </label>
+
+                {!editingService ? (
+                  <div className="md:col-span-2 rounded-xl border border-slate-700 bg-slate-950/30 p-4">
+                    <p className="text-sm font-medium text-slate-200">Extras desde plantilla (sin stock)</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Opcional. Se suman al coste y al PVP del servicio con los importes de la plantilla.
+                    </p>
+                    {createExtraLines.length > 0 ? (
+                      <ul className="mt-3 space-y-1 text-sm text-slate-300">
+                        {createExtraLines.map((row, i) => {
+                          const t = serviceExtraTemplates.find((x) => x.id === row.extraTemplateId);
+                          return (
+                            <li
+                              key={`${row.extraTemplateId}-${i}`}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700/80 bg-slate-900/50 px-2 py-1.5"
+                            >
+                              <span>
+                                {t?.name ?? row.extraTemplateId} ×{row.quantity ?? 1}
+                              </span>
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-rose-300 hover:underline"
+                                onClick={() => setCreateExtraLines((prev) => prev.filter((_, j) => j !== i))}
+                              >
+                                Quitar
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                      <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs font-medium text-slate-300">
+                        Plantilla
+                        <select
+                          value={extraTplPickId}
+                          onChange={(e) => setExtraTplPickId(e.target.value)}
+                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                        >
+                          <option value="">Elegir…</option>
+                          {serviceExtraTemplates.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex w-20 flex-col gap-1 text-xs font-medium text-slate-300">
+                        Cant.
+                        <input
+                          type="number"
+                          min={1}
+                          value={extraTplPickQty}
+                          onChange={(e) => setExtraTplPickQty(Math.max(1, Number(e.target.value) || 1))}
+                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className={SECONDARY_BUTTON_SM}
+                        onClick={() => {
+                          if (!extraTplPickId) {
+                            window.alert("Elige una plantilla.");
+                            return;
+                          }
+                          setCreateExtraLines((prev) => [
+                            ...prev,
+                            { extraTemplateId: extraTplPickId, quantity: extraTplPickQty }
+                          ]);
+                          setExtraTplPickId("");
+                          setExtraTplPickQty(1);
+                        }}
+                      >
+                        Añadir a la lista
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 {formType === "SPARE_PART_SALE" ? (
                   editingService?.status === "COMPLETED" ? (

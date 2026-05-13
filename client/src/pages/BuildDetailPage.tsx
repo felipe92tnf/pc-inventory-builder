@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import * as salesApi from "../api/sales";
+import * as extraTemplatesApi from "../api/extraTemplates";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
+import { BuildExtraLinesTable } from "../components/builds/BuildExtraLinesTable";
 import { PcConfiguratorForm } from "../components/builds/PcConfiguratorForm";
 import { SellPcModal } from "../components/sales/SellPcModal";
 import { useBuildDetail } from "../hooks/useBuildDetail";
 import { isConfiguratorPart } from "../types/part";
+import type { BuildStatus, UpdateBuildPayload } from "../types/build";
+import type { SaleListRow } from "../types/sale";
 import {
   PRIMARY_ACTION_BUTTON,
   PRIMARY_ACTION_BUTTON_COMPACT,
@@ -22,9 +26,33 @@ import {
 } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
+import type { ExtraTemplate } from "../types/extraTemplate";
+import { buildStatusLabelEs } from "../utils/buildStatusLabel";
 
 function money(value: number): string {
   return `${value.toFixed(2)} EUR`;
+}
+
+const OPERATIONAL_STATUS_OPTIONS: { value: BuildStatus; label: string }[] = [
+  { value: "CONFIRMED", label: "Listo para la venta" },
+  { value: "PENDING_PICKUP", label: "Pendiente de recogida" },
+  { value: "PENDING_PAYMENT", label: "Pendiente de pago" },
+  { value: "RESERVED", label: "Reservado" }
+];
+
+function isAssembledOperational(status: BuildStatus): boolean {
+  return (
+    status === "CONFIRMED" ||
+    status === "PENDING_PICKUP" ||
+    status === "PENDING_PAYMENT" ||
+    status === "RESERVED"
+  );
+}
+
+function parseMoneyInput(raw: string): number | null {
+  const n = Number(raw.replace(",", ".").trim());
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
 }
 
 export function BuildDetailPage() {
@@ -44,16 +72,68 @@ export function BuildDetailPage() {
     confirm,
     revertToDraft,
     updateBuildFields,
-    reload
+    reload,
+    addExtraLine,
+    updateExtraLine,
+    removeExtraLine
   } = useBuildDetail(buildId);
+
+  const [linkedSale, setLinkedSale] = useState<SaleListRow | null>(null);
 
   const configuratorParts = useMemo(() => parts.filter(isConfiguratorPart), [parts]);
 
+  /** Precio venta mostrado (override manual o total calculado). */
+  const totalSaleShown = useMemo(() => {
+    if (!build) return 0;
+    const shown =
+      build.saleTotalOverride != null
+        ? Number(build.totalSale)
+        : Number(build.computedSaleTotal ?? build.totalSale);
+    return Number.isFinite(shown) ? Math.max(0, shown) : 0;
+  }, [build, build?.totalSale, build?.saleTotalOverride, build?.computedSaleTotal]);
+
+  const sellSuggestedPrice = useMemo(() => {
+    if (!build) return 0;
+    if (build.status === "RESERVED" && build.reservationRemaining != null) {
+      return Number(build.reservationRemaining);
+    }
+    if (build.status === "PENDING_PAYMENT" && build.pendingPaymentRemaining != null) {
+      return Number(build.pendingPaymentRemaining);
+    }
+    return Number(build.totalSale);
+  }, [build]);
+
+  const pricingLocked = build?.status === "SOLD" || build?.status === "PENDING_PICKUP";
+  const canOpenSellModal =
+    build &&
+    ["CONFIRMED", "PENDING_PAYMENT", "RESERVED"].includes(build.status) &&
+    !linkedSale;
+  const showPickupBanner =
+    build?.status === "PENDING_PICKUP" && linkedSale && linkedSale.pickupConfirmedAt == null;
+
   const [saleDraft, setSaleDraft] = useState("");
-  const [linkedSaleId, setLinkedSaleId] = useState<string | null>(null);
   const [sellModalOpen, setSellModalOpen] = useState(false);
+  const [extraTemplates, setExtraTemplates] = useState<ExtraTemplate[]>([]);
+  const [extraTemplateId, setExtraTemplateId] = useState("");
+  const [extraQty, setExtraQty] = useState(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    void extraTemplatesApi.listExtraTemplates(true).then((rows) => {
+      if (!cancelled) setExtraTemplates(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [sellFormKey, setSellFormKey] = useState(0);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+
+  const [opStatus, setOpStatus] = useState<BuildStatus>("CONFIRMED");
+  const [resDeposit, setResDeposit] = useState("");
+  const [resRemaining, setResRemaining] = useState("");
+  const [payPaid, setPayPaid] = useState("");
+  const [payRemaining, setPayRemaining] = useState("");
 
   useEffect(() => {
     if (!build) return;
@@ -67,21 +147,29 @@ export function BuildDetailPage() {
   }, [build?.id, build?.totalSale, build?.saleTotalOverride, build?.computedSaleTotal]);
 
   useEffect(() => {
-    if (build?.status !== "SOLD") {
-      setLinkedSaleId(null);
-      return;
+    if (!build) return;
+    if (isAssembledOperational(build.status)) {
+      setOpStatus(build.status);
     }
+    setResDeposit(build.reservationDeposit != null ? Number(build.reservationDeposit).toFixed(2) : "");
+    setResRemaining(build.reservationRemaining != null ? Number(build.reservationRemaining).toFixed(2) : "");
+    setPayPaid(build.pendingPaymentPaid != null ? Number(build.pendingPaymentPaid).toFixed(2) : "");
+    setPayRemaining(
+      build.pendingPaymentRemaining != null ? Number(build.pendingPaymentRemaining).toFixed(2) : ""
+    );
+  }, [build]);
+
+  useEffect(() => {
+    if (!build?.id) return;
     let cancelled = false;
     void salesApi.listSales().then((rows) => {
-      const hit = rows.find((s) => s.buildId === build?.id);
-      if (!cancelled && hit) {
-        setLinkedSaleId(hit.id);
-      }
+      const hit = rows.find((s) => s.buildId === build.id);
+      if (!cancelled) setLinkedSale(hit ?? null);
     });
     return () => {
       cancelled = true;
     };
-  }, [build?.id, build?.status]);
+  }, [build?.id]);
 
   useEffect(() => {
     const msg = (location.state as { flash?: string } | null)?.flash;
@@ -91,7 +179,8 @@ export function BuildDetailPage() {
   }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
-    if (loading || build?.status !== "CONFIRMED") return;
+    if (loading || !build) return;
+    if (!["CONFIRMED", "PENDING_PAYMENT", "RESERVED"].includes(build.status)) return;
     if (location.hash !== "#registrar-venta") return;
     setSellFormKey((k) => k + 1);
     setSellModalOpen(true);
@@ -109,6 +198,47 @@ export function BuildDetailPage() {
         ...(payload.unitSalePrice !== undefined ? { unitSalePrice: payload.unitSalePrice } : {})
       });
     }
+  };
+
+  const handleSaveOperationalStatus = () => {
+    if (!build) return;
+    if (opStatus === "PENDING_PICKUP" && !linkedSale) {
+      window.alert("Primero registra la venta con la casilla Cobrado pendiente de recogida activada.");
+      return;
+    }
+    const payload: UpdateBuildPayload = { status: opStatus };
+    if (opStatus === "RESERVED") {
+      const d = parseMoneyInput(resDeposit);
+      const r = parseMoneyInput(resRemaining);
+      if (d === null || r === null) {
+        window.alert("Indica reserva cobrada y cantidad restante (numeros validos >= 0).");
+        return;
+      }
+      payload.reservationDeposit = d;
+      payload.reservationRemaining = r;
+    } else if (opStatus === "PENDING_PAYMENT") {
+      const p = parseMoneyInput(payPaid);
+      const r = parseMoneyInput(payRemaining);
+      if (p === null || r === null) {
+        window.alert("Indica importe cobrado y pendiente (numeros validos >= 0).");
+        return;
+      }
+      payload.pendingPaymentPaid = p;
+      payload.pendingPaymentRemaining = r;
+    }
+    void updateBuildFields(payload);
+  };
+
+  const handleConfirmPickupFromBuild = () => {
+    if (!linkedSale) return;
+    void (async () => {
+      try {
+        await salesApi.patchSale(linkedSale.id, { pickupConfirmedAt: new Date().toISOString() });
+        await reload();
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : "No se pudo confirmar la recogida.");
+      }
+    })();
   };
 
   if (!id) {
@@ -156,7 +286,7 @@ export function BuildDetailPage() {
             <p className="mt-1 text-sm text-slate-300">{build.notes || "Sin descripcion."}</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {build.status === "CONFIRMED" ? (
+            {canOpenSellModal ? (
               <button
                 type="button"
                 disabled={actionLoading}
@@ -169,20 +299,28 @@ export function BuildDetailPage() {
                 Vender PC
               </button>
             ) : null}
+            {showPickupBanner ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => handleConfirmPickupFromBuild()}
+                className="rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
+              >
+                Confirmar recogida
+              </button>
+            ) : null}
             <StatusBadge variant={buildStatusVariant(build.status)} size="card">
-              {build.status === "SOLD" ? "Vendido" : build.status === "CONFIRMED" ? "Assembled" : "Draft"}
+              {buildStatusLabelEs(build.status)}
             </StatusBadge>
-            {build.status === "SOLD" ? (
-              linkedSaleId ? (
-                <Link
-                  to={`/sales/${linkedSaleId}`}
-                  className="text-sm font-semibold text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
-                >
-                  Ver venta
-                </Link>
-              ) : (
-                <span className="text-xs text-slate-500">Buscando venta...</span>
-              )
+            {linkedSale ? (
+              <Link
+                to={`/sales/${linkedSale.id}`}
+                className="text-sm font-semibold text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
+              >
+                Ver venta
+              </Link>
+            ) : build.status === "SOLD" ? (
+              <span className="text-xs text-slate-500">Buscando venta...</span>
             ) : null}
           </div>
         </div>
@@ -206,6 +344,96 @@ export function BuildDetailPage() {
         </div>
       ) : null}
 
+      {isAssembledOperational(build.status) && build.status !== "SOLD" ? (
+        <section className={SECTION_SHELL}>
+          <h2 className="text-lg font-semibold text-slate-100">Estado del montaje</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Listo para la venta, pendiente de recogida (ya cobrado), pendiente de pago o reservado con anticipo. Pendiente
+            de recogida requiere registrar la venta marcando &quot;Pendiente de recogida&quot; al cobrar.
+          </p>
+          <div className="mt-4 flex max-w-2xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-sm font-medium text-slate-200">
+              Situacion
+              <select
+                value={opStatus}
+                onChange={(e) => {
+                  const next = e.target.value as BuildStatus;
+                  if (next === "PENDING_PAYMENT" && build) {
+                    setPayPaid("0.00");
+                    setPayRemaining(totalSaleShown > 0 ? totalSaleShown.toFixed(2) : "0.00");
+                  }
+                  setOpStatus(next);
+                }}
+                disabled={actionLoading}
+                className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              >
+                {OPERATIONAL_STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {opStatus === "RESERVED" ? (
+              <>
+                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
+                  Reserva (EUR)
+                  <input
+                    value={resDeposit}
+                    onChange={(e) => setResDeposit(e.target.value)}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
+                  Restante (EUR)
+                  <input
+                    value={resRemaining}
+                    onChange={(e) => setResRemaining(e.target.value)}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+              </>
+            ) : null}
+            {opStatus === "PENDING_PAYMENT" ? (
+              <>
+                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
+                  Cobrado (EUR)
+                  <input
+                    value={payPaid}
+                    onChange={(e) => setPayPaid(e.target.value)}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
+                  Pendiente (EUR)
+                  <input
+                    value={payRemaining}
+                    onChange={(e) => setPayRemaining(e.target.value)}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+              </>
+            ) : null}
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => void handleSaveOperationalStatus()}
+              className={SECONDARY_BUTTON_SM}
+            >
+              Guardar estado
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className={SUMMARY_CARD_GRID_THREE}>
         <article className={SUMMARY_CARD_SHELL}>
           <p className={SUMMARY_CARD_LABEL}>Coste total</p>
@@ -218,12 +446,12 @@ export function BuildDetailPage() {
             inputMode="decimal"
             value={saleDraft}
             onChange={(event) => setSaleDraft(event.target.value)}
-            disabled={actionLoading || build.status === "SOLD"}
+            disabled={actionLoading || pricingLocked}
             className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-xl font-bold text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             aria-label="Precio de venta total"
           />
           <p className="mt-2 text-xs text-slate-500">
-            Calculado por piezas:{" "}
+            Suma piezas + extras:{" "}
             <span className="font-medium text-slate-400">{money(build.computedSaleTotal)}</span>
           </p>
           {build.saleTotalOverride != null ? (
@@ -235,12 +463,12 @@ export function BuildDetailPage() {
               </p>
             </>
           ) : (
-            <p className="mt-1 text-xs text-slate-500">Usando suma de ventas de las piezas</p>
+            <p className="mt-1 text-xs text-slate-500">Usando suma de lineas (componentes + extras)</p>
           )}
           <div className="mt-3 flex flex-col gap-2">
             <button
               type="button"
-              disabled={actionLoading || build.status === "SOLD"}
+              disabled={actionLoading || pricingLocked}
               onClick={() => {
                 const normalized = Number(saleDraft.replace(",", ".").trim());
                 if (!Number.isFinite(normalized) || normalized < 0) {
@@ -257,13 +485,13 @@ export function BuildDetailPage() {
             {build.saleTotalOverride != null ? (
               <button
                 type="button"
-                disabled={actionLoading || build.status === "SOLD"}
+                disabled={actionLoading || pricingLocked}
                 onClick={() => {
                   void updateBuildFields({ saleTotalOverride: null });
                 }}
                 className="w-full rounded-lg border border-emerald-500/45 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 shadow-sm transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-start"
               >
-                Usar suma de piezas ({money(build.computedSaleTotal)})
+                Usar suma calculada ({money(build.computedSaleTotal)})
               </button>
             ) : null}
           </div>
@@ -277,8 +505,76 @@ export function BuildDetailPage() {
       </section>
 
       {build.status === "DRAFT" ? (
+        <section className={SECTION_SHELL}>
+          <h2 className="text-lg font-semibold text-slate-100">Anadir extra (plantilla)</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Conceptos sin stock (Windows, instalacion, etc.). Precios por defecto; puedes ajustarlos en la tabla.
+          </p>
+          <div className="mt-3 flex max-w-xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-medium text-slate-400">
+              Plantilla
+              <select
+                value={extraTemplateId}
+                disabled={actionLoading}
+                onChange={(e) => setExtraTemplateId(e.target.value)}
+                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+              >
+                <option value="">Elegir…</option>
+                {extraTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {t.category?.trim() ? ` (${t.category})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex w-24 flex-col gap-1 text-xs font-medium text-slate-400">
+              Cantidad
+              <input
+                type="number"
+                min={1}
+                value={extraQty}
+                disabled={actionLoading}
+                onChange={(e) => setExtraQty(Math.max(1, Number(e.target.value) || 1))}
+                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={actionLoading || !extraTemplateId}
+              onClick={() => {
+                void addExtraLine({ extraTemplateId, quantity: extraQty });
+              }}
+              className={SECONDARY_BUTTON_SM}
+            >
+              Anadir extra
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {build.status === "DRAFT" ? (
         <PcConfiguratorForm parts={configuratorParts} disabled={actionLoading} onAddSelected={handleAddConfiguratorParts} />
       ) : null}
+
+      <BuildExtraLinesTable
+        lines={build.extraLines ?? []}
+        status={build.status}
+        actionLoading={actionLoading}
+        onRemove={async (lineId) => {
+          await removeExtraLine(lineId);
+        }}
+        onUpdateLine={
+          build.status === "DRAFT"
+            ? async (lineId, unitSalePrice, unitCost) => {
+                await updateExtraLine(lineId, {
+                  unitSalePrice,
+                  ...(unitCost !== undefined ? { unitCost } : {})
+                });
+              }
+            : undefined
+        }
+      />
 
       <BuildItemsTable
         items={build.items}
@@ -301,13 +597,15 @@ export function BuildDetailPage() {
           <div>
             <h2 className="text-lg font-semibold text-slate-100">Confirmar montaje</h2>
             <p className="text-sm text-slate-300">
-              {build.status === "SOLD"
-                ? "Montaje vendido. Para cambiar piezas, elimina primero la venta en la ficha de venta."
+              {pricingLocked
+                ? build.status === "PENDING_PICKUP"
+                  ? "Cobrado; pendiente de que el cliente recoja el equipo. Confirma la recogida cuando lo entregues."
+                  : "Montaje vendido. Para cambiar piezas, elimina primero la venta en la ficha de venta."
                 : "Valida stock y descuenta inventario. Despues quedara bloqueado para edicion."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {build.status === "CONFIRMED" ? (
+            {isAssembledOperational(build.status) && !linkedSale ? (
               <button
                 type="button"
                 disabled={actionLoading}
@@ -325,15 +623,21 @@ export function BuildDetailPage() {
             ) : null}
             <button
               type="button"
-              disabled={build.status !== "DRAFT" || actionLoading}
+              disabled={
+                build.status !== "DRAFT" ||
+                actionLoading ||
+                ((build.items?.length ?? 0) === 0 && (build.extraLines?.length ?? 0) === 0)
+              }
               onClick={() => {
                 void confirm();
               }}
               className={PRIMARY_ACTION_BUTTON}
             >
-              {build.status === "SOLD"
-                ? "Vendido"
-                : build.status === "CONFIRMED"
+              {build.status === "SOLD" || build.status === "PENDING_PICKUP"
+                ? build.status === "PENDING_PICKUP"
+                  ? "Pendiente de recogida"
+                  : "Vendido"
+                : isAssembledOperational(build.status)
                   ? "Montaje confirmado"
                   : actionLoading
                     ? "Confirmando..."
@@ -347,7 +651,8 @@ export function BuildDetailPage() {
         open={sellModalOpen}
         onClose={() => setSellModalOpen(false)}
         buildId={build.id}
-        suggestedSalePrice={build.totalSale}
+        suggestedSalePrice={sellSuggestedPrice}
+        offerPendingPickup
         disabled={actionLoading}
         formResetKey={sellFormKey}
         onSuccess={async (sale) => {

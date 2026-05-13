@@ -1,5 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { Quote, QuoteStatus } from "../../types/quote";
+import { quotePaymentDueTotal, quotePaymentRemaining } from "../../utils/quotePayment";
 
 /** Nombre comercial mostrado en el PDF del presupuesto. */
 export const QUOTE_PDF_BUSINESS_NAME = "SecondByte";
@@ -495,7 +496,8 @@ const STATUS_LABELS: Record<QuoteStatus, string> = {
   SENT: "Enviado",
   ACCEPTED: "Aceptado",
   REJECTED: "Rechazado",
-  EXPIRED: "Caducado"
+  EXPIRED: "Caducado",
+  PENDING_PAYMENT: "Pendiente de pago"
 };
 
 function formatDateEs(iso: string | null): string {
@@ -659,6 +661,22 @@ function SummaryAndNotesBlock({
               <Text style={styles.grandValue}>{formatMoney(quote.total)}</Text>
             </View>
           </View>
+          {quote.status === "PENDING_PAYMENT" ? (
+            <View style={{ marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: palette.borderStrong }}>
+              <Text style={{ fontSize: 8, color: palette.navy, fontFamily: "Helvetica-Bold" }}>Estado de cobro</Text>
+              <View style={{ marginTop: 4, gap: 3 }}>
+                <Text style={{ fontSize: 7, color: palette.muted }}>
+                  Total a cobrar: {formatMoney(quotePaymentDueTotal(quote))} · Pagado:{" "}
+                  {formatMoney(quote.amountPaid ?? 0)} · Pendiente: {formatMoney(quotePaymentRemaining(quote))}
+                </Text>
+                {quote.paymentDate ? (
+                  <Text style={{ fontSize: 7, color: palette.muted }}>
+                    Día de pago: {formatDateEs(quote.paymentDate)}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
         </View>
       </View>
     </View>

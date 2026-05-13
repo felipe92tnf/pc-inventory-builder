@@ -8,6 +8,7 @@ import {
 } from "../../theme/actionButtons";
 import { SECTION_SHELL } from "../../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../ui/StatusBadge";
+import { buildStatusLabelEs } from "../../utils/buildStatusLabel";
 
 function isInventoryPrebuiltBuild(build: Build): boolean {
   return build.items?.length === 1 && build.items[0]?.part?.inventoryKind === "PREBUILT_PC";
@@ -59,7 +60,7 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
             </div>
 
             <StatusBadge variant={buildStatusVariant(build.status)} size="card">
-              {build.status === "SOLD" ? "Vendido" : build.status === "CONFIRMED" ? "Assembled" : "Draft"}
+              {buildStatusLabelEs(build.status)}
             </StatusBadge>
           </div>
 
@@ -67,7 +68,12 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
             {build.notes || "Sin descripción."}
           </p>
 
-          {(build.status === "CONFIRMED" || build.status === "SOLD") && build.totalSale !== undefined ? (
+          {(build.status === "CONFIRMED" ||
+            build.status === "PENDING_PICKUP" ||
+            build.status === "PENDING_PAYMENT" ||
+            build.status === "RESERVED" ||
+            build.status === "SOLD") &&
+          build.totalSale !== undefined ? (
             <p className="mt-3 text-sm font-semibold text-emerald-300">
               Precio venta: {Number(build.totalSale).toFixed(2)} EUR
             </p>
@@ -84,7 +90,9 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
             >
               Ver detalle
             </Link>
-            {build.status === "CONFIRMED" ? (
+            {(build.status === "CONFIRMED" ||
+              build.status === "PENDING_PAYMENT" ||
+              build.status === "RESERVED") ? (
               <Link
                 to={`/builds/${build.id}#registrar-venta`}
                 className={PRIMARY_ACTION_BUTTON_COMPACT}
@@ -95,7 +103,7 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
             <button
               type="button"
               onClick={() => onEdit(build)}
-              disabled={updatingId === build.id || build.status === "SOLD"}
+              disabled={updatingId === build.id || build.status === "SOLD" || build.status === "PENDING_PICKUP"}
               className={`${SECONDARY_BUTTON_SM} px-4 py-2 text-sm disabled:cursor-not-allowed`}
             >
               {updatingId === build.id ? "Guardando..." : "Editar"}
@@ -103,7 +111,7 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
             <button
               type="button"
               onClick={() => onDelete(build)}
-              disabled={deletingId === build.id || build.status === "SOLD"}
+              disabled={deletingId === build.id || build.status === "SOLD" || build.status === "PENDING_PICKUP"}
               className={`${DESTRUCTIVE_BUTTON_SM} px-4 py-2 text-sm disabled:cursor-not-allowed`}
             >
               {deletingId === build.id ? "Eliminando..." : "Eliminar"}

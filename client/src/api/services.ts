@@ -2,7 +2,9 @@ import { http } from "./http";
 import type {
   CreateServicePayload,
   MonthlyServiceSummaryRow,
+  PatchServiceExtraLinePayload,
   PatchServicePayload,
+  ServiceExtraLinePayload,
   ServiceRow
 } from "../types/service";
 
@@ -57,5 +59,29 @@ export function deleteService(id: string) {
 export function completeService(id: string) {
   return http<ServiceRow>(`/services/${id}/complete`, {
     method: "POST"
+  });
+}
+
+export function addServiceExtraLine(serviceId: string, payload: ServiceExtraLinePayload) {
+  return http<ServiceRow>(`/services/${serviceId}/extra-lines`, {
+    method: "POST",
+    body: payload
+  });
+}
+
+export function patchServiceExtraLine(
+  serviceId: string,
+  lineId: string,
+  payload: PatchServiceExtraLinePayload
+) {
+  return http<ServiceRow>(`/services/${serviceId}/extra-lines/${lineId}`, {
+    method: "PATCH",
+    body: payload
+  });
+}
+
+export function deleteServiceExtraLine(serviceId: string, lineId: string) {
+  return http<ServiceRow>(`/services/${serviceId}/extra-lines/${lineId}`, {
+    method: "DELETE"
   });
 }

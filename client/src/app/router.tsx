@@ -13,6 +13,7 @@ import { LoginPage } from "../pages/LoginPage";
 import { QuoteDetailPage } from "../pages/QuoteDetailPage";
 import { QuotesPage } from "../pages/QuotesPage";
 import { SaleDetailPage } from "../pages/SaleDetailPage";
+import { SalesHistoricalImportPage } from "../pages/SalesHistoricalImportPage";
 import { SalesPage } from "../pages/SalesPage";
 import { ServicesPage } from "../pages/ServicesPage";
 
@@ -189,10 +190,12 @@ export function AppRouter() {
           <Route index element={<InventoryPage />} />
           <Route path="builds" element={<BuildsPage />} />
           <Route path="builds/:id" element={<BuildDetailPage />} />
+          <Route path="sales/import" element={<SalesHistoricalImportPage />} />
           <Route path="sales" element={<SalesPage />} />
           <Route path="sales/:id" element={<SaleDetailPage />} />
           <Route path="quotes" element={<QuotesPage />} />
           <Route path="quotes/:id" element={<QuoteDetailPage />} />
+          <Route path="extras" element={<Navigate to={{ pathname: "/", search: "?tab=catalog&nueva=extra" }} replace />} />
           <Route path="services" element={<ServicesPage />} />
           <Route path="customers" element={<CustomerDetailPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

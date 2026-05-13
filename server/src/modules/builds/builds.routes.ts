@@ -1,15 +1,18 @@
 import { Router } from "express";
 import {
+  addBuildExtraLineHandler,
   addBuildItemHandler,
   confirmBuildHandler,
   createBuildFromPrebuiltHandler,
   createBuildHandler,
   deleteBuildHandler,
+  deleteBuildExtraLineHandler,
   deleteBuildItemHandler,
   getBuildHandler,
   listBuildsHandler,
   revertBuildToDraftHandler,
   updateBuildHandler,
+  updateBuildExtraLineHandler,
   updateBuildItemHandler
 } from "./builds.controller.js";
 
@@ -26,6 +29,10 @@ buildsRouter.delete("/:id", deleteBuildHandler);
 buildsRouter.post("/:id/items", addBuildItemHandler);
 buildsRouter.patch("/:id/items/:itemId", updateBuildItemHandler);
 buildsRouter.delete("/:id/items/:itemId", deleteBuildItemHandler);
+
+buildsRouter.post("/:id/extra-lines", addBuildExtraLineHandler);
+buildsRouter.patch("/:id/extra-lines/:lineId", updateBuildExtraLineHandler);
+buildsRouter.delete("/:id/extra-lines/:lineId", deleteBuildExtraLineHandler);
 
 buildsRouter.post("/:id/confirm", confirmBuildHandler);
 buildsRouter.post("/:id/revert-draft", revertBuildToDraftHandler);

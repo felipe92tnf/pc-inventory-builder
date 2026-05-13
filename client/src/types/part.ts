@@ -91,13 +91,19 @@ export type Part = {
   updatedAt: string;
 };
 
+/** Tras crear plantilla en «Nueva pieza»: abrir «Añadir unidades» con esa pieza y el estado elegido. */
+export type PendingCatalogStockPick = {
+  catalog: PartCatalogEntry;
+  condition: PartCondition;
+};
+
 /** Alta de stock a partir de una entrada del catalogo (crea o suma unidades en `Part`). */
 export type StockFromCatalogPayload = {
   catalogPartId: string;
   quantity: number;
   actualCostPrice: number;
   salePrice?: number;
-  condition: "NEW" | "USED";
+  condition: PartCondition;
   notes?: string | null;
 };
 

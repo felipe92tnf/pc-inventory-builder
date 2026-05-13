@@ -7,6 +7,7 @@ import { NewCatalogPartForm } from "../components/inventory/NewCatalogPartForm";
 import { PartForm } from "../components/inventory/PartForm";
 import { PartsTable } from "../components/inventory/PartsTable";
 import { PrebuiltInventoryTable } from "../components/inventory/PrebuiltInventoryTable";
+import { ExtraTemplatesPage } from "./ExtraTemplatesPage";
 import { useParts } from "../hooks/useParts";
 import {
   OS_PART_CONDITION,
@@ -16,10 +17,12 @@ import {
   isPrebuiltPc,
   partCategoryLabel,
   type Part,
+  type PartCatalogEntry,
   type PartCategory,
   type PartCondition,
   type PartFormValues,
-  type PartPayload
+  type PartPayload,
+  type PendingCatalogStockPick
 } from "../types/part";
 import { calculateSalePrice } from "../utils/pricing";
 import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
@@ -158,13 +161,28 @@ type StockFilter = "ALL" | "IN_STOCK" | "OUT_OF_STOCK";
 
 type InventoryTabId = "summary" | "stock" | "catalog" | "components" | "prebuilt";
 
+const TAB_QUERY = "tab";
+const NUEVA_QUERY = "nueva";
+
+function parseInventoryTab(value: string | null): InventoryTabId | null {
+  if (!value) return null;
+  const allowed: InventoryTabId[] = ["summary", "stock", "catalog", "components", "prebuilt"];
+  return (allowed as string[]).includes(value) ? (value as InventoryTabId) : null;
+}
+
 const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
   { id: "summary", label: "Resumen" },
-  { id: "stock", label: "Añadir stock" },
-  { id: "catalog", label: "Catálogo" },
+  { id: "catalog", label: "Nueva pieza" },
+  { id: "stock", label: "Añadir unidades" },
   { id: "components", label: "Componentes" },
   { id: "prebuilt", label: "PCs completos" }
 ];
+
+type CatalogNuevaMode = "parte" | "extra";
+
+type GoToTabOptions = {
+  nueva?: CatalogNuevaMode | null;
+};
 
 /** Paginación cards móvil (< md): más piezas por página. ≥ md: valor anterior para la porción paginada (tabla desktop no la usa). */
 const INVENTORY_MOBILE_PAGE_SIZE = 12;
@@ -214,17 +232,89 @@ export function InventoryPage() {
   /** Pestaña PCs completos: filtros plegables en móvil, plegados por defecto. */
   const [prebuiltFiltersOpen, setPrebuiltFiltersOpen] = useState(false);
 
-  /** Refresca listas de catálogo en «Añadir stock» al crear plantillas. */
+  /** Refresca listas de catálogo en «Añadir unidades» al crear plantillas. */
   const [catalogRefreshSignal, setCatalogRefreshSignal] = useState(0);
 
-  /** Acordeón «Nuevo PC completo» en pestaña Catálogo (plegado por defecto). */
+  /** Tras crear una plantilla de catálogo: abrir «Añadir unidades» con esa pieza seleccionada. */
+  const [pendingCatalogPick, setPendingCatalogPick] = useState<PendingCatalogStockPick | null>(null);
+
+  /** Acordeón «Nuevo PC completo» en pestaña Nueva pieza (plegado por defecto). */
   const [catalogPrebuiltAccordionOpen, setCatalogPrebuiltAccordionOpen] = useState(false);
+
+  const goToTab = useCallback(
+    (id: InventoryTabId, options?: GoToTabOptions) => {
+      setActiveTab(id);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          const prevTab = prev.get(TAB_QUERY);
+          if (id === "summary") {
+            next.delete(TAB_QUERY);
+            next.delete(NUEVA_QUERY);
+          } else {
+            next.set(TAB_QUERY, id);
+            if (id !== "catalog") {
+              next.delete(NUEVA_QUERY);
+            } else {
+              if (options?.nueva === "extra") next.set(NUEVA_QUERY, "extra");
+              else if (options?.nueva === "parte") next.set(NUEVA_QUERY, "parte");
+              else if (options?.nueva === null) next.delete(NUEVA_QUERY);
+              else if (prevTab !== "catalog") next.set(NUEVA_QUERY, "parte");
+            }
+          }
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const tabFromUrl = useMemo(() => {
+    const raw = searchParams.get(TAB_QUERY);
+    if (raw === "extraTemplates") return "catalog";
+    return parseInventoryTab(raw);
+  }, [searchParams]);
+
+  const catalogNuevaMode = useMemo((): CatalogNuevaMode => {
+    return searchParams.get(NUEVA_QUERY) === "extra" ? "extra" : "parte";
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get(TAB_QUERY) !== "extraTemplates") return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set(TAB_QUERY, "catalog");
+        next.set(NUEVA_QUERY, "extra");
+        return next;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (tabFromUrl) setActiveTab(tabFromUrl);
+  }, [tabFromUrl]);
 
   useEffect(() => {
     if (selectedPart) {
-      setActiveTab("catalog");
+      goToTab("catalog", { nueva: "parte" });
     }
-  }, [selectedPart]);
+  }, [selectedPart, goToTab]);
+
+  const consumePendingCatalogPick = useCallback(() => {
+    setPendingCatalogPick(null);
+  }, []);
+
+  const handleCatalogPartCreated = useCallback(
+    (created: PartCatalogEntry, meta: { condition: PartCondition }) => {
+      setCatalogRefreshSignal((n) => n + 1);
+      setPendingCatalogPick({ catalog: created, condition: meta.condition });
+      goToTab("stock");
+    },
+    [goToTab]
+  );
 
   const highlightPartId = searchParams.get("highlightPart");
   useEffect(() => {
@@ -244,10 +334,10 @@ export function InventoryPage() {
       clearParam();
       return;
     }
-    setActiveTab(isPrebuiltPc(part) ? "prebuilt" : "components");
+    goToTab(isPrebuiltPc(part) ? "prebuilt" : "components");
     setSelectedPart(part);
     clearParam();
-  }, [highlightPartId, parts, setSearchParams]);
+  }, [highlightPartId, parts, setSearchParams, goToTab]);
 
   const refreshBuilds = useCallback(async () => {
     try {
@@ -479,7 +569,7 @@ export function InventoryPage() {
               aria-controls={`inventory-panel-${tab.id}`}
               tabIndex={activeTab === tab.id ? 0 : -1}
               className={tabButtonClass(tab.id)}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => goToTab(tab.id)}
             >
               {tab.label}
             </button>
@@ -585,6 +675,130 @@ export function InventoryPage() {
       </section>
 
       <section
+        id="inventory-panel-catalog"
+        role="tabpanel"
+        aria-labelledby="inventory-tab-catalog"
+        hidden={activeTab !== "catalog"}
+        className={activeTab === "catalog" ? "space-y-4" : "hidden"}
+      >
+        {!selectedPart ? (
+          <div
+            className="flex w-full max-w-lg rounded-lg border border-slate-800 bg-slate-950/50 p-1"
+            role="group"
+            aria-label="Tipo de alta en catálogo"
+          >
+            <button
+              type="button"
+              aria-pressed={catalogNuevaMode === "parte"}
+              onClick={() => goToTab("catalog", { nueva: "parte" })}
+              className={[
+                "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition",
+                catalogNuevaMode === "parte"
+                  ? "bg-slate-800 text-slate-100 shadow-sm"
+                  : "text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
+              ].join(" ")}
+            >
+              Pieza física
+            </button>
+            <button
+              type="button"
+              aria-pressed={catalogNuevaMode === "extra"}
+              onClick={() => goToTab("catalog", { nueva: "extra" })}
+              className={[
+                "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition",
+                catalogNuevaMode === "extra"
+                  ? "bg-slate-800 text-slate-100 shadow-sm"
+                  : "text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
+              ].join(" ")}
+            >
+              Servicio/extra sin stock
+            </button>
+          </div>
+        ) : null}
+
+        {catalogNuevaMode === "extra" && !selectedPart ? (
+          <ExtraTemplatesPage embedded onTemplatesChanged={() => setCatalogRefreshSignal((n) => n + 1)} />
+        ) : (
+          <>
+            {!selectedPart && catalogNuevaMode === "parte" ? (
+              <p className="text-sm leading-relaxed text-slate-400">
+                Crea una pieza reutilizable una sola vez. Luego podrás añadir unidades rápidamente desde{" "}
+                <span className="font-medium text-slate-300">Añadir unidades</span>.
+              </p>
+            ) : null}
+
+            <NewCatalogPartForm onSuccess={handleCatalogPartCreated} />
+
+            {selectedPart ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
+                <p className="text-sm text-slate-400">
+                  Edición de una línea de inventario existente (stock físico). Las piezas sueltas nuevas deben crearse
+                  como plantilla arriba y luego darse de alta en{" "}
+                  <span className="font-medium text-slate-300">Añadir unidades</span>.
+                </p>
+                <div className="mt-3">
+                  <PartForm
+                    selectedPart={selectedPart}
+                    submitting={submitting}
+                    onSubmit={handleSubmit}
+                    onCancelEdit={() => setSelectedPart(null)}
+                    className="border-0 bg-transparent p-0 shadow-none"
+                  />
+                </div>
+              </div>
+            ) : (
+              <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 backdrop-blur">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/20 px-3.5 py-3 text-left transition hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/50 md:px-4"
+                  onClick={() => setCatalogPrebuiltAccordionOpen((open) => !open)}
+                  aria-expanded={catalogPrebuiltAccordionOpen}
+                  aria-controls="catalog-prebuilt-pc-panel"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base font-semibold text-slate-100">Nuevo PC completo en inventario</span>
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                      Alta directa en stock · sin plantilla de catálogo
+                    </span>
+                  </span>
+                  <svg
+                    className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${catalogPrebuiltAccordionOpen ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    aria-hidden
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <div
+                  id="catalog-prebuilt-pc-panel"
+                  hidden={!catalogPrebuiltAccordionOpen}
+                  className="border-t border-slate-800 px-3.5 pb-4 pt-3 md:px-4 md:pb-5 md:pt-4"
+                >
+                  <p className="text-sm text-slate-400">
+                    Los PCs completos no usan plantillas del catálogo de piezas; se dan de alta directamente en
+                    inventario.
+                  </p>
+                  <div className="mt-3">
+                    <PartForm
+                      selectedPart={null}
+                      submitting={submitting}
+                      onSubmit={handleSubmit}
+                      onCancelEdit={() => setSelectedPart(null)}
+                      createInventoryKindDefault="PREBUILT_PC"
+                      className="border-0 bg-transparent p-0 shadow-none"
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </section>
+
+      <section
         id="inventory-panel-stock"
         role="tabpanel"
         aria-labelledby="inventory-tab-stock"
@@ -595,81 +809,10 @@ export function InventoryPage() {
           submitting={submitting}
           onRegisterStock={createStockFromCatalog}
           catalogRefreshSignal={catalogRefreshSignal}
+          pendingCatalogPick={pendingCatalogPick}
+          onPendingCatalogPickConsumed={consumePendingCatalogPick}
+          onRequestCreateNewPart={() => goToTab("catalog", { nueva: "parte" })}
         />
-      </section>
-
-      <section
-        id="inventory-panel-catalog"
-        role="tabpanel"
-        aria-labelledby="inventory-tab-catalog"
-        hidden={activeTab !== "catalog"}
-        className={activeTab === "catalog" ? "space-y-4" : "hidden"}
-      >
-        <NewCatalogPartForm onSuccess={() => setCatalogRefreshSignal((n) => n + 1)} />
-        {selectedPart ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-            <p className="text-sm text-slate-400">
-              Edición de una línea de inventario existente (stock físico). Las piezas sueltas nuevas deben crearse
-              como plantilla arriba y luego darse de alta en «Añadir stock».
-            </p>
-            <div className="mt-3">
-              <PartForm
-                selectedPart={selectedPart}
-                submitting={submitting}
-                onSubmit={handleSubmit}
-                onCancelEdit={() => setSelectedPart(null)}
-                className="border-0 bg-transparent p-0 shadow-none"
-              />
-            </div>
-          </div>
-        ) : (
-          <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 backdrop-blur">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/20 px-3.5 py-3 text-left transition hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/50 md:px-4"
-              onClick={() => setCatalogPrebuiltAccordionOpen((open) => !open)}
-              aria-expanded={catalogPrebuiltAccordionOpen}
-              aria-controls="catalog-prebuilt-pc-panel"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-base font-semibold text-slate-100">Nuevo PC completo en inventario</span>
-                <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                  Alta directa en stock · sin plantilla de catálogo
-                </span>
-              </span>
-              <svg
-                className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${catalogPrebuiltAccordionOpen ? "rotate-180" : ""}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                aria-hidden
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            <div
-              id="catalog-prebuilt-pc-panel"
-              hidden={!catalogPrebuiltAccordionOpen}
-              className="border-t border-slate-800 px-3.5 pb-4 pt-3 md:px-4 md:pb-5 md:pt-4"
-            >
-              <p className="text-sm text-slate-400">
-                Los PCs completos no usan plantillas del catálogo de piezas; se dan de alta directamente en
-                inventario.
-              </p>
-              <div className="mt-3">
-                <PartForm
-                  selectedPart={null}
-                  submitting={submitting}
-                  onSubmit={handleSubmit}
-                  onCancelEdit={() => setSelectedPart(null)}
-                  createInventoryKindDefault="PREBUILT_PC"
-                  className="border-0 bg-transparent p-0 shadow-none"
-                />
-              </div>
-            </div>
-          </section>
-        )}
       </section>
 
       <section

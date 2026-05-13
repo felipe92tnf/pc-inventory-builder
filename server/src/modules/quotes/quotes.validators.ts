@@ -55,7 +55,10 @@ export const patchQuoteSchema = z
     validUntil: z.coerce.date().optional().nullable(),
     discountAmount: z.coerce.number().finite().nonnegative().optional(),
     notes: optionalNullableTrimmed,
-    status: z.nativeEnum(QuoteStatus).optional()
+    status: z.nativeEnum(QuoteStatus).optional(),
+    paymentTotal: z.union([z.coerce.number().finite().nonnegative(), z.null()]).optional(),
+    amountPaid: z.coerce.number().finite().nonnegative().optional(),
+    paymentDate: z.coerce.date().optional().nullable()
   })
   .strict()
   .refine((body) => Object.values(body).some((v) => v !== undefined), {
@@ -90,8 +93,17 @@ const serviceItemSchema = z.object({
   unitSalePrice: z.coerce.number().finite().nonnegative()
 });
 
+const extraTemplateQuoteItemSchema = z.object({
+  itemType: z.literal(QuoteItemType.EXTRA_TEMPLATE),
+  extraTemplateId: z.string().min(1),
+  quantity: z.coerce.number().int().positive(),
+  unitCost: z.coerce.number().finite().nonnegative().optional().nullable(),
+  unitSalePrice: z.coerce.number().finite().nonnegative().optional()
+});
+
 export const addQuoteItemSchema = z.discriminatedUnion("itemType", [
   inventoryPartItemSchema,
+  extraTemplateQuoteItemSchema,
   manualItemSchema,
   serviceItemSchema
 ]);

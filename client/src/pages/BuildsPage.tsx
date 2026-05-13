@@ -25,7 +25,13 @@ import {
 } from "../theme/listPageMobile";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL, TABLE_CELL } from "../theme/layoutDensity";
 
-type BuildBucketKey = "DRAFTS" | "PENDING" | "READY" | "SOLD";
+type BuildBucketKey =
+  | "WIP"
+  | "CONFIRMED"
+  | "RESERVED"
+  | "PENDING_PAYMENT"
+  | "PENDING_PICKUP"
+  | "SOLD";
 type StatusFilter = "ALL" | BuildBucketKey;
 type SortOrder = "RECENT" | "PROFIT_DESC" | "PRICE_DESC";
 
@@ -55,24 +61,37 @@ const SPANISH_MONTH_NAMES = [
 
 function buildBucket(build: Build): BuildBucketKey {
   if (build.status === "SOLD") return "SOLD";
-  if (build.status === "CONFIRMED") return "READY";
-  if ((build.items?.length ?? 0) > 0) return "PENDING";
-  return "DRAFTS";
+  if (build.status === "PENDING_PICKUP") return "PENDING_PICKUP";
+  if (build.status === "PENDING_PAYMENT") return "PENDING_PAYMENT";
+  if (build.status === "RESERVED") return "RESERVED";
+  if (build.status === "CONFIRMED") return "CONFIRMED";
+  return "WIP";
 }
 
 function bucketTitle(bucket: BuildBucketKey): string {
-  if (bucket === "DRAFTS") return "Borradores";
-  if (bucket === "PENDING") return "En montaje / pendientes";
-  if (bucket === "READY") return "Listos para vender";
+  if (bucket === "WIP") return "Montajes en curso";
+  if (bucket === "CONFIRMED") return "Listo para la venta";
+  if (bucket === "RESERVED") return "Reservado";
+  if (bucket === "PENDING_PAYMENT") return "Pendiente de pago";
+  if (bucket === "PENDING_PICKUP") return "Pendiente de recogida";
   return "Vendidos";
+}
+
+function canLinkRegisterSale(build: Build, sale: SaleListRow | undefined): boolean {
+  if (!["CONFIRMED", "PENDING_PAYMENT", "RESERVED"].includes(build.status)) return false;
+  return !sale;
 }
 
 function bucketTone(bucket: BuildBucketKey): string {
   if (bucket === "SOLD") return "border-cyan-500/30 bg-cyan-500/10 text-cyan-200";
-  if (bucket === "READY") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-  if (bucket === "PENDING") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+  if (bucket === "CONFIRMED") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+  if (bucket === "RESERVED") return "border-violet-500/30 bg-violet-500/10 text-violet-200";
+  if (bucket === "PENDING_PAYMENT") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+  if (bucket === "PENDING_PICKUP") return "border-sky-500/30 bg-sky-500/10 text-sky-200";
   return "border-indigo-500/30 bg-indigo-500/10 text-indigo-200";
 }
+
+const OPERATIVE_BUCKET_KEYS = ["WIP", "CONFIRMED", "RESERVED", "PENDING_PAYMENT", "PENDING_PICKUP"] as const;
 
 export function BuildsPage() {
   const navigate = useNavigate();
@@ -96,6 +115,7 @@ export function BuildsPage() {
   const [soldYearFilter, setSoldYearFilter] = useState<number | "ALL">(
     () => new Date().getFullYear()
   );
+  const [showEmptySections, setShowEmptySections] = useState(false);
 
   const handleDelete = async (buildId: string, buildName: string) => {
     const confirmed = window.confirm(`Eliminar el montaje "${buildName}"?`);
@@ -186,7 +206,14 @@ export function BuildsPage() {
   }, [builds, salesByBuildId, query, statusFilter, monthFilter, yearFilter, sortOrder]);
 
   const bucketBuilds = useMemo(() => {
-    const map: Record<BuildBucketKey, Build[]> = { DRAFTS: [], PENDING: [], READY: [], SOLD: [] };
+    const map: Record<BuildBucketKey, Build[]> = {
+      WIP: [],
+      CONFIRMED: [],
+      RESERVED: [],
+      PENDING_PAYMENT: [],
+      PENDING_PICKUP: [],
+      SOLD: []
+    };
     for (const build of globallyFilteredBuilds) {
       map[buildBucket(build)].push(build);
     }
@@ -210,7 +237,18 @@ export function BuildsPage() {
     () => inventoryParts.filter((p) => p.inventoryKind === "PREBUILT_PC" && p.stock > 0),
     [inventoryParts]
   );
-  const availableToSellCount = prebuiltWithStock.length + bucketBuilds.READY.length;
+  const availableToSellCount = prebuiltWithStock.length + bucketBuilds.CONFIRMED.length;
+
+  const disponiblesSectionVisible =
+    showEmptySections || inventoryLoading || prebuiltWithStock.length > 0;
+  const vendidosSectionVisible = showEmptySections || soldBuildsFiltered.length > 0;
+  const anyOperativeBucketHasRows = OPERATIVE_BUCKET_KEYS.some((k) => bucketBuilds[k].length > 0);
+  const showNoListingsHint =
+    !loading &&
+    !showEmptySections &&
+    !disponiblesSectionVisible &&
+    !vendidosSectionVisible &&
+    !anyOperativeBucketHasRows;
 
   return (
     <div className={`${PAGE_OUTER_7XL} max-md:pb-32`}>
@@ -273,9 +311,11 @@ export function BuildsPage() {
               Estado
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2">
                 <option value="ALL">Todos</option>
-                <option value="DRAFTS">Borradores</option>
-                <option value="PENDING">Pendientes</option>
-                <option value="READY">Listos para vender</option>
+                <option value="WIP">Montajes en curso</option>
+                <option value="CONFIRMED">Listo para la venta</option>
+                <option value="RESERVED">Reservado</option>
+                <option value="PENDING_PAYMENT">Pendiente de pago</option>
+                <option value="PENDING_PICKUP">Pendiente de recogida</option>
                 <option value="SOLD">Vendidos</option>
               </select>
             </label>
@@ -307,8 +347,20 @@ export function BuildsPage() {
       </section>
 
       <div className={LIST_PAGE_LISTING_REGION}>
-        <h2 className={LIST_PAGE_LISTING_TITLE}>Listado de montajes</h2>
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className={LIST_PAGE_LISTING_TITLE}>Listado de montajes</h2>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400 select-none">
+            <input
+              type="checkbox"
+              checked={showEmptySections}
+              onChange={(e) => setShowEmptySections(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-400/40"
+            />
+            Mostrar secciones vacías
+          </label>
+        </div>
 
+      {disponiblesSectionVisible ? (
       <section className={`${LIST_PAGE_ACCORDION_SHELL} backdrop-blur`}>
         <button
           type="button"
@@ -321,10 +373,10 @@ export function BuildsPage() {
             <div className="min-w-0">
               <span className="block text-base font-semibold text-slate-100">Disponibles para vender</span>
               <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                {inventoryLoading ? "Cargando inventario…" : "Inventario y listos para venta"}
+                {inventoryLoading ? "Cargando inventario…" : "Inventario y montajes listos para registrar venta"}
               </span>
             </div>
-            <span className={`${LIST_PAGE_COUNT_BADGE} ${bucketTone("READY")}`}>{availableToSellCount}</span>
+            <span className={`${LIST_PAGE_COUNT_BADGE} ${bucketTone("CONFIRMED")}`}>{availableToSellCount}</span>
           </div>
           <svg
             className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${availablePcsPanelOpen ? "rotate-180" : ""}`}
@@ -345,7 +397,7 @@ export function BuildsPage() {
           <div className="p-4 md:p-5">
             <div className="mb-2 hidden items-center gap-2 md:flex">
               <h3 className="text-lg font-semibold text-slate-100">Disponibles para vender</h3>
-              <span className={`${LIST_PAGE_COUNT_BADGE} ${bucketTone("READY")}`}>{availableToSellCount}</span>
+              <span className={`${LIST_PAGE_COUNT_BADGE} ${bucketTone("CONFIRMED")}`}>{availableToSellCount}</span>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-2">
               {(inventoryLoading ? [] : prebuiltWithStock).map((part) => {
@@ -382,31 +434,18 @@ export function BuildsPage() {
                   </article>
                 );
               })}
-              {bucketBuilds.READY.map((build) => (
-                <article key={`ready-${build.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5 md:p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-100">{build.name}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>
-                        Registrar venta
-                      </Link>
-                      <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>
-                        Ver detalle
-                      </Link>
-                    </div>
-                  </div>
-                  <p className="mt-3 text-lg font-semibold text-emerald-300">{money(Number(build.totalSale ?? 0))}</p>
-                </article>
-              ))}
-              {!inventoryLoading && prebuiltWithStock.length === 0 && bucketBuilds.READY.length === 0 ? (
-                <p className="text-sm text-slate-500">No hay equipos disponibles para vender ahora mismo.</p>
+              {!inventoryLoading && prebuiltWithStock.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  {bucketBuilds.CONFIRMED.length > 0
+                    ? "Sin stock de PCs de inventario. Los montajes listos aparecen en la seccion «Listo para la venta» debajo."
+                    : "No hay PCs de inventario en stock para vender ahora mismo."}
+                </p>
               ) : null}
             </div>
           </div>
         </div>
       </section>
+      ) : null}
 
       {loading ? (
         <section className={SECTION_SHELL}>
@@ -414,8 +453,9 @@ export function BuildsPage() {
         </section>
       ) : (
         <>
-          {(["PENDING", "DRAFTS"] as const).map((bucketKey) => {
+          {OPERATIVE_BUCKET_KEYS.map((bucketKey) => {
             const rows = bucketBuilds[bucketKey];
+            if (rows.length === 0 && !showEmptySections) return null;
             const defaultOpen = rows.length > 0;
             return (
               <BuildSection
@@ -431,6 +471,7 @@ export function BuildsPage() {
             );
           })}
 
+          {vendidosSectionVisible ? (
           <section className={LIST_PAGE_ACCORDION_SHELL}>
             <details className="group" open={false}>
               <summary className={LIST_PAGE_ACCORDION_TRIGGER}>
@@ -501,6 +542,14 @@ export function BuildsPage() {
               </div>
             </details>
           </section>
+          ) : null}
+
+          {showNoListingsHint ? (
+            <p className="text-sm text-slate-500">
+              Ninguna sección tiene contenido con los filtros actuales. Activa «Mostrar secciones vacías» para ver todas
+              las categorías.
+            </p>
+          ) : null}
         </>
       )}
       </div>
@@ -586,10 +635,21 @@ function BuildSection({
                           <td className={TABLE_CELL}>
                             <div className="flex justify-end gap-2">
                               <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
-                              {build.status === "CONFIRMED" ? (
+                              {canLinkRegisterSale(build, sale) ? (
                                 <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>Vender PC</Link>
                               ) : null}
-                              <button type="button" onClick={() => onDelete(build)} disabled={deletingId === build.id || build.status === "SOLD"} className={DESTRUCTIVE_BUTTON_SM}>Eliminar</button>
+                              <button
+                                type="button"
+                                onClick={() => onDelete(build)}
+                                disabled={
+                                  deletingId === build.id ||
+                                  build.status === "SOLD" ||
+                                  build.status === "PENDING_PICKUP"
+                                }
+                                className={DESTRUCTIVE_BUTTON_SM}
+                              >
+                                Eliminar
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -610,10 +670,21 @@ function BuildSection({
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
-                        {build.status === "CONFIRMED" ? (
+                        {canLinkRegisterSale(build, sale) ? (
                           <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>Vender PC</Link>
                         ) : null}
-                        <button type="button" onClick={() => onDelete(build)} disabled={deletingId === build.id || build.status === "SOLD"} className={DESTRUCTIVE_BUTTON_SM}>Eliminar</button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(build)}
+                          disabled={
+                            deletingId === build.id ||
+                            build.status === "SOLD" ||
+                            build.status === "PENDING_PICKUP"
+                          }
+                          className={DESTRUCTIVE_BUTTON_SM}
+                        >
+                          Eliminar
+                        </button>
                       </div>
                     </article>
                   );

@@ -1,4 +1,5 @@
 import type { Part } from "./part";
+import type { ExtraTemplateBrief } from "./extraTemplate";
 
 export const SERVICE_TYPES = [
   "SPARE_PART_SALE",
@@ -25,6 +26,18 @@ export type ServiceSparePartLineRow = {
   part: Part;
 };
 
+export type ServiceExtraLineRow = {
+  id: string;
+  serviceId: string;
+  extraTemplateId: string | null;
+  name: string;
+  description: string;
+  quantity: number;
+  unitCost: number;
+  unitSalePrice: number;
+  extraTemplate: ExtraTemplateBrief | null;
+};
+
 export type ServiceRow = {
   id: string;
   type: ServiceType;
@@ -49,6 +62,7 @@ export type ServiceRow = {
   updatedAt: string;
   selectedPart: Part | null;
   sparePartLines?: ServiceSparePartLineRow[];
+  extraLines?: ServiceExtraLineRow[];
 };
 
 export type MonthlyServiceSummaryRow = {
@@ -65,6 +79,13 @@ export type SparePartLinePayload = {
   quantity: number;
 };
 
+export type ServiceExtraLinePayload = {
+  extraTemplateId: string;
+  quantity?: number;
+  unitCost?: number;
+  unitSalePrice?: number;
+};
+
 export type CreateServicePayload = {
   type: ServiceType;
   title: string;
@@ -75,6 +96,7 @@ export type CreateServicePayload = {
   selectedPartId?: string | null;
   quantity?: number | null;
   sparePartLines?: SparePartLinePayload[];
+  extraLines?: ServiceExtraLinePayload[];
   costPrice?: number;
   salePrice?: number;
   isHomeService?: boolean;
@@ -88,3 +110,9 @@ export type CreateServicePayload = {
 export type PatchServicePayload = Partial<
   Omit<CreateServicePayload, "serviceDate"> & { serviceDate?: string; status?: ServiceStatus }
 >;
+
+export type PatchServiceExtraLinePayload = {
+  quantity?: number;
+  unitCost?: number;
+  unitSalePrice?: number;
+};

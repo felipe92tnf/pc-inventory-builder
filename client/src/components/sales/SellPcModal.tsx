@@ -10,6 +10,8 @@ type SellPcModalProps = {
   onSuccess: (sale: SaleDetail) => void;
   /** Incrementar al abrir el modal para reiniciar el formulario */
   formResetKey?: number;
+  /** Mostrar casilla cobrado pendiente de recogida */
+  offerPendingPickup?: boolean;
 };
 
 export function SellPcModal({
@@ -19,7 +21,8 @@ export function SellPcModal({
   suggestedSalePrice,
   disabled,
   onSuccess,
-  formResetKey = 0
+  formResetKey = 0,
+  offerPendingPickup = true
 }: SellPcModalProps) {
   if (!open) return null;
 
@@ -62,6 +65,7 @@ export function SellPcModal({
             buildId={buildId}
             suggestedSalePrice={suggestedSalePrice}
             disabled={disabled}
+            offerPendingPickup={offerPendingPickup}
             submitLabel="Confirmar venta"
             onSuccess={onSuccess}
           />

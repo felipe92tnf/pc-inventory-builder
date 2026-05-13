@@ -1,4 +1,4 @@
-﻿import { PrismaClient, PartCategory, PartCondition } from "@prisma/client";
+import { PrismaClient, PartCategory, PartCondition } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -22,6 +22,43 @@ async function main() {
         salePrice: 240,
         stock: 2,
         notes: "Limpia y testeada"
+      }
+    ]
+  });
+
+  await prisma.extraTemplate.createMany({
+    data: [
+      {
+        name: "Instalacion Windows 11",
+        description: "Instalacion limpia con drivers basicos",
+        defaultCostPrice: 5,
+        defaultSalePrice: 35,
+        category: "Sistema",
+        active: true
+      },
+      {
+        name: "Sistema operativo Windows 10 Pro",
+        description: "Licencia / instalacion segun acuerdo con cliente",
+        defaultCostPrice: 40,
+        defaultSalePrice: 120,
+        category: "Sistema",
+        active: true
+      },
+      {
+        name: "Instalacion drivers y actualizaciones",
+        description: "Drivers oficiales + Windows Update",
+        defaultCostPrice: 3,
+        defaultSalePrice: 25,
+        category: "Servicio",
+        active: true
+      },
+      {
+        name: "Pack software basico",
+        description: "Navegador, reproductor, utilidades acordadas",
+        defaultCostPrice: 2,
+        defaultSalePrice: 20,
+        category: "Software",
+        active: true
       }
     ]
   });

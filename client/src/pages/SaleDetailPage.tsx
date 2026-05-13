@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
+import { BuildExtraLinesTable } from "../components/builds/BuildExtraLinesTable";
 import { useSaleDetail } from "../hooks/useSaleDetail";
 import { PRIMARY_ACTION_BUTTON } from "../theme/actionButtons";
 import {
@@ -79,6 +80,19 @@ export function SaleDetailPage() {
     });
   };
 
+  const handleConfirmPickup = async () => {
+    if (!sale) return;
+    const ok = window.confirm(
+      "Confirmar que el cliente ha recogido el equipo? Pasara a contar como PC entregado y el montaje quedara como vendido."
+    );
+    if (!ok) return;
+    try {
+      await updateSale({ pickupConfirmedAt: new Date().toISOString() });
+    } catch {
+      /* error shown via hook */
+    }
+  };
+
   const handleDeleteSale = async () => {
     if (!sale) return;
     const ok = window.confirm(
@@ -138,9 +152,15 @@ export function SaleDetailPage() {
               Cliente: <span className="font-medium text-slate-100">{sale.customerName}</span>
             </p>
           </div>
-          <StatusBadge variant="sold" size="detail">
-            Vendido
-          </StatusBadge>
+          {sale.pickupConfirmedAt == null ? (
+            <StatusBadge variant="pending" size="detail">
+              Cobrado · pendiente de recogida
+            </StatusBadge>
+          ) : (
+            <StatusBadge variant="sold" size="detail">
+              Entregado
+            </StatusBadge>
+          )}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link
@@ -188,6 +208,26 @@ export function SaleDetailPage() {
             Reintentar
           </button>
         </div>
+      ) : null}
+
+      {sale.pickupConfirmedAt == null ? (
+        <section className="rounded-xl border border-amber-700/60 bg-amber-950/35 px-4 py-3 text-sm text-amber-100">
+          <p className="font-medium">Esta venta esta cobrada pero el PC sigue en tienda.</p>
+          <p className="mt-1 text-amber-200/90">
+            Cuenta en ingresos y beneficios del mes de la venta; no aparece en la lista de PCs entregados hasta que confirmes la
+            recogida.
+          </p>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              void handleConfirmPickup();
+            }}
+            className="mt-3 rounded-lg border border-amber-500/60 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
+          >
+            {saving ? "Guardando..." : "Confirmar recogida"}
+          </button>
+        </section>
       ) : null}
 
       <section className={SUMMARY_CARD_GRID_THREE}>
@@ -320,6 +360,18 @@ export function SaleDetailPage() {
           Referencia del configuracion vendido; no se pueden modificar lineas desde aqui.
         </p>
       </section>
+
+      {(b.extraLines?.length ?? 0) > 0 ? (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Extras del montaje</h2>
+          <BuildExtraLinesTable
+            lines={b.extraLines ?? []}
+            status="SOLD"
+            actionLoading={false}
+            onRemove={async () => {}}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

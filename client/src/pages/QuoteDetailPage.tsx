@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import * as quotesApi from "../api/quotes";
+import * as extraTemplatesApi from "../api/extraTemplates";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 import { PcConfiguratorForm, type ConfiguratorAddItem } from "../components/builds/PcConfiguratorForm";
 import { useParts } from "../hooks/useParts";
 import { isConfiguratorPart, isPrebuiltPc } from "../types/part";
 import type { AddQuoteItemPayload, PatchQuoteItemPayload, Quote, QuoteItem, QuoteStatus } from "../types/quote";
+import type { ExtraTemplate } from "../types/extraTemplate";
 import { QUOTE_STATUSES } from "../types/quote";
 import {
   aggregateQuoteFinancials,
@@ -32,6 +34,21 @@ import {
 } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL, TABLE_CELL } from "../theme/layoutDensity";
 
+function quoteItemTypeLabel(t: QuoteItem["itemType"]): string {
+  switch (t) {
+    case "INVENTORY_PART":
+      return "Inventario";
+    case "MANUAL_ITEM":
+      return "Manual";
+    case "SERVICE":
+      return "Servicio";
+    case "EXTRA_TEMPLATE":
+      return "Extra";
+    default:
+      return t;
+  }
+}
+
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
 }
@@ -54,7 +71,8 @@ const STATUS_LABELS: Record<QuoteStatus, string> = {
   SENT: "Enviado",
   ACCEPTED: "Aceptado",
   REJECTED: "Rechazado",
-  EXPIRED: "Caducado"
+  EXPIRED: "Caducado",
+  PENDING_PAYMENT: "Pendiente de pago"
 };
 
 export function QuoteDetailPage() {
@@ -79,6 +97,9 @@ export function QuoteDetailPage() {
   const [discountDraft, setDiscountDraft] = useState("0");
 
   const [statusDraft, setStatusDraft] = useState<QuoteStatus>("DRAFT");
+  const [paymentTotalInput, setPaymentTotalInput] = useState("");
+  const [amountPaidInput, setAmountPaidInput] = useState("0");
+  const [paymentDateInput, setPaymentDateInput] = useState("");
 
   const [prebuiltPartId, setPrebuiltPartId] = useState("");
   const [prebuiltQty, setPrebuiltQty] = useState(1);
@@ -89,6 +110,11 @@ export function QuoteDetailPage() {
   const [manualQty, setManualQty] = useState(1);
   const [manualCost, setManualCost] = useState("");
   const [manualSale, setManualSale] = useState("");
+
+  const [quoteExtraTemplates, setQuoteExtraTemplates] = useState<ExtraTemplate[]>([]);
+  const [quoteExtraTplId, setQuoteExtraTplId] = useState("");
+  const [quoteExtraQty, setQuoteExtraQty] = useState(1);
+  const [quoteExtraSale, setQuoteExtraSale] = useState("");
 
   const [editingItem, setEditingItem] = useState<QuoteItem | null>(null);
   const [editName, setEditName] = useState("");
@@ -107,6 +133,9 @@ export function QuoteDetailPage() {
     setNotes(q.notes ?? "");
     setDiscountDraft(Number(q.discountAmount).toFixed(2));
     setStatusDraft(q.status);
+    setPaymentTotalInput(q.paymentTotal != null ? Number(q.paymentTotal).toFixed(2) : "");
+    setAmountPaidInput(Number(q.amountPaid ?? 0).toFixed(2));
+    setPaymentDateInput(isoDateOnly(q.paymentDate));
   }, []);
 
   const reload = useCallback(async () => {
@@ -128,6 +157,16 @@ export function QuoteDetailPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void extraTemplatesApi.listExtraTemplates(true).then((rows) => {
+      if (!cancelled) setQuoteExtraTemplates(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!editingItem) return;
@@ -217,6 +256,45 @@ export function QuoteDetailPage() {
   const handleStatusSave = () =>
     run(async () => quotesApi.patchQuoteStatus(quoteId, { status: statusDraft }));
 
+  const paymentPreviewDue = useMemo(() => {
+    if (!quote) return 0;
+    const t = paymentTotalInput.trim().replace(",", ".");
+    if (t === "") return quote.total;
+    const n = Number(t);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : quote.total;
+  }, [quote, paymentTotalInput]);
+
+  const paymentPreviewRemaining = useMemo(() => {
+    const p = Number(amountPaidInput.trim().replace(",", "."));
+    const paid = Number.isFinite(p) && p >= 0 ? Math.round(p * 100) / 100 : 0;
+    return Math.round((paymentPreviewDue - paid) * 100) / 100;
+  }, [paymentPreviewDue, amountPaidInput]);
+
+  const handleSavePayment = () => {
+    if (!quote) return;
+    const totalTrim = paymentTotalInput.trim().replace(",", ".");
+    const paymentTotalPayload = totalTrim === "" ? null : Number(totalTrim);
+    if (paymentTotalPayload != null && (!Number.isFinite(paymentTotalPayload) || paymentTotalPayload < 0)) {
+      window.alert("Importe total invalido.");
+      return;
+    }
+    const paidTrim = amountPaidInput.trim().replace(",", ".");
+    const paidNum = Number(paidTrim);
+    if (!Number.isFinite(paidNum) || paidNum < 0) {
+      window.alert("Importe pagado invalido.");
+      return;
+    }
+    const roundedPaid = Math.round(paidNum * 100) / 100;
+    const roundedPt = paymentTotalPayload == null ? null : Math.round(paymentTotalPayload * 100) / 100;
+    void run(async () =>
+      quotesApi.patchQuote(quoteId, {
+        paymentTotal: roundedPt,
+        amountPaid: roundedPaid,
+        paymentDate: paymentDateInput ? new Date(`${paymentDateInput}T12:00:00`).toISOString() : null
+      })
+    );
+  };
+
   const handleAddFromConfigurator = async (items: ConfiguratorAddItem[]) => {
     if (items.length === 0) return;
     await run(async () => {
@@ -300,6 +378,35 @@ export function QuoteDetailPage() {
     });
   };
 
+  const handleAddExtraFromTemplate = () => {
+    if (!quoteExtraTplId) {
+      window.alert("Elige una plantilla de extra.");
+      return;
+    }
+    const qty = Math.max(1, Math.floor(Number(quoteExtraQty)));
+    const payload: AddQuoteItemPayload = {
+      itemType: "EXTRA_TEMPLATE",
+      extraTemplateId: quoteExtraTplId,
+      quantity: qty
+    };
+    const saleRaw = quoteExtraSale.trim();
+    if (saleRaw) {
+      const s = Number(saleRaw.replace(",", "."));
+      if (!Number.isFinite(s) || s < 0) {
+        window.alert("Precio de venta opcional invalido.");
+        return;
+      }
+      payload.unitSalePrice = Math.round(s * 100) / 100;
+    }
+    void run(async () => {
+      const updated = await quotesApi.addQuoteItem(quoteId, payload);
+      setQuoteExtraTplId("");
+      setQuoteExtraQty(1);
+      setQuoteExtraSale("");
+      return updated;
+    });
+  };
+
   const handleSaveEditItem = () => {
     if (!editingItem) return;
     const qty = Math.max(1, Math.floor(Number(editQty)));
@@ -343,7 +450,7 @@ export function QuoteDetailPage() {
 
   const handleAcceptAndCreateBuild = async () => {
     const ok = window.confirm(
-      "Se creará un montaje en borrador con las piezas del inventario. Las líneas manuales o de servicio quedarán en las notas del montaje. ¿Continuar?"
+      "Se creará un montaje en borrador con las piezas del inventario y las líneas de extras por plantilla. Las líneas manuales o de servicio quedarán en las notas del montaje. ¿Continuar?"
     );
     if (!ok) return;
     setActionLoading(true);
@@ -511,6 +618,74 @@ export function QuoteDetailPage() {
           )}
         </div>
       </section>
+
+      {quote.status === "PENDING_PAYMENT" ? (
+        <section className={SECTION_SHELL}>
+          <h2 className="text-lg font-semibold text-slate-100">Cobro</h2>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            Si dejas vacío el total a cobrar, se usa el total del presupuesto ({money(quote.total)}). El pendiente se
+            calcula como total a cobrar menos pagado.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
+              Total a cobrar (EUR)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={paymentTotalInput}
+                onChange={(e) => setPaymentTotalInput(e.target.value)}
+                disabled={actionLoading}
+                placeholder={money(quote.total)}
+                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
+              Pagado (EUR)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amountPaidInput}
+                onChange={(e) => setAmountPaidInput(e.target.value)}
+                disabled={actionLoading}
+                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              />
+            </label>
+            <div className="flex flex-col gap-1 text-sm font-medium text-slate-200">
+              <span>Pendiente (vista previa)</span>
+              <div
+                className={`flex min-h-[42px] items-center rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 tabular-nums ${
+                  paymentPreviewRemaining > 0 ? "text-amber-200" : paymentPreviewRemaining < 0 ? "text-rose-300" : "text-emerald-200"
+                }`}
+              >
+                {money(paymentPreviewRemaining)}
+              </div>
+            </div>
+            <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
+              Día de pago
+              <input
+                type="date"
+                value={paymentDateInput}
+                onChange={(e) => setPaymentDateInput(e.target.value)}
+                disabled={actionLoading}
+                className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => void handleSavePayment()}
+              className={PRIMARY_ACTION_BUTTON_COMPACT}
+            >
+              Guardar cobro
+            </button>
+            <p className="self-center text-xs text-slate-500">
+              Total efectivo: {money(paymentPreviewDue)} · En servidor, pendiente: {money(quote.paymentRemaining)}
+            </p>
+          </div>
+        </section>
+      ) : null}
 
       <section className={SECTION_SHELL}>
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -812,6 +987,64 @@ export function QuoteDetailPage() {
       </section>
 
       <section className={SECTION_SHELL}>
+        <h3 className="font-semibold text-slate-100">Extra desde plantilla (sin inventario)</h3>
+        <p className="mt-1 text-xs text-slate-400">
+          Mismas plantillas que en Montajes: precios por defecto de la plantilla; puedes fijar otro PVP unitario
+          opcional antes de anadir.
+        </p>
+        <div className="mt-3 flex max-w-2xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-medium text-slate-200">
+            Plantilla
+            <select
+              value={quoteExtraTplId}
+              disabled={actionLoading}
+              onChange={(e) => setQuoteExtraTplId(e.target.value)}
+              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+            >
+              <option value="">Elegir…</option>
+              {quoteExtraTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.category?.trim() ? ` (${t.category})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex w-24 flex-col gap-1 text-xs font-medium text-slate-200">
+            Cantidad
+            <input
+              type="number"
+              min={1}
+              value={quoteExtraQty}
+              disabled={actionLoading}
+              onChange={(e) => setQuoteExtraQty(Math.max(1, Number(e.target.value) || 1))}
+              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+            />
+          </label>
+          <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-xs font-medium text-slate-200">
+            PVP unit. (opc.)
+            <input
+              type="text"
+              inputMode="decimal"
+              value={quoteExtraSale}
+              disabled={actionLoading}
+              onChange={(e) => setQuoteExtraSale(e.target.value)}
+              placeholder="Defecto plantilla"
+              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={actionLoading || !quoteExtraTplId}
+            onClick={() => void handleAddExtraFromTemplate()}
+            className={PRIMARY_ACTION_BUTTON_COMPACT}
+          >
+            Anadir extra
+          </button>
+        </div>
+      </section>
+
+      <section className={SECTION_SHELL}>
         <h2 className="text-lg font-semibold text-slate-100">Lineas del presupuesto</h2>
 
         <div className="mt-3 hidden overflow-x-auto rounded-xl border border-slate-800 md:block">
@@ -847,7 +1080,9 @@ export function QuoteDetailPage() {
                     <td className={`max-w-xs ${TABLE_CELL} text-xs text-slate-400`}>
                       <span className="line-clamp-2">{item.description || "—"}</span>
                     </td>
-                    <td className={`whitespace-nowrap ${TABLE_CELL} text-xs text-slate-500`}>{item.itemType}</td>
+                    <td className={`whitespace-nowrap ${TABLE_CELL} text-xs text-slate-500`}>
+                      {quoteItemTypeLabel(item.itemType)}
+                    </td>
                     <td className={TABLE_CELL}>{item.quantity}</td>
                     <td className={`${TABLE_CELL} text-slate-300`}>{moneyOrDash(item.unitCost)}</td>
                     <td className={`${TABLE_CELL} text-slate-300`}>{moneyOrDash(lineCost)}</td>
@@ -898,7 +1133,7 @@ export function QuoteDetailPage() {
               >
                 <div className="flex justify-between gap-2">
                   <h3 className="font-semibold text-slate-100">{item.name}</h3>
-                  <span className="text-[10px] uppercase text-slate-500">{item.itemType}</span>
+                  <span className="text-[10px] uppercase text-slate-500">{quoteItemTypeLabel(item.itemType)}</span>
                 </div>
                 {item.description ? (
                   <p className="mt-2 text-xs text-slate-400">{item.description}</p>

@@ -81,7 +81,7 @@ export async function listQuotes() {
     orderBy: { createdAt: "desc" },
     include: {
       items: {
-        include: { part: true },
+        include: { part: true, extraTemplate: true },
         orderBy: { createdAt: "asc" }
       }
     }
@@ -93,7 +93,7 @@ export async function getQuote(id: string) {
     where: { id },
     include: {
       items: {
-        include: { part: true },
+        include: { part: true, extraTemplate: true },
         orderBy: { createdAt: "asc" }
       }
     }
@@ -127,7 +127,7 @@ export async function createQuote(payload: unknown) {
     },
     include: {
       items: {
-        include: { part: true },
+        include: { part: true, extraTemplate: true },
         orderBy: { createdAt: "asc" }
       }
     }
@@ -155,6 +155,11 @@ export async function patchQuote(id: string, payload: unknown) {
   if (data.discountAmount !== undefined) patch.discountAmount = moneyDecimal(data.discountAmount);
   if (data.notes !== undefined) patch.notes = data.notes;
   if (data.status !== undefined) patch.status = data.status;
+  if (data.paymentTotal !== undefined) {
+    patch.paymentTotal = data.paymentTotal === null ? null : moneyDecimal(data.paymentTotal);
+  }
+  if (data.amountPaid !== undefined) patch.amountPaid = moneyDecimal(data.amountPaid);
+  if (data.paymentDate !== undefined) patch.paymentDate = data.paymentDate;
 
   await prisma.quote.update({
     where: { id },
@@ -247,6 +252,66 @@ export async function addQuoteItem(quoteId: string, payload: unknown) {
           description: inventoryPartQuoteDescription(part),
           quantity: qty,
           unitCost: moneyDecimal(unitCost),
+          unitSalePrice: moneyDecimal(unitSale),
+          total: moneyDecimal(total)
+        }
+      });
+    }
+  } else if (data.itemType === QuoteItemType.EXTRA_TEMPLATE) {
+    const template = await prisma.extraTemplate.findUnique({ where: { id: data.extraTemplateId } });
+    if (!template) {
+      throw new Error("EXTRA_TEMPLATE_NOT_FOUND");
+    }
+    if (!template.active) {
+      throw new Error("EXTRA_TEMPLATE_INACTIVE");
+    }
+
+    const qty = data.quantity;
+    const unitSale =
+      data.unitSalePrice !== undefined && data.unitSalePrice !== null
+        ? data.unitSalePrice
+        : Number(template.defaultSalePrice);
+    const unitCostNum =
+      data.unitCost === undefined || data.unitCost === null ? Number(template.defaultCostPrice) : data.unitCost;
+
+    const existingLine = await prisma.quoteItem.findFirst({
+      where: {
+        quoteId,
+        extraTemplateId: template.id,
+        itemType: QuoteItemType.EXTRA_TEMPLATE
+      }
+    });
+
+    if (existingLine) {
+      const newQty = existingLine.quantity + qty;
+      const saleUnit = Number(existingLine.unitSalePrice);
+      const costUnit = existingLine.unitCost != null ? Number(existingLine.unitCost) : unitCostNum;
+      const total = lineTotalPrice(newQty, saleUnit);
+
+      await prisma.quoteItem.update({
+        where: { id: existingLine.id },
+        data: {
+          quantity: newQty,
+          unitCost: moneyDecimal(costUnit),
+          unitSalePrice: moneyDecimal(saleUnit),
+          total: moneyDecimal(total),
+          name: template.name,
+          description: template.description?.trim() || null
+        }
+      });
+    } else {
+      const total = lineTotalPrice(qty, unitSale);
+
+      await prisma.quoteItem.create({
+        data: {
+          quoteId,
+          partId: null,
+          extraTemplateId: template.id,
+          itemType: QuoteItemType.EXTRA_TEMPLATE,
+          name: template.name,
+          description: template.description?.trim() || null,
+          quantity: qty,
+          unitCost: moneyDecimal(unitCostNum),
           unitSalePrice: moneyDecimal(unitSale),
           total: moneyDecimal(total)
         }
@@ -417,7 +482,9 @@ function formatQuoteConversionNotes(
           ? "Servicio"
           : m.itemType === QuoteItemType.MANUAL_ITEM
             ? "Concepto manual"
-            : "Inventario (referencia)";
+            : m.itemType === QuoteItemType.EXTRA_TEMPLATE
+              ? "Extra (plantilla)"
+              : "Inventario (referencia)";
       const desc = m.description?.trim() ? ` — ${m.description.trim()}` : "";
       lines.push(
         `• [${typeLabel}] ${m.name} ×${m.quantity} @ ${Number(m.unitSalePrice).toFixed(2)} €/u → ${Number(m.total).toFixed(2)} €${desc}`
@@ -451,12 +518,14 @@ export async function convertQuoteToBuild(quoteId: string) {
     throw new Error("QUOTE_ALREADY_CONVERTED");
   }
 
-  const manualLines = quote.items.filter(
-    (row) =>
+  const manualLines = quote.items.filter((row) => {
+    if (row.itemType === QuoteItemType.EXTRA_TEMPLATE) return false;
+    return (
       row.partId === null ||
       row.itemType === QuoteItemType.MANUAL_ITEM ||
       row.itemType === QuoteItemType.SERVICE
-  );
+    );
+  });
 
   const notesBody = formatQuoteConversionNotes(quote, manualLines);
 
@@ -467,7 +536,8 @@ export async function convertQuoteToBuild(quoteId: string) {
     if (
       row.partId === null ||
       row.itemType === QuoteItemType.MANUAL_ITEM ||
-      row.itemType === QuoteItemType.SERVICE
+      row.itemType === QuoteItemType.SERVICE ||
+      row.itemType === QuoteItemType.EXTRA_TEMPLATE
     ) {
       continue;
     }
@@ -510,6 +580,22 @@ export async function convertQuoteToBuild(quoteId: string) {
           quantity: qty,
           unitCost: moneyDecimal(unitCost),
           unitSalePrice: moneyDecimal(unitSale)
+        }
+      });
+    }
+
+    for (const row of quote.items) {
+      if (row.itemType !== QuoteItemType.EXTRA_TEMPLATE) continue;
+      const uc = row.unitCost != null ? Number(row.unitCost) : 0;
+      await tx.buildExtraLine.create({
+        data: {
+          buildId: newBuild.id,
+          extraTemplateId: row.extraTemplateId,
+          name: row.name,
+          description: row.description ?? "",
+          quantity: row.quantity,
+          unitCost: moneyDecimal(uc),
+          unitSalePrice: moneyDecimal(Number(row.unitSalePrice))
         }
       });
     }

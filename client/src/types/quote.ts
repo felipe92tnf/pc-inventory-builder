@@ -1,9 +1,17 @@
 import type { InventoryKind, PartCategory, PartCondition } from "./part";
+import type { ExtraTemplateBrief } from "./extraTemplate";
 
-export const QUOTE_STATUSES = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"] as const;
+export const QUOTE_STATUSES = [
+  "DRAFT",
+  "SENT",
+  "ACCEPTED",
+  "REJECTED",
+  "EXPIRED",
+  "PENDING_PAYMENT"
+] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
-export const QUOTE_ITEM_TYPES = ["INVENTORY_PART", "MANUAL_ITEM", "SERVICE"] as const;
+export const QUOTE_ITEM_TYPES = ["INVENTORY_PART", "MANUAL_ITEM", "SERVICE", "EXTRA_TEMPLATE"] as const;
 export type QuoteItemType = (typeof QUOTE_ITEM_TYPES)[number];
 
 /** Parte ligera incluida en lineas de presupuesto cuando viene del inventario */
@@ -24,6 +32,7 @@ export type QuoteItem = {
   id: string;
   quoteId: string;
   partId: string | null;
+  extraTemplateId: string | null;
   itemType: QuoteItemType;
   name: string;
   description: string | null;
@@ -34,6 +43,7 @@ export type QuoteItem = {
   createdAt: string;
   updatedAt: string;
   part: QuotePartBrief | null;
+  extraTemplate: ExtraTemplateBrief | null;
 };
 
 export type Quote = {
@@ -51,6 +61,11 @@ export type Quote = {
   subtotal: number;
   discountAmount: number;
   total: number;
+  /** Total acordado a cobrar; null = usar `total` del presupuesto (lineas menos descuento). */
+  paymentTotal: number | null;
+  amountPaid: number;
+  paymentRemaining: number;
+  paymentDate: string | null;
   /** Opcional: importe de IVA desglosado en el PDF si el backend lo envía. */
   taxAmount?: number | null;
   /** Opcional: tipo impositivo (%) para mostrar junto al IVA en el PDF. */
@@ -86,6 +101,9 @@ export type PatchQuotePayload = {
   discountAmount?: number;
   notes?: string | null;
   status?: QuoteStatus;
+  paymentTotal?: number | null;
+  amountPaid?: number;
+  paymentDate?: string | null;
 };
 
 export type PatchQuoteStatusPayload = {
@@ -116,8 +134,17 @@ export type AddServiceQuoteItemPayload = {
   unitSalePrice: number;
 };
 
+export type AddExtraTemplateQuoteItemPayload = {
+  itemType: "EXTRA_TEMPLATE";
+  extraTemplateId: string;
+  quantity: number;
+  unitCost?: number | null;
+  unitSalePrice?: number;
+};
+
 export type AddQuoteItemPayload =
   | AddInventoryQuoteItemPayload
+  | AddExtraTemplateQuoteItemPayload
   | AddManualQuoteItemPayload
   | AddServiceQuoteItemPayload;
 

@@ -12,6 +12,7 @@ type RegisterSaleFormProps = {
   /** "card" = seccion completa; "plain" = solo formulario (p. ej. dentro de un modal) */
   variant?: "card" | "plain";
   submitLabel?: string;
+  offerPendingPickup?: boolean;
 };
 
 export function RegisterSaleForm({
@@ -20,7 +21,8 @@ export function RegisterSaleForm({
   disabled,
   onSuccess,
   variant = "card",
-  submitLabel
+  submitLabel,
+  offerPendingPickup = false
 }: RegisterSaleFormProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -29,10 +31,12 @@ export function RegisterSaleForm({
   const [paymentMethod, setPaymentMethod] = useState("");
   const [warrantyMonths, setWarrantyMonths] = useState("");
   const [notes, setNotes] = useState("");
+  const [pendingPickup, setPendingPickup] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setFinalPrice(suggestedSalePrice.toFixed(2));
+    setPendingPickup(false);
   }, [suggestedSalePrice]);
 
   const handleSubmit = async (event: FormEvent) => {
@@ -57,7 +61,8 @@ export function RegisterSaleForm({
       paymentMethod: paymentMethod.trim() ? paymentMethod.trim() : undefined,
       warrantyMonths:
         warrantyMonths.trim() === "" ? undefined : Math.max(0, parseInt(warrantyMonths, 10) || 0),
-      notes: notes.trim() ? notes.trim() : undefined
+      notes: notes.trim() ? notes.trim() : undefined,
+      ...(pendingPickup ? { pendingPickup: true } : {})
     };
 
     setSubmitting(true);
@@ -154,6 +159,24 @@ export function RegisterSaleForm({
           className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring disabled:opacity-50"
         />
       </label>
+
+      {offerPendingPickup ? (
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-300 md:col-span-2">
+          <input
+            type="checkbox"
+            checked={pendingPickup}
+            onChange={(e) => setPendingPickup(e.target.checked)}
+            disabled={disabled || submitting}
+            className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-400"
+          />
+          <span>
+            <span className="font-medium text-slate-200">Cobrado, pendiente de recogida</span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              El ingreso cuenta en ventas; el PC no aparecera en &quot;PCs entregados&quot; hasta confirmar la recogida.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <div className="md:col-span-2">
         <button

@@ -72,6 +72,8 @@ export function quoteStatusVariant(status: QuoteStatus): StatusBadgeVariant {
       return "rejected";
     case "EXPIRED":
       return "expired";
+    case "PENDING_PAYMENT":
+      return "pending";
     default:
       return "neutral";
   }
@@ -83,6 +85,12 @@ export function buildStatusVariant(status: BuildStatus): StatusBadgeVariant {
       return "sold";
     case "CONFIRMED":
       return "confirmed";
+    case "PENDING_PICKUP":
+      return "pending";
+    case "PENDING_PAYMENT":
+      return "pending";
+    case "RESERVED":
+      return "meta";
     case "DRAFT":
       return "wip";
     default:

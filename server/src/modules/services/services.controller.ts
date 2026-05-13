@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import type { Part, Service, ServiceSparePartLine } from "@prisma/client";
+import type { ExtraTemplate, Part, Service, ServiceExtraLine, ServiceSparePartLine } from "@prisma/client";
 import * as servicesService from "./services.service.js";
 
 function serializePart(part: Part) {
@@ -21,14 +21,42 @@ function serializeSparePartLine(row: ServiceSparePartLine & { part: Part }) {
   };
 }
 
+function serializeExtraTemplateBrief(t: ExtraTemplate | null) {
+  if (!t) return null;
+  return {
+    id: t.id,
+    name: t.name,
+    category: t.category,
+    active: t.active,
+    defaultCostPrice: Number(t.defaultCostPrice),
+    defaultSalePrice: Number(t.defaultSalePrice)
+  };
+}
+
+function serializeServiceExtraLine(row: ServiceExtraLine & { extraTemplate: ExtraTemplate | null }) {
+  return {
+    id: row.id,
+    serviceId: row.serviceId,
+    extraTemplateId: row.extraTemplateId,
+    name: row.name,
+    description: row.description,
+    quantity: row.quantity,
+    unitCost: Number(row.unitCost),
+    unitSalePrice: Number(row.unitSalePrice),
+    extraTemplate: serializeExtraTemplateBrief(row.extraTemplate)
+  };
+}
+
 function serializeService(
   row: Service & {
     selectedPart: Part | null;
     sparePartLines: (ServiceSparePartLine & { part: Part })[];
+    extraLines: (ServiceExtraLine & { extraTemplate: ExtraTemplate | null })[];
   }
 ) {
-  const { sparePartLines: spareRows, selectedPart, ...rest } = row;
+  const { sparePartLines: spareRows, selectedPart, extraLines: extraRows, ...rest } = row;
   const sparePartLines = spareRows ?? [];
+  const extraLines = extraRows ?? [];
   return {
     ...rest,
     costPrice: Number(row.costPrice),
@@ -39,7 +67,8 @@ function serializeService(
         ? null
         : Number(row.homeServiceSupplement),
     selectedPart: selectedPart ? serializePart(selectedPart) : null,
-    sparePartLines: sparePartLines.filter((l) => l.part != null).map((l) => serializeSparePartLine(l))
+    sparePartLines: sparePartLines.filter((l) => l.part != null).map((l) => serializeSparePartLine(l)),
+    extraLines: extraLines.map((l) => serializeServiceExtraLine(l))
   };
 }
 
@@ -95,6 +124,21 @@ function mapServiceError(error: unknown, res: Response) {
     return true;
   }
 
+  if (msg === "EXTRA_TEMPLATE_NOT_FOUND") {
+    res.status(404).json({ message: "Plantilla de extra no encontrada" });
+    return true;
+  }
+
+  if (msg === "EXTRA_TEMPLATE_INACTIVE") {
+    res.status(400).json({ message: "La plantilla de extra esta desactivada" });
+    return true;
+  }
+
+  if (msg === "SERVICE_EXTRA_LINE_NOT_FOUND") {
+    res.status(404).json({ message: "Linea de extra no encontrada en este servicio" });
+    return true;
+  }
+
   return false;
 }
 
@@ -119,6 +163,10 @@ export async function listServicesHandler(req: Request, res: Response) {
 export async function createServiceHandler(req: Request, res: Response) {
   try {
     const row = await servicesService.createService(req.body);
+    if (!row) {
+      res.status(500).json({ message: "No se pudo crear el servicio" });
+      return;
+    }
     res.status(201).json(serializeService(row));
   } catch (error) {
     if (error instanceof ZodError) {
@@ -181,6 +229,64 @@ export async function completeServiceHandler(req: Request, res: Response) {
     const row = await servicesService.completeService(id);
     if (!row) {
       res.status(500).json({ message: "No se pudo completar el servicio" });
+      return;
+    }
+    res.json(serializeService(row));
+  } catch (error) {
+    if (!mapServiceError(error, res)) {
+      throw error;
+    }
+  }
+}
+
+export async function addServiceExtraLineHandler(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id);
+    const row = await servicesService.addServiceExtraLine(id, req.body);
+    if (!row) {
+      res.status(500).json({ message: "No se pudo anadir la linea" });
+      return;
+    }
+    res.status(201).json(serializeService(row));
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      return;
+    }
+    if (!mapServiceError(error, res)) {
+      throw error;
+    }
+  }
+}
+
+export async function patchServiceExtraLineHandler(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id);
+    const lineId = String(req.params.lineId);
+    const row = await servicesService.patchServiceExtraLine(id, lineId, req.body);
+    if (!row) {
+      res.status(500).json({ message: "No se pudo actualizar la linea" });
+      return;
+    }
+    res.json(serializeService(row));
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      return;
+    }
+    if (!mapServiceError(error, res)) {
+      throw error;
+    }
+  }
+}
+
+export async function deleteServiceExtraLineHandler(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id);
+    const lineId = String(req.params.lineId);
+    const row = await servicesService.deleteServiceExtraLine(id, lineId);
+    if (!row) {
+      res.status(500).json({ message: "No se pudo actualizar el servicio" });
       return;
     }
     res.json(serializeService(row));

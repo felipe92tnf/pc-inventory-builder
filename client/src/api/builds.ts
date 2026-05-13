@@ -1,9 +1,11 @@
 import { http } from "./http";
 import type {
+  AddBuildExtraLinePayload,
   AddBuildItemPayload,
   Build,
   BuildDetail,
   CreateBuildPayload,
+  UpdateBuildExtraLinePayload,
   UpdateBuildPayload,
   UpdateBuildItemPayload
 } from "../types/build";
@@ -60,6 +62,30 @@ export function updateBuildItem(buildId: string, itemId: string, payload: Update
 
 export function deleteBuildItem(buildId: string, itemId: string) {
   return http<void>(`/builds/${buildId}/items/${itemId}`, {
+    method: "DELETE"
+  });
+}
+
+export function addBuildExtraLine(buildId: string, payload: AddBuildExtraLinePayload) {
+  return http<BuildDetail>(`/builds/${buildId}/extra-lines`, {
+    method: "POST",
+    body: payload
+  });
+}
+
+export function updateBuildExtraLine(
+  buildId: string,
+  lineId: string,
+  payload: UpdateBuildExtraLinePayload
+) {
+  return http<BuildDetail>(`/builds/${buildId}/extra-lines/${lineId}`, {
+    method: "PATCH",
+    body: payload
+  });
+}
+
+export function deleteBuildExtraLine(buildId: string, lineId: string) {
+  return http<void>(`/builds/${buildId}/extra-lines/${lineId}`, {
     method: "DELETE"
   });
 }

@@ -42,7 +42,8 @@ const STATUS_LABELS: Record<QuoteStatus, string> = {
   SENT: "Enviado",
   ACCEPTED: "Aceptado",
   REJECTED: "Rechazado",
-  EXPIRED: "Caducado"
+  EXPIRED: "Caducado",
+  PENDING_PAYMENT: "Pendiente de pago"
 };
 
 function ChevronQuoteFold({ open }: { open: boolean }) {
@@ -114,7 +115,8 @@ export function QuotesPage() {
       SENT: [],
       ACCEPTED: [],
       REJECTED: [],
-      EXPIRED: []
+      EXPIRED: [],
+      PENDING_PAYMENT: []
     };
     for (const q of filtered) {
       buckets[q.status].push(q);
@@ -339,7 +341,14 @@ export function QuotesPage() {
                                 <span className="ml-1 text-[10px] text-amber-400/90">*</span>
                               ) : null}
                             </td>
-                            <td className={`${TABLE_CELL} font-semibold text-emerald-300/95`}>{money(row.total)}</td>
+                            <td className={`${TABLE_CELL} font-semibold text-emerald-300/95`}>
+                              <div>{money(row.total)}</div>
+                              {row.status === "PENDING_PAYMENT" ? (
+                                <p className="mt-0.5 text-[11px] font-normal text-amber-200/90">
+                                  Por cobrar: {money(row.paymentRemaining)}
+                                </p>
+                              ) : null}
+                            </td>
                             <td
                               className={`whitespace-nowrap ${TABLE_CELL} font-semibold ${
                                 fin.profitNet >= 0 ? "text-violet-300/95" : "text-rose-300"
@@ -416,6 +425,9 @@ export function QuotesPage() {
                           <div className="mt-2 border-t border-slate-800 pt-2">
                             <p className="text-xs text-slate-500">Total</p>
                             <p className="mt-0.5 text-lg font-bold text-emerald-300">{money(row.total)}</p>
+                            {row.status === "PENDING_PAYMENT" ? (
+                              <p className="mt-1 text-xs text-amber-200/90">Por cobrar: {money(row.paymentRemaining)}</p>
+                            ) : null}
                           </div>
                           <Link
                             to={`/quotes/${row.id}`}

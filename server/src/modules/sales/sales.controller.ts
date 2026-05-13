@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import multer from "multer";
 import { z, ZodError } from "zod";
-import type { Build, BuildPartItem, Part, Sale } from "@prisma/client";
+import type { Build, BuildExtraLine, BuildPartItem, ExtraTemplate, Part, Sale } from "@prisma/client";
 import * as salesService from "./sales.service.js";
 import * as salesImportService from "./sales.import.service.js";
 import * as salesImportRevert from "./sales.import.revert.service.js";
@@ -22,7 +22,10 @@ function serializePart(part: Part) {
 }
 
 function serializeBuildWithItems(
-  build: Build & { items: (BuildPartItem & { part: Part })[] }
+  build: Build & {
+    items: (BuildPartItem & { part: Part })[];
+    extraLines?: (BuildExtraLine & { extraTemplate: ExtraTemplate | null })[];
+  }
 ) {
   return {
     ...build,
@@ -35,6 +38,26 @@ function serializeBuildWithItems(
       unitCost: Number(item.unitCost),
       unitSalePrice: Number(item.unitSalePrice),
       part: serializePart(item.part)
+    })),
+    extraLines: (build.extraLines ?? []).map((row) => ({
+      id: row.id,
+      buildId: row.buildId,
+      extraTemplateId: row.extraTemplateId,
+      name: row.name,
+      description: row.description,
+      quantity: row.quantity,
+      unitCost: Number(row.unitCost),
+      unitSalePrice: Number(row.unitSalePrice),
+      extraTemplate: row.extraTemplate
+        ? {
+            id: row.extraTemplate.id,
+            name: row.extraTemplate.name,
+            category: row.extraTemplate.category,
+            active: row.extraTemplate.active,
+            defaultCostPrice: Number(row.extraTemplate.defaultCostPrice),
+            defaultSalePrice: Number(row.extraTemplate.defaultSalePrice)
+          }
+        : null
     }))
   };
 }
@@ -57,12 +80,18 @@ function serializeSale(sale: SaleWithUnknownBuild) {
   const b = build as Build & {
     saleTotalOverride?: unknown;
     items?: (BuildPartItem & { part: Part })[];
+    extraLines?: (BuildExtraLine & { extraTemplate: ExtraTemplate | null })[];
   };
 
   if (Array.isArray(b.items)) {
     return {
       ...base,
-      build: serializeBuildWithItems(b as Build & { items: (BuildPartItem & { part: Part })[] })
+      build: serializeBuildWithItems(
+        b as Build & {
+          items: (BuildPartItem & { part: Part })[];
+          extraLines?: (BuildExtraLine & { extraTemplate: ExtraTemplate | null })[];
+        }
+      )
     };
   }
 
@@ -89,7 +118,15 @@ function mapSaleError(error: unknown, res: Response) {
     return true;
   }
   if (error.message === "BUILD_NOT_ASSEMBLED") {
-    res.status(400).json({ message: "Solo se puede vender un montaje confirmado (assembled)." });
+    res.status(400).json({
+      message: "Solo se puede vender un montaje listo (confirmado, reserva o pendiente de pago)."
+    });
+    return true;
+  }
+  if (error.message === "BUILD_ALREADY_PENDING_PICKUP") {
+    res.status(409).json({
+      message: "Este montaje ya tiene una venta pendiente de recogida. Confirma la recogida o anula la venta."
+    });
     return true;
   }
   if (error.message === "BUILD_ALREADY_SOLD") {

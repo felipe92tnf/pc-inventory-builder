@@ -40,6 +40,9 @@ enum BuildStatus {
   DRAFT
   CONFIRMED
   SOLD
+  PENDING_PICKUP
+  PENDING_PAYMENT
+  RESERVED
 }
 
 enum ServiceType {
@@ -66,12 +69,14 @@ enum QuoteStatus {
   ACCEPTED
   REJECTED
   EXPIRED
+  PENDING_PAYMENT
 }
 
 enum QuoteItemType {
   INVENTORY_PART
   MANUAL_ITEM
   SERVICE
+  EXTRA_TEMPLATE
 }
 
 /// Notas de ficha de cliente (clave deduplicada en aplicacion: telefono + nombre).
@@ -81,6 +86,27 @@ model CustomerProfile {
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+/// Plantilla de extra / servicio sin stock (SO, instalacion, drivers, packs, etc.).
+model ExtraTemplate {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String   @default("")
+  defaultCostPrice   Decimal  @db.Decimal(12, 2)
+  defaultSalePrice   Decimal  @db.Decimal(12, 2)
+  category           String   @default("")
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  buildLines        BuildExtraLine[]
+  quoteItems        QuoteItem[]
+  serviceExtraLines ServiceExtraLine[]
+
+  @@index([active])
+  @@index([category])
+  @@index([name])
 }
 
 /// Plantilla reutilizable (catalogo). Las filas de inventario `Part` pueden enlazar aqui.
@@ -161,6 +187,7 @@ model Service {
 
   selectedPart   Part?                  @relation("SparePart", fields: [selectedPartId], references: [id], onDelete: SetNull)
   sparePartLines ServiceSparePartLine[]
+  extraLines     ServiceExtraLine[]
 
   @@index([type])
   @@index([status])
@@ -180,6 +207,23 @@ model ServiceSparePartLine {
   @@index([partId])
 }
 
+model ServiceExtraLine {
+  id              String  @id @default(cuid())
+  serviceId       String
+  extraTemplateId String?
+  name            String
+  description     String  @default("")
+  quantity        Int     @default(1)
+  unitCost        Decimal @db.Decimal(12, 2)
+  unitSalePrice   Decimal @db.Decimal(12, 2)
+
+  service       Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  extraTemplate ExtraTemplate? @relation(fields: [extraTemplateId], references: [id], onDelete: SetNull)
+
+  @@index([serviceId])
+  @@index([extraTemplateId])
+}
+
 model Build {
   id                 String          @id @default(cuid())
   name               String
@@ -188,11 +232,22 @@ model Build {
   confirmedAt        DateTime?
   /// Venta total manual; si es null se usa la suma de precios de venta de las piezas.
   saleTotalOverride  Decimal?
+  /// Reserva (estado RESERVED): importe ya cobrado.
+  reservationDeposit       Decimal?    @db.Decimal(12, 2)
+  /// Reserva: pendiente hasta completar venta.
+  reservationRemaining     Decimal?    @db.Decimal(12, 2)
+  /// Pendiente de pago: importe ya cobrado.
+  pendingPaymentPaid       Decimal?    @db.Decimal(12, 2)
+  /// Pendiente de pago: falta por cobrar.
+  pendingPaymentRemaining  Decimal?    @db.Decimal(12, 2)
+  /// Mes de imputacion de anticipos (reserva / pago parcial) en resumen de ventas.
+  partialAccruedAt     DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
-  items BuildPartItem[]
-  sale  Sale?
+  items      BuildPartItem[]
+  extraLines BuildExtraLine[]
+  sale       Sale?
 
   convertedFromQuote Quote? @relation("QuoteConvertedBuild")
 
@@ -213,6 +268,8 @@ model Sale {
   paymentMethod  String?
   warrantyMonths Int?
   notes          String?
+  /// Null = cobrado pero pendiente de entrega al cliente (sigue en ingresos; no en PCs entregados).
+  pickupConfirmedAt DateTime?
   /// Venta creada por importación Excel (histórico); no modifica inventario.
   isImported     Boolean  @default(false)
   /// Mismo valor para todas las filas de una misma confirmación de importación.
@@ -248,6 +305,23 @@ model BuildPartItem {
   @@index([partId])
 }
 
+model BuildExtraLine {
+  id              String  @id @default(cuid())
+  buildId         String
+  extraTemplateId String?
+  name            String
+  description     String  @default("")
+  quantity        Int     @default(1)
+  unitCost        Decimal @db.Decimal(12, 2)
+  unitSalePrice   Decimal @db.Decimal(12, 2)
+
+  build         Build          @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  extraTemplate ExtraTemplate? @relation(fields: [extraTemplateId], references: [id], onDelete: SetNull)
+
+  @@index([buildId])
+  @@index([extraTemplateId])
+}
+
 model Quote {
   id              String       @id @default(cuid())
   quoteNumber     Int          @unique @default(autoincrement())
@@ -261,6 +335,11 @@ model Quote {
   subtotal        Decimal
   discountAmount  Decimal      @default(0)
   total           Decimal
+  /// Importe total acordado a cobrar; si es null se usa `total` del presupuesto (lineas + descuento).
+  paymentTotal    Decimal?     @db.Decimal(12, 2)
+  amountPaid      Decimal      @default(0) @db.Decimal(12, 2)
+  /// Fecha de pago acordada o ultimo pago registrado (solo dia en UI).
+  paymentDate     DateTime?
   notes           String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -277,22 +356,25 @@ model Quote {
 }
 
 model QuoteItem {
-  id             String        @id @default(cuid())
-  quoteId        String
-  partId         String?
-  itemType       QuoteItemType
-  name           String
-  description    String?
-  quantity       Int
-  unitCost       Decimal?
-  unitSalePrice  Decimal
-  total          Decimal
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id              String        @id @default(cuid())
+  quoteId         String
+  partId          String?
+  extraTemplateId String?
+  itemType        QuoteItemType
+  name            String
+  description     String?
+  quantity        Int
+  unitCost        Decimal?
+  unitSalePrice   Decimal
+  total           Decimal
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  part  Part? @relation(fields: [partId], references: [id], onDelete: SetNull)
+  quote         Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  part          Part?          @relation(fields: [partId], references: [id], onDelete: SetNull)
+  extraTemplate ExtraTemplate? @relation(fields: [extraTemplateId], references: [id], onDelete: SetNull)
 
   @@index([quoteId])
   @@index([partId])
+  @@index([extraTemplateId])
 }

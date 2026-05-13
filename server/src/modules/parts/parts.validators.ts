@@ -82,7 +82,7 @@ export const stockFromCatalogSchema = z.object({
   quantity: z.number().int().positive(),
   actualCostPrice: z.number().nonnegative(),
   salePrice: z.number().nonnegative().optional(),
-  condition: z.enum(["NEW", "USED"]),
+  condition: conditionEnum,
   notes: z.string().optional().nullable()
 });
 

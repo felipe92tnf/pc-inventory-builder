@@ -1,9 +1,11 @@
 import { BuildStatus, InventoryKind, PartCategory, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import {
+  addBuildExtraLineSchema,
   addBuildItemSchema,
   createBuildSchema,
   fromPrebuiltPartSchema,
+  updateBuildExtraLineSchema,
   updateBuildItemSchema,
   updateBuildSchema
 } from "./builds.validators.js";
@@ -37,9 +39,13 @@ function totalsFromItems(items: BuildItemForPricing[]) {
 
 export function finalizePricing(
   items: BuildItemForPricing[],
-  saleTotalOverride: unknown
+  saleTotalOverride: unknown,
+  extraLines: BuildItemForPricing[] = []
 ) {
-  const { totalCost, computedSaleTotal } = totalsFromItems(items);
+  const partTotals = totalsFromItems(items);
+  const extraTotals = totalsFromItems(extraLines);
+  const totalCost = partTotals.totalCost + extraTotals.totalCost;
+  const computedSaleTotal = partTotals.computedSaleTotal + extraTotals.computedSaleTotal;
   const totalSale =
     saleTotalOverride !== undefined && saleTotalOverride !== null ? Number(saleTotalOverride) : computedSaleTotal;
   const profit = totalSale - totalCost;
@@ -49,15 +55,17 @@ export function finalizePricing(
 export async function listBuilds() {
   const builds = await prisma.build.findMany({
     orderBy: { createdAt: "desc" },
-    include: { items: { include: { part: true } } }
+    include: { items: { include: { part: true } }, extraLines: { include: { extraTemplate: true } } }
   });
 
   return builds.map((build) => {
     const items = build.items ?? [];
-    const pricing = finalizePricing(items, build.saleTotalOverride);
+    const extraLines = build.extraLines ?? [];
+    const pricing = finalizePricing(items, build.saleTotalOverride, extraLines);
     return {
       ...build,
       items,
+      extraLines,
       ...pricing
     };
   });
@@ -66,7 +74,7 @@ export async function listBuilds() {
 export async function getBuild(id: string) {
   const build = await prisma.build.findUnique({
     where: { id },
-    include: { items: { include: { part: true } } }
+    include: { items: { include: { part: true } }, extraLines: { include: { extraTemplate: true } } }
   });
 
   if (!build) {
@@ -74,21 +82,13 @@ export async function getBuild(id: string) {
   }
 
   const items = build.items ?? [];
-
-  if (items.length === 0) {
-    const pricing = finalizePricing(items, build.saleTotalOverride);
-    return {
-      ...build,
-      items,
-      ...pricing
-    };
-  }
-
-  const pricing = finalizePricing(items, build.saleTotalOverride);
+  const extraLines = build.extraLines ?? [];
+  const pricing = finalizePricing(items, build.saleTotalOverride, extraLines);
 
   return {
     ...build,
     items,
+    extraLines,
     ...pricing
   };
 }
@@ -140,10 +140,17 @@ export async function createBuildFromPrebuiltPart(payload: unknown) {
   return confirmBuild(build.id);
 }
 
+const ASSEMBLED_LIKE: Set<BuildStatus> = new Set([
+  BuildStatus.CONFIRMED,
+  BuildStatus.PENDING_PICKUP,
+  BuildStatus.PENDING_PAYMENT,
+  BuildStatus.RESERVED
+]);
+
 export async function updateBuild(id: string, payload: unknown) {
   const data = updateBuildSchema.parse(payload);
 
-  const existing = await prisma.build.findUnique({ where: { id } });
+  const existing = await prisma.build.findUnique({ where: { id }, include: { sale: true } });
   if (!existing) {
     throw new Error("BUILD_NOT_FOUND");
   }
@@ -151,13 +158,103 @@ export async function updateBuild(id: string, payload: unknown) {
     throw new Error("BUILD_IS_SOLD");
   }
 
-  return prisma.build.update({ where: { id }, data });
+  const patch: Prisma.BuildUpdateInput = {};
+  if (data.name !== undefined) patch.name = data.name.trim();
+  if (data.notes !== undefined) patch.notes = data.notes ?? null;
+  if (data.saleTotalOverride !== undefined) {
+    patch.saleTotalOverride =
+      data.saleTotalOverride === null ? null : moneyDecimal(data.saleTotalOverride);
+  }
+
+  if (data.status !== undefined) {
+    const next = data.status;
+    if (next === BuildStatus.DRAFT || next === BuildStatus.SOLD) {
+      throw new Error("BUILD_STATUS_PATCH_FORBIDDEN");
+    }
+    if (existing.status === BuildStatus.DRAFT) {
+      throw new Error("BUILD_STATUS_USE_CONFIRM");
+    }
+    if (!ASSEMBLED_LIKE.has(existing.status)) {
+      throw new Error("BUILD_STATUS_INVALID");
+    }
+    if (next === BuildStatus.PENDING_PICKUP) {
+      const s = existing.sale;
+      if (!s) {
+        throw new Error("BUILD_PENDING_PICKUP_NEEDS_SALE");
+      }
+      if (s.pickupConfirmedAt != null) {
+        throw new Error("BUILD_ALREADY_DELIVERED");
+      }
+    }
+    if (ASSEMBLED_LIKE.has(next) && next !== BuildStatus.PENDING_PICKUP) {
+      const s = existing.sale;
+      if (s && s.pickupConfirmedAt == null) {
+        throw new Error("BUILD_HAS_PENDING_PICKUP_SALE");
+      }
+    }
+    if (next === BuildStatus.RESERVED) {
+      patch.pendingPaymentPaid = null;
+      patch.pendingPaymentRemaining = null;
+    }
+    if (next === BuildStatus.PENDING_PAYMENT) {
+      patch.reservationDeposit = null;
+      patch.reservationRemaining = null;
+    }
+    if (next === BuildStatus.CONFIRMED || next === BuildStatus.PENDING_PICKUP) {
+      patch.reservationDeposit = null;
+      patch.reservationRemaining = null;
+      patch.pendingPaymentPaid = null;
+      patch.pendingPaymentRemaining = null;
+      patch.partialAccruedAt = null;
+    }
+    patch.status = next;
+  }
+
+  let touchPartialAccrual = false;
+  if (data.reservationDeposit !== undefined) {
+    patch.reservationDeposit =
+      data.reservationDeposit === null ? null : moneyDecimal(data.reservationDeposit);
+    touchPartialAccrual = true;
+  }
+  if (data.reservationRemaining !== undefined) {
+    patch.reservationRemaining =
+      data.reservationRemaining === null ? null : moneyDecimal(data.reservationRemaining);
+    touchPartialAccrual = true;
+  }
+  if (data.pendingPaymentPaid !== undefined) {
+    patch.pendingPaymentPaid =
+      data.pendingPaymentPaid === null ? null : moneyDecimal(data.pendingPaymentPaid);
+    touchPartialAccrual = true;
+  }
+  if (data.pendingPaymentRemaining !== undefined) {
+    patch.pendingPaymentRemaining =
+      data.pendingPaymentRemaining === null ? null : moneyDecimal(data.pendingPaymentRemaining);
+    touchPartialAccrual = true;
+  }
+
+  const effectiveStatus = (data.status as BuildStatus | undefined) ?? existing.status;
+  if (
+    touchPartialAccrual &&
+    (effectiveStatus === BuildStatus.RESERVED || effectiveStatus === BuildStatus.PENDING_PAYMENT)
+  ) {
+    patch.partialAccruedAt = new Date();
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return getBuild(id);
+  }
+
+  await prisma.build.update({ where: { id }, data: patch });
+  return getBuild(id);
 }
 
 export async function deleteBuild(id: string) {
-  const existing = await prisma.build.findUnique({ where: { id } });
+  const existing = await prisma.build.findUnique({ where: { id }, include: { sale: true } });
   if (!existing) {
     throw new Error("BUILD_NOT_FOUND");
+  }
+  if (existing.sale) {
+    throw new Error("BUILD_HAS_SALE");
   }
 
   return prisma.build.delete({ where: { id } });
@@ -252,10 +349,96 @@ export async function deleteBuildItem(buildId: string, itemId: string) {
   return prisma.buildPartItem.delete({ where: { id: itemId } });
 }
 
+export async function addBuildExtraLine(buildId: string, payload: unknown) {
+  const data = addBuildExtraLineSchema.parse(payload);
+
+  const build = await prisma.build.findUnique({ where: { id: buildId } });
+  if (!build) {
+    throw new Error("BUILD_NOT_FOUND");
+  }
+  if (build.status !== BuildStatus.DRAFT) {
+    throw new Error("BUILD_NOT_EDITABLE");
+  }
+
+  const template = await prisma.extraTemplate.findUnique({ where: { id: data.extraTemplateId } });
+  if (!template) {
+    throw new Error("EXTRA_TEMPLATE_NOT_FOUND");
+  }
+  if (!template.active) {
+    throw new Error("EXTRA_TEMPLATE_INACTIVE");
+  }
+
+  const qty = data.quantity ?? 1;
+  const unitCost =
+    data.unitCost !== undefined && data.unitCost !== null
+      ? moneyDecimal(data.unitCost)
+      : template.defaultCostPrice;
+  const unitSalePrice =
+    data.unitSalePrice !== undefined && data.unitSalePrice !== null
+      ? moneyDecimal(data.unitSalePrice)
+      : template.defaultSalePrice;
+
+  return prisma.buildExtraLine.create({
+    data: {
+      buildId,
+      extraTemplateId: template.id,
+      name: template.name,
+      description: template.description ?? "",
+      quantity: qty,
+      unitCost,
+      unitSalePrice
+    }
+  });
+}
+
+export async function updateBuildExtraLine(buildId: string, lineId: string, payload: unknown) {
+  const data = updateBuildExtraLineSchema.parse(payload);
+
+  const build = await prisma.build.findUnique({ where: { id: buildId } });
+  if (!build) {
+    throw new Error("BUILD_NOT_FOUND");
+  }
+  if (build.status !== BuildStatus.DRAFT) {
+    throw new Error("BUILD_NOT_EDITABLE");
+  }
+
+  const existing = await prisma.buildExtraLine.findFirst({
+    where: { id: lineId, buildId }
+  });
+  if (!existing) {
+    throw new Error("BUILD_EXTRA_LINE_NOT_FOUND");
+  }
+
+  const patch: { quantity?: number; unitCost?: Prisma.Decimal; unitSalePrice?: Prisma.Decimal } = {};
+  if (data.quantity !== undefined) patch.quantity = data.quantity;
+  if (data.unitCost !== undefined) patch.unitCost = moneyDecimal(data.unitCost);
+  if (data.unitSalePrice !== undefined) patch.unitSalePrice = moneyDecimal(data.unitSalePrice);
+
+  return prisma.buildExtraLine.update({
+    where: { id: lineId },
+    data: patch
+  });
+}
+
+export async function deleteBuildExtraLine(buildId: string, lineId: string) {
+  const build = await prisma.build.findUnique({ where: { id: buildId } });
+  if (!build) {
+    throw new Error("BUILD_NOT_FOUND");
+  }
+  if (build.status !== BuildStatus.DRAFT) {
+    throw new Error("BUILD_NOT_EDITABLE");
+  }
+
+  const removed = await prisma.buildExtraLine.deleteMany({ where: { id: lineId, buildId } });
+  if (removed.count === 0) {
+    throw new Error("BUILD_EXTRA_LINE_NOT_FOUND");
+  }
+}
+
 export async function confirmBuild(buildId: string) {
   const build = await prisma.build.findUnique({
     where: { id: buildId },
-    include: { items: { include: { part: true } } }
+    include: { items: { include: { part: true } }, extraLines: true }
   });
 
   if (!build) {
@@ -264,7 +447,7 @@ export async function confirmBuild(buildId: string) {
   if (build.status !== BuildStatus.DRAFT) {
     throw new Error("BUILD_NOT_DRAFT");
   }
-  if (build.items.length === 0) {
+  if (build.items.length === 0 && build.extraLines.length === 0) {
     throw new Error("BUILD_EMPTY");
   }
 
@@ -298,7 +481,7 @@ export async function confirmBuild(buildId: string) {
 export async function revertBuildToDraft(buildId: string) {
   const build = await prisma.build.findUnique({
     where: { id: buildId },
-    include: { items: true }
+    include: { items: true, sale: true }
   });
 
   if (!build) {
@@ -307,7 +490,10 @@ export async function revertBuildToDraft(buildId: string) {
   if (build.status === BuildStatus.SOLD) {
     throw new Error("BUILD_IS_SOLD");
   }
-  if (build.status !== BuildStatus.CONFIRMED) {
+  if (build.sale) {
+    throw new Error("BUILD_HAS_SALE");
+  }
+  if (!ASSEMBLED_LIKE.has(build.status)) {
     throw new Error("BUILD_NOT_CONFIRMED");
   }
 
@@ -329,7 +515,15 @@ export async function revertBuildToDraft(buildId: string) {
 
     await tx.build.update({
       where: { id: buildId },
-      data: { status: BuildStatus.DRAFT, confirmedAt: null }
+      data: {
+        status: BuildStatus.DRAFT,
+        confirmedAt: null,
+        reservationDeposit: null,
+        reservationRemaining: null,
+        pendingPaymentPaid: null,
+        pendingPaymentRemaining: null,
+        partialAccruedAt: null
+      }
     });
   });
 

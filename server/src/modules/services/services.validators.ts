@@ -18,6 +18,26 @@ export function mergeSparePartLines(
   return [...m.entries()].map(([partId, quantity]) => ({ partId, quantity }));
 }
 
+const serviceExtraLineInputSchema = z.object({
+  extraTemplateId: z.string().min(1),
+  quantity: z.coerce.number().int().positive().optional().default(1),
+  unitCost: z.coerce.number().finite().nonnegative().optional(),
+  unitSalePrice: z.coerce.number().finite().nonnegative().optional()
+});
+
+export const addServiceExtraLineBodySchema = serviceExtraLineInputSchema;
+
+export const patchServiceExtraLineSchema = z
+  .object({
+    quantity: z.coerce.number().int().positive().optional(),
+    unitCost: z.coerce.number().finite().nonnegative().optional(),
+    unitSalePrice: z.coerce.number().finite().nonnegative().optional()
+  })
+  .strict()
+  .refine((body) => Object.values(body).some((v) => v !== undefined), {
+    message: "Al menos un campo"
+  });
+
 export const createServiceSchema = z
   .object({
     type: z.nativeEnum(ServiceType),
@@ -29,6 +49,7 @@ export const createServiceSchema = z
     selectedPartId: z.string().optional().nullable(),
     quantity: z.number().int().positive().optional().nullable(),
     sparePartLines: z.array(sparePartLineSchema).optional(),
+    extraLines: z.array(serviceExtraLineInputSchema).optional(),
     costPrice: z.number().nonnegative().optional(),
     salePrice: z.number().nonnegative().optional(),
     isHomeService: z.boolean().optional().default(false),

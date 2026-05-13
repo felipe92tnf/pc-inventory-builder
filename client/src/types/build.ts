@@ -1,6 +1,25 @@
 import type { MoneyValue, Part } from "./part";
+import type { ExtraTemplateBrief } from "./extraTemplate";
 
-export type BuildStatus = "DRAFT" | "CONFIRMED" | "SOLD";
+export type BuildStatus =
+  | "DRAFT"
+  | "CONFIRMED"
+  | "SOLD"
+  | "PENDING_PICKUP"
+  | "PENDING_PAYMENT"
+  | "RESERVED";
+
+export type BuildExtraLine = {
+  id: string;
+  buildId: string;
+  extraTemplateId: string | null;
+  name: string;
+  description: string;
+  quantity: number;
+  unitCost: MoneyValue;
+  unitSalePrice: MoneyValue;
+  extraTemplate: ExtraTemplateBrief | null;
+};
 
 export type BuildItem = {
   id: string;
@@ -20,10 +39,16 @@ export type Build = {
   notes: string | null;
   status: BuildStatus;
   confirmedAt: string | null;
+  reservationDeposit?: number | null;
+  reservationRemaining?: number | null;
+  pendingPaymentPaid?: number | null;
+  pendingPaymentRemaining?: number | null;
+  partialAccruedAt?: string | null;
   saleTotalOverride: number | string | null;
   createdAt: string;
   updatedAt: string;
   items: BuildItem[];
+  extraLines?: BuildExtraLine[];
   totalCost?: number;
   computedSaleTotal?: number;
   totalSale?: number;
@@ -46,6 +71,11 @@ export type CreateBuildPayload = {
 
 export type UpdateBuildPayload = Partial<CreateBuildPayload> & {
   saleTotalOverride?: number | null;
+  status?: BuildStatus;
+  reservationDeposit?: number | null;
+  reservationRemaining?: number | null;
+  pendingPaymentPaid?: number | null;
+  pendingPaymentRemaining?: number | null;
 };
 
 export type AddBuildItemPayload = {
@@ -57,5 +87,18 @@ export type AddBuildItemPayload = {
 
 export type UpdateBuildItemPayload = {
   quantity?: number;
+  unitSalePrice?: number;
+};
+
+export type AddBuildExtraLinePayload = {
+  extraTemplateId: string;
+  quantity?: number;
+  unitCost?: number;
+  unitSalePrice?: number;
+};
+
+export type UpdateBuildExtraLinePayload = {
+  quantity?: number;
+  unitCost?: number;
   unitSalePrice?: number;
 };

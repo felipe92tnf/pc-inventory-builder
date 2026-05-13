@@ -1,4 +1,4 @@
-import type { Build, BuildItem } from "./build";
+import type { Build, BuildExtraLine, BuildItem } from "./build";
 
 /** Frase exacta requerida por la API para revertir un lote de importación. */
 export const SALES_IMPORT_REVERT_CONFIRM_PHRASE = "REVERTIR IMPORTACIÓN";
@@ -16,6 +16,8 @@ export type Sale = {
   paymentMethod: string | null;
   warrantyMonths: number | null;
   notes: string | null;
+  /** Null = cobrado, pendiente de entrega (no cuenta en listado de PCs entregados). */
+  pickupConfirmedAt?: string | null;
   /** Venta creada por importación Excel. */
   isImported?: boolean;
   /** Lote de la misma confirmación de importación (null en ventas manuales o importes antiguos). */
@@ -35,8 +37,9 @@ export type SaleListRow = Sale & {
 
 /** Respuesta de GET /sales/:id */
 export type SaleDetail = Sale & {
-  build: Omit<Build, "items"> & {
+  build: Omit<Build, "items" | "extraLines"> & {
     items: BuildItem[];
+    extraLines?: BuildExtraLine[];
     totalCost?: number;
     computedSaleTotal?: number;
     totalSale?: number;
@@ -62,6 +65,8 @@ export type CreateSaleFromBuildPayload = {
   warrantyMonths?: number | null;
   notes?: string | null;
   soldAt?: string;
+  /** Cobrado pero el PC sigue en tienda hasta confirmar recogida. */
+  pendingPickup?: boolean;
 };
 
 export type PatchSalePayload = {
@@ -73,6 +78,7 @@ export type PatchSalePayload = {
   warrantyMonths?: number | null;
   notes?: string | null;
   soldAt?: string;
+  pickupConfirmedAt?: string | null;
 };
 
 export type SalesImportPreviewRow = {

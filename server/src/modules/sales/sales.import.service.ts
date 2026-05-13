@@ -83,6 +83,7 @@ export async function importSalesConfirm(payload: unknown): Promise<{
             totalCost: moneyDecimal(row.totalCost),
             profit: moneyDecimal(profit),
             soldAt: new Date(row.soldAt),
+            pickupConfirmedAt: new Date(row.soldAt),
             paymentMethod: "Importación histórica",
             warrantyMonths: null,
             notes: row.description?.trim() ? row.description.trim().slice(0, 4000) : null,

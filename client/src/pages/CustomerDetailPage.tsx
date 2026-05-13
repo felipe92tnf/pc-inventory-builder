@@ -15,7 +15,8 @@ const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   SENT: "Enviado",
   ACCEPTED: "Aceptado",
   REJECTED: "Rechazado",
-  EXPIRED: "Caducado"
+  EXPIRED: "Caducado",
+  PENDING_PAYMENT: "Pendiente de pago"
 };
 
 const SERVICE_LABELS: Record<ServiceType, string> = {

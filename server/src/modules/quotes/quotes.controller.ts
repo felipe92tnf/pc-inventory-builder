@@ -24,6 +24,16 @@ function mapQuoteError(error: unknown, res: Response): boolean {
     return true;
   }
 
+  if (error.message === "EXTRA_TEMPLATE_NOT_FOUND") {
+    res.status(404).json({ message: "Plantilla de extra no encontrada" });
+    return true;
+  }
+
+  if (error.message === "EXTRA_TEMPLATE_INACTIVE") {
+    res.status(400).json({ message: "La plantilla de extra esta desactivada" });
+    return true;
+  }
+
   if (error.message === "QUOTE_ALREADY_CONVERTED") {
     res.status(409).json({ message: "Este presupuesto ya fue convertido en un montaje." });
     return true;

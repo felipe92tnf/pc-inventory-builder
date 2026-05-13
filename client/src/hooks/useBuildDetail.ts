@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import * as buildsApi from "../api/builds";
 import * as partsApi from "../api/parts";
-import type { AddBuildItemPayload, BuildDetail, UpdateBuildPayload, UpdateBuildItemPayload } from "../types/build";
+import type {
+  AddBuildExtraLinePayload,
+  AddBuildItemPayload,
+  BuildDetail,
+  UpdateBuildExtraLinePayload,
+  UpdateBuildPayload,
+  UpdateBuildItemPayload
+} from "../types/build";
 import type { Part } from "../types/part";
 
 type UseBuildDetailReturn = {
@@ -13,6 +20,9 @@ type UseBuildDetailReturn = {
   addItem: (payload: AddBuildItemPayload) => Promise<void>;
   updateBuildItemLine: (itemId: string, payload: UpdateBuildItemPayload) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
+  addExtraLine: (payload: AddBuildExtraLinePayload) => Promise<void>;
+  updateExtraLine: (lineId: string, payload: UpdateBuildExtraLinePayload) => Promise<void>;
+  removeExtraLine: (lineId: string) => Promise<void>;
   confirm: () => Promise<void>;
   revertToDraft: () => Promise<void>;
   updateBuildFields: (payload: UpdateBuildPayload) => Promise<void>;
@@ -96,6 +106,58 @@ export function useBuildDetail(buildId: string): UseBuildDetailReturn {
     [buildId]
   );
 
+  const addExtraLine = useCallback(
+    async (payload: AddBuildExtraLinePayload) => {
+      setActionLoading(true);
+      setError(null);
+      try {
+        const updated = await buildsApi.addBuildExtraLine(buildId, payload);
+        setBuild(updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo anadir el extra.");
+        throw err;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [buildId]
+  );
+
+  const updateExtraLine = useCallback(
+    async (lineId: string, payload: UpdateBuildExtraLinePayload) => {
+      setActionLoading(true);
+      setError(null);
+      try {
+        const updated = await buildsApi.updateBuildExtraLine(buildId, lineId, payload);
+        setBuild(updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo actualizar el extra.");
+        throw err;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [buildId]
+  );
+
+  const removeExtraLine = useCallback(
+    async (lineId: string) => {
+      setActionLoading(true);
+      setError(null);
+      try {
+        await buildsApi.deleteBuildExtraLine(buildId, lineId);
+        const updated = await buildsApi.getBuild(buildId);
+        setBuild(updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo quitar el extra.");
+        throw err;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [buildId]
+  );
+
   const confirm = useCallback(async () => {
     setActionLoading(true);
     setError(null);
@@ -151,6 +213,9 @@ export function useBuildDetail(buildId: string): UseBuildDetailReturn {
     addItem,
     updateBuildItemLine,
     removeItem,
+    addExtraLine,
+    updateExtraLine,
+    removeExtraLine,
     confirm,
     revertToDraft,
     updateBuildFields,

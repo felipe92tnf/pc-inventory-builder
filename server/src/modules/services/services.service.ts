@@ -2,15 +2,18 @@ import { randomUUID } from "node:crypto";
 import { InventoryKind, Prisma, ServiceStatus, ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import {
+  addServiceExtraLineBodySchema,
   createServiceSchema,
   listServicesQuerySchema,
   mergeSparePartLines,
+  patchServiceExtraLineSchema,
   patchServiceSchema
 } from "./services.validators.js";
 
 const serviceInclude = {
   selectedPart: true,
-  sparePartLines: { include: { part: true } }
+  sparePartLines: { include: { part: true } },
+  extraLines: { include: { extraTemplate: true } }
 } as const;
 
 function moneyDecimal(value: number): Prisma.Decimal {
@@ -66,6 +69,12 @@ function spareCostTotal(lines: SpareLine[], parts: { id: string; costPrice: Pris
   return total;
 }
 
+function sumServiceExtraLinesCost(
+  lines: { unitCost: Prisma.Decimal | unknown; quantity: number }[]
+): number {
+  return lines.reduce((sum, row) => sum + Number(row.unitCost) * row.quantity, 0);
+}
+
 function resolveCreateSpareLines(data: {
   sparePartLines?: SpareLine[] | undefined;
   selectedPartId?: string | null;
@@ -81,11 +90,57 @@ function resolveCreateSpareLines(data: {
   return [];
 }
 
+type ExtraSnapshot = {
+  extraTemplateId: string;
+  name: string;
+  description: string;
+  quantity: number;
+  unitCost: number;
+  unitSalePrice: number;
+};
+
+async function resolveExtraLineSnapshots(
+  lines:
+    | { extraTemplateId: string; quantity?: number; unitCost?: number; unitSalePrice?: number }[]
+    | undefined
+): Promise<{ snapshots: ExtraSnapshot[]; sumCost: number; sumSale: number }> {
+  if (!lines || lines.length === 0) {
+    return { snapshots: [], sumCost: 0, sumSale: 0 };
+  }
+  const snapshots: ExtraSnapshot[] = [];
+  let sumCost = 0;
+  let sumSale = 0;
+  for (const line of lines) {
+    const t = await prisma.extraTemplate.findUnique({ where: { id: line.extraTemplateId } });
+    if (!t) {
+      throw new Error("EXTRA_TEMPLATE_NOT_FOUND");
+    }
+    if (!t.active) {
+      throw new Error("EXTRA_TEMPLATE_INACTIVE");
+    }
+    const qty = line.quantity ?? 1;
+    const uc = line.unitCost !== undefined ? line.unitCost : Number(t.defaultCostPrice);
+    const us = line.unitSalePrice !== undefined ? line.unitSalePrice : Number(t.defaultSalePrice);
+    sumCost += uc * qty;
+    sumSale += us * qty;
+    snapshots.push({
+      extraTemplateId: t.id,
+      name: t.name,
+      description: (t.description ?? "").trim(),
+      quantity: qty,
+      unitCost: uc,
+      unitSalePrice: us
+    });
+  }
+  return { snapshots, sumCost, sumSale };
+}
+
 export async function createService(payload: unknown) {
   const data = createServiceSchema.parse(payload);
 
   const customerEmail = normEmail(data.customerEmail ?? undefined);
   const supplement = data.homeServiceSupplement ?? 0;
+  const extra = await resolveExtraLineSnapshots(data.extraLines);
 
   if (data.type === ServiceType.SPARE_PART_SALE) {
     const lines = resolveCreateSpareLines(data);
@@ -94,12 +149,70 @@ export async function createService(payload: unknown) {
     const parts = await prisma.part.findMany({
       where: { id: { in: lines.map((l) => l.partId) } }
     });
-    const costTotal = spareCostTotal(lines, parts);
+    const costTotal = spareCostTotal(lines, parts) + extra.sumCost;
     const manualSale = data.salePrice!;
-    const saleTotal = manualSale + supplement;
+    const saleTotal = manualSale + supplement + extra.sumSale;
     const profit = saleTotal - costTotal;
 
-    return prisma.service.create({
+    return prisma.$transaction(async (tx) => {
+      const row = await tx.service.create({
+        data: {
+          type: data.type,
+          title: data.title.trim(),
+          customerName: data.customerName.trim(),
+          customerPhone: data.customerPhone.trim(),
+          customerEmail,
+          description: data.description?.trim() ?? "",
+          selectedPartId: lines.length === 1 ? lines[0].partId : null,
+          quantity: lines.length === 1 ? lines[0].quantity : null,
+          costPrice: moneyDecimal(costTotal),
+          salePrice: moneyDecimal(saleTotal),
+          profit: moneyDecimal(profit),
+          isHomeService: data.isHomeService,
+          homeServiceAddress:
+            data.isHomeService && data.homeServiceAddress?.trim()
+              ? data.homeServiceAddress.trim()
+              : null,
+          homeServiceSupplement: supplement > 0 ? moneyDecimal(supplement) : null,
+          serviceDate: data.serviceDate,
+          status: ServiceStatus.PENDING,
+          paymentMethod: normNotes(data.paymentMethod),
+          notes: normNotes(data.notes),
+          sparePartLines: {
+            create: lines.map((l) => ({
+              partId: l.partId,
+              quantity: l.quantity
+            }))
+          }
+        }
+      });
+      if (extra.snapshots.length > 0) {
+        await tx.serviceExtraLine.createMany({
+          data: extra.snapshots.map((s) => ({
+            serviceId: row.id,
+            extraTemplateId: s.extraTemplateId,
+            name: s.name,
+            description: s.description,
+            quantity: s.quantity,
+            unitCost: moneyDecimal(s.unitCost),
+            unitSalePrice: moneyDecimal(s.unitSalePrice)
+          }))
+        });
+      }
+      return tx.service.findUnique({
+        where: { id: row.id },
+        include: serviceInclude
+      });
+    });
+  }
+
+  const cost = data.costPrice! + extra.sumCost;
+  const saleBase = data.salePrice!;
+  const saleTotal = saleBase + supplement + extra.sumSale;
+  const profit = saleTotal - cost;
+
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.service.create({
       data: {
         type: data.type,
         title: data.title.trim(),
@@ -107,60 +220,38 @@ export async function createService(payload: unknown) {
         customerPhone: data.customerPhone.trim(),
         customerEmail,
         description: data.description?.trim() ?? "",
-        selectedPartId: lines.length === 1 ? lines[0].partId : null,
-        quantity: lines.length === 1 ? lines[0].quantity : null,
-        costPrice: moneyDecimal(costTotal),
+        selectedPartId: null,
+        quantity: null,
+        costPrice: moneyDecimal(cost),
         salePrice: moneyDecimal(saleTotal),
         profit: moneyDecimal(profit),
         isHomeService: data.isHomeService,
         homeServiceAddress:
-          data.isHomeService && data.homeServiceAddress?.trim()
-            ? data.homeServiceAddress.trim()
-            : null,
+          data.isHomeService && data.homeServiceAddress?.trim() ? data.homeServiceAddress.trim() : null,
         homeServiceSupplement: supplement > 0 ? moneyDecimal(supplement) : null,
         serviceDate: data.serviceDate,
         status: ServiceStatus.PENDING,
         paymentMethod: normNotes(data.paymentMethod),
-        notes: normNotes(data.notes),
-        sparePartLines: {
-          create: lines.map((l) => ({
-            partId: l.partId,
-            quantity: l.quantity
-          }))
-        }
-      },
+        notes: normNotes(data.notes)
+      }
+    });
+    if (extra.snapshots.length > 0) {
+      await tx.serviceExtraLine.createMany({
+        data: extra.snapshots.map((s) => ({
+          serviceId: row.id,
+          extraTemplateId: s.extraTemplateId,
+          name: s.name,
+          description: s.description,
+          quantity: s.quantity,
+          unitCost: moneyDecimal(s.unitCost),
+          unitSalePrice: moneyDecimal(s.unitSalePrice)
+        }))
+      });
+    }
+    return tx.service.findUnique({
+      where: { id: row.id },
       include: serviceInclude
     });
-  }
-
-  const cost = data.costPrice!;
-  const saleBase = data.salePrice!;
-  const saleTotal = saleBase + supplement;
-  const profit = saleTotal - cost;
-
-  return prisma.service.create({
-    data: {
-      type: data.type,
-      title: data.title.trim(),
-      customerName: data.customerName.trim(),
-      customerPhone: data.customerPhone.trim(),
-      customerEmail,
-      description: data.description?.trim() ?? "",
-      selectedPartId: null,
-      quantity: null,
-      costPrice: moneyDecimal(cost),
-      salePrice: moneyDecimal(saleTotal),
-      profit: moneyDecimal(profit),
-      isHomeService: data.isHomeService,
-      homeServiceAddress:
-        data.isHomeService && data.homeServiceAddress?.trim() ? data.homeServiceAddress.trim() : null,
-      homeServiceSupplement: supplement > 0 ? moneyDecimal(supplement) : null,
-      serviceDate: data.serviceDate,
-      status: ServiceStatus.PENDING,
-      paymentMethod: normNotes(data.paymentMethod),
-      notes: normNotes(data.notes)
-    },
-    include: serviceInclude
   });
 }
 
@@ -346,7 +437,9 @@ export async function patchService(id: string, payload: unknown) {
       const parts = await prisma.part.findMany({
         where: { id: { in: spareLinesSync.map((l) => l.partId) } }
       });
-      const costTotal = spareCostTotal(spareLinesSync, parts);
+      const spareCost = spareCostTotal(spareLinesSync, parts);
+      const extraCostSum = sumServiceExtraLinesCost(existing.extraLines ?? []);
+      const costTotal = spareCost + extraCostSum;
 
       const existingSaleTotal = Number(existing.salePrice);
       const manualSaleBase =
@@ -471,6 +564,133 @@ export async function completeService(id: string) {
       where: { id },
       include: serviceInclude
     });
+  });
+}
+
+export async function addServiceExtraLine(serviceId: string, payload: unknown) {
+  const data = addServiceExtraLineBodySchema.parse(payload);
+  const existing = await prisma.service.findUnique({ where: { id: serviceId } });
+  if (!existing) {
+    throw new Error("SERVICE_NOT_FOUND");
+  }
+  if (existing.status === ServiceStatus.COMPLETED) {
+    throw new Error("SERVICE_COMPLETED_LINES_LOCKED");
+  }
+
+  const { snapshots } = await resolveExtraLineSnapshots([data]);
+  const snap = snapshots[0];
+
+  return prisma.$transaction(async (tx) => {
+    await tx.serviceExtraLine.create({
+      data: {
+        serviceId,
+        extraTemplateId: snap.extraTemplateId,
+        name: snap.name,
+        description: snap.description,
+        quantity: snap.quantity,
+        unitCost: moneyDecimal(snap.unitCost),
+        unitSalePrice: moneyDecimal(snap.unitSalePrice)
+      }
+    });
+    const deltaCost = snap.unitCost * snap.quantity;
+    const deltaSale = snap.unitSalePrice * snap.quantity;
+    const nextCost = Number(existing.costPrice) + deltaCost;
+    const nextSale = Number(existing.salePrice) + deltaSale;
+    await tx.service.update({
+      where: { id: serviceId },
+      data: {
+        costPrice: moneyDecimal(nextCost),
+        salePrice: moneyDecimal(nextSale),
+        profit: moneyDecimal(nextSale - nextCost)
+      }
+    });
+    return tx.service.findUnique({ where: { id: serviceId }, include: serviceInclude });
+  });
+}
+
+export async function patchServiceExtraLine(serviceId: string, lineId: string, payload: unknown) {
+  const data = patchServiceExtraLineSchema.parse(payload);
+  const existing = await prisma.service.findUnique({ where: { id: serviceId } });
+  if (!existing) {
+    throw new Error("SERVICE_NOT_FOUND");
+  }
+  if (existing.status === ServiceStatus.COMPLETED) {
+    throw new Error("SERVICE_COMPLETED_LINES_LOCKED");
+  }
+
+  const line = await prisma.serviceExtraLine.findFirst({
+    where: { id: lineId, serviceId }
+  });
+  if (!line) {
+    throw new Error("SERVICE_EXTRA_LINE_NOT_FOUND");
+  }
+
+  const oldCost = Number(line.unitCost) * line.quantity;
+  const oldSale = Number(line.unitSalePrice) * line.quantity;
+
+  const nextQty = data.quantity ?? line.quantity;
+  const nextUC = data.unitCost !== undefined ? data.unitCost : Number(line.unitCost);
+  const nextUS = data.unitSalePrice !== undefined ? data.unitSalePrice : Number(line.unitSalePrice);
+  const newCost = nextUC * nextQty;
+  const newSale = nextUS * nextQty;
+  const deltaCost = newCost - oldCost;
+  const deltaSale = newSale - oldSale;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.serviceExtraLine.update({
+      where: { id: lineId },
+      data: {
+        quantity: nextQty,
+        unitCost: moneyDecimal(nextUC),
+        unitSalePrice: moneyDecimal(nextUS)
+      }
+    });
+    const nextServiceCost = Number(existing.costPrice) + deltaCost;
+    const nextServiceSale = Number(existing.salePrice) + deltaSale;
+    await tx.service.update({
+      where: { id: serviceId },
+      data: {
+        costPrice: moneyDecimal(nextServiceCost),
+        salePrice: moneyDecimal(nextServiceSale),
+        profit: moneyDecimal(nextServiceSale - nextServiceCost)
+      }
+    });
+    return tx.service.findUnique({ where: { id: serviceId }, include: serviceInclude });
+  });
+}
+
+export async function deleteServiceExtraLine(serviceId: string, lineId: string) {
+  const existing = await prisma.service.findUnique({ where: { id: serviceId } });
+  if (!existing) {
+    throw new Error("SERVICE_NOT_FOUND");
+  }
+  if (existing.status === ServiceStatus.COMPLETED) {
+    throw new Error("SERVICE_COMPLETED_LINES_LOCKED");
+  }
+
+  const line = await prisma.serviceExtraLine.findFirst({
+    where: { id: lineId, serviceId }
+  });
+  if (!line) {
+    throw new Error("SERVICE_EXTRA_LINE_NOT_FOUND");
+  }
+
+  const subCost = Number(line.unitCost) * line.quantity;
+  const subSale = Number(line.unitSalePrice) * line.quantity;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.serviceExtraLine.delete({ where: { id: lineId } });
+    const nextServiceCost = Number(existing.costPrice) - subCost;
+    const nextServiceSale = Number(existing.salePrice) - subSale;
+    await tx.service.update({
+      where: { id: serviceId },
+      data: {
+        costPrice: moneyDecimal(nextServiceCost),
+        salePrice: moneyDecimal(nextServiceSale),
+        profit: moneyDecimal(nextServiceSale - nextServiceCost)
+      }
+    });
+    return tx.service.findUnique({ where: { id: serviceId }, include: serviceInclude });
   });
 }
 

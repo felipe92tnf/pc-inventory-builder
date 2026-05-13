@@ -1,0 +1,7 @@
+-- AlterEnum
+ALTER TYPE "QuoteStatus" ADD VALUE 'PENDING_PAYMENT';
+
+-- AlterTable
+ALTER TABLE "Quote" ADD COLUMN "paymentTotal" DECIMAL(12,2),
+ADD COLUMN "amountPaid" DECIMAL(12,2) NOT NULL DEFAULT 0,
+ADD COLUMN "paymentDate" TIMESTAMP(3);
