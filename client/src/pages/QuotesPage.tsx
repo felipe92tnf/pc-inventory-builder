@@ -4,7 +4,23 @@ import * as quotesApi from "../api/quotes";
 import type { CreateQuotePayload, Quote, QuoteStatus } from "../types/quote";
 import { QUOTE_STATUSES } from "../types/quote";
 import { aggregateQuoteFinancials } from "../utils/quoteFinancials";
-import { PRIMARY_ACTION_BUTTON, SECONDARY_GHOST_SM } from "../theme/actionButtons";
+import {
+  PRIMARY_ACTION_BUTTON,
+  PRIMARY_ACTION_BUTTON_HEADER,
+  STICKY_PRIMARY_MOBILE_DOCK,
+  SECONDARY_GHOST_SM,
+  FILTER_TOGGLE_ROW
+} from "../theme/actionButtons";
+import {
+  LIST_PAGE_ACCORDION_SHELL,
+  LIST_PAGE_ACCORDION_TRIGGER,
+  LIST_PAGE_FILTER_SECTION,
+  LIST_PAGE_LISTING_REGION,
+  LIST_PAGE_LISTING_TITLE
+} from "../theme/listPageMobile";
+import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL, TABLE_CELL } from "../theme/layoutDensity";
+import { StatusBadge, quoteStatusVariant } from "../components/ui/StatusBadge";
+import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -29,21 +45,19 @@ const STATUS_LABELS: Record<QuoteStatus, string> = {
   EXPIRED: "Caducado"
 };
 
-function statusBadgeClass(status: QuoteStatus): string {
-  switch (status) {
-    case "DRAFT":
-      return "border-slate-500/40 bg-slate-500/15 text-slate-200";
-    case "SENT":
-      return "border-sky-500/40 bg-sky-500/15 text-sky-200";
-    case "ACCEPTED":
-      return "border-emerald-500/40 bg-emerald-500/15 text-emerald-200";
-    case "REJECTED":
-      return "border-rose-500/40 bg-rose-500/15 text-rose-200";
-    case "EXPIRED":
-      return "border-amber-500/40 bg-amber-500/15 text-amber-200";
-    default:
-      return "border-slate-600 bg-slate-800 text-slate-300";
-  }
+function ChevronQuoteFold({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  );
 }
 
 export function QuotesPage() {
@@ -60,6 +74,9 @@ export function QuotesPage() {
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [newTitle, setNewTitle] = useState("");
+  /** Móvil: un acordeón por estado; por defecto plegados. */
+  const [mobileStatusOpen, setMobileStatusOpen] = useState<Partial<Record<QuoteStatus, boolean>>>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -89,6 +106,21 @@ export function QuotesPage() {
       return inTitle || inCustomer;
     });
   }, [quotes, query, statusFilter]);
+
+  /** Solo estados con al menos un presupuesto (tras filtros), orden fijo. */
+  const quotesByStatus = useMemo(() => {
+    const buckets: Record<QuoteStatus, Quote[]> = {
+      DRAFT: [],
+      SENT: [],
+      ACCEPTED: [],
+      REJECTED: [],
+      EXPIRED: []
+    };
+    for (const q of filtered) {
+      buckets[q.status].push(q);
+    }
+    return QUOTE_STATUSES.map((status) => ({ status, rows: buckets[status] })).filter((g) => g.rows.length > 0);
+  }, [filtered]);
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -120,13 +152,13 @@ export function QuotesPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
-      <section className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)] sm:flex-row sm:items-start sm:justify-between">
+    <div className={`${PAGE_OUTER_7XL} max-md:pb-32`}>
+      <section className={`${PAGE_HERO} flex flex-col gap-3 md:flex-row md:items-start md:justify-between`}>
         <h1 className="text-3xl font-bold tracking-tight">Presupuestos</h1>
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
-          className={PRIMARY_ACTION_BUTTON}
+          className={PRIMARY_ACTION_BUTTON_HEADER}
         >
           {showForm ? "Ocultar formulario" : "Nuevo presupuesto"}
         </button>
@@ -148,10 +180,10 @@ export function QuotesPage() {
       {showForm ? (
         <form
           onSubmit={handleCreate}
-          className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6"
+          className={SECTION_SHELL}
         >
           <h2 className="text-lg font-semibold text-slate-100">Crear presupuesto</h2>
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
               Cliente
               <input
@@ -189,7 +221,7 @@ export function QuotesPage() {
               />
             </label>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="submit"
               disabled={creating}
@@ -201,142 +233,216 @@ export function QuotesPage() {
         </form>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
-        <h2 className="text-xl font-semibold text-slate-100">Buscar y filtrar</h2>
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200 md:col-span-2">
-            Buscar por cliente o titulo
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Nombre del cliente o titulo..."
-              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
-            Estado
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | "ALL")}
-              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-            >
-              <option value="ALL">Todos</option>
-              {QUOTE_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </label>
+      <section className={LIST_PAGE_FILTER_SECTION}>
+        <button
+          type="button"
+          className={`${FILTER_TOGGLE_ROW} md:hidden`}
+          onClick={() => setFiltersOpen((v) => !v)}
+          aria-expanded={filtersOpen}
+        >
+          <span className="min-w-0 text-left">
+            <span className="block text-sm font-semibold text-slate-200">Filtros</span>
+            <span className="mt-0.5 block text-xs font-normal text-slate-500">Buscar y acotar por estado</span>
+          </span>
+          <ChevronQuoteFold open={filtersOpen} />
+        </button>
+        <div className={filtersOpen ? "" : "max-md:hidden"}>
+          <div className="border-t border-slate-800 px-4 pb-4 pt-1 md:border-t-0 md:pt-4">
+            <h2 className="mb-3 hidden text-xl font-semibold text-slate-100 md:block">Buscar y filtrar</h2>
+            <div className="mt-0 grid grid-cols-1 gap-3 md:mt-0 md:grid-cols-3">
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200 md:col-span-2">
+                Buscar por cliente o titulo
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Nombre del cliente o titulo..."
+                  className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
+                Estado
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | "ALL")}
+                  className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                >
+                  <option value="ALL">Todos</option>
+                  {QUOTE_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
         </div>
       </section>
+
+      <div className={LIST_PAGE_LISTING_REGION}>
+        <h2 className={LIST_PAGE_LISTING_TITLE}>Listado de presupuestos</h2>
 
       {loading ? (
         <p className="text-sm text-slate-400">Cargando presupuestos...</p>
       ) : filtered.length === 0 ? (
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-8 text-center text-slate-400">
+        <section className={`${SECTION_SHELL} py-6 text-center text-slate-400`}>
           No hay presupuestos que coincidan.
         </section>
       ) : (
         <>
-          <section className="hidden overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 md:block">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm text-slate-200">
-                <thead className="bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Nº</th>
-                    <th className="px-4 py-3">Cliente</th>
-                    <th className="px-4 py-3">Titulo</th>
-                    <th className="px-4 py-3">Estado</th>
-                    <th className="px-4 py-3">Coste total</th>
-                    <th className="px-4 py-3">Total venta</th>
-                    <th className="px-4 py-3">Beneficio</th>
-                    <th className="px-4 py-3">Fecha</th>
-                    <th className="px-4 py-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {filtered.map((row) => {
-                    const fin = aggregateQuoteFinancials(row);
-                    return (
-                    <tr key={row.id} className="transition hover:bg-slate-800/40">
-                      <td className="px-4 py-3 font-mono text-slate-300">#{row.quoteNumber}</td>
-                      <td className="px-4 py-3 font-medium text-slate-100">{row.customerName}</td>
-                      <td className="max-w-xs truncate px-4 py-3 text-slate-300">{row.title}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(row.status)}`}
-                        >
-                          {STATUS_LABELS[row.status]}
-                        </span>
-                      </td>
-                      <td
-                        className="whitespace-nowrap px-4 py-3 text-slate-300"
-                        title={fin.linesWithoutCost > 0 ? "Coste parcial (hay lineas sin coste)" : undefined}
-                      >
-                        {money(fin.totalCost)}
-                        {fin.linesWithoutCost > 0 ? (
-                          <span className="ml-1 text-[10px] text-amber-400/90">*</span>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-emerald-300/95">{money(row.total)}</td>
-                      <td
-                        className={`whitespace-nowrap px-4 py-3 font-semibold ${
-                          fin.profitNet >= 0 ? "text-violet-300/95" : "text-rose-300"
-                        }`}
-                      >
-                        {money(fin.profitNet)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-400">{formatDate(row.createdAt)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <Link to={`/quotes/${row.id}`} className={SECONDARY_GHOST_SM}>
-                          Ver detalle
-                        </Link>
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <div className="hidden space-y-4 md:block">
+            {quotesByStatus.map(({ status, rows }) => (
+              <section key={status} className={LIST_PAGE_ACCORDION_SHELL}>
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/70 px-4 py-2.5">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-200">
+                    {STATUS_LABELS[status]}
+                  </h3>
+                  <StatusBadge variant={quoteStatusVariant(status)} size="card" className="leading-none tabular-nums">
+                    {rows.length}
+                  </StatusBadge>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm text-slate-200">
+                    <thead className="bg-slate-950/50 text-xs uppercase tracking-wide text-slate-400">
+                      <tr>
+                        <th className={TABLE_CELL}>Nº</th>
+                        <th className={TABLE_CELL}>Cliente</th>
+                        <th className={TABLE_CELL}>Titulo</th>
+                        <th className={TABLE_CELL}>Coste total</th>
+                        <th className={TABLE_CELL}>Total venta</th>
+                        <th className={TABLE_CELL}>Beneficio</th>
+                        <th className={TABLE_CELL}>Fecha</th>
+                        <th className={`${TABLE_CELL} text-right`}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {rows.map((row) => {
+                        const fin = aggregateQuoteFinancials(row);
+                        return (
+                          <tr key={row.id} className="transition hover:bg-slate-800/40">
+                            <td className={`${TABLE_CELL} font-mono text-slate-300`}>#{row.quoteNumber}</td>
+                            <td className={TABLE_CELL}>
+                              <div className="font-medium text-slate-100">{row.customerName}</div>
+                              <CustomerProfileLink
+                                customerName={row.customerName}
+                                customerPhone={row.customerPhone}
+                                className="mt-1 inline-flex text-[11px]"
+                              />
+                            </td>
+                            <td className={`max-w-xs truncate ${TABLE_CELL} text-slate-300`}>{row.title}</td>
+                            <td
+                              className={`whitespace-nowrap ${TABLE_CELL} text-slate-300`}
+                              title={fin.linesWithoutCost > 0 ? "Coste parcial (hay lineas sin coste)" : undefined}
+                            >
+                              {money(fin.totalCost)}
+                              {fin.linesWithoutCost > 0 ? (
+                                <span className="ml-1 text-[10px] text-amber-400/90">*</span>
+                              ) : null}
+                            </td>
+                            <td className={`${TABLE_CELL} font-semibold text-emerald-300/95`}>{money(row.total)}</td>
+                            <td
+                              className={`whitespace-nowrap ${TABLE_CELL} font-semibold ${
+                                fin.profitNet >= 0 ? "text-violet-300/95" : "text-rose-300"
+                              }`}
+                            >
+                              {money(fin.profitNet)}
+                            </td>
+                            <td className={`whitespace-nowrap ${TABLE_CELL} text-slate-400`}>
+                              {formatDate(row.createdAt)}
+                            </td>
+                            <td className={`${TABLE_CELL} text-right`}>
+                              <Link to={`/quotes/${row.id}`} className={SECONDARY_GHOST_SM}>
+                                Ver detalle
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+          </div>
 
-          <section className="space-y-3 md:hidden">
-            {filtered.map((row) => {
-              const fin = aggregateQuoteFinancials(row);
+          <div className="space-y-3 md:hidden">
+            {quotesByStatus.map(({ status, rows }) => {
+              const expanded = mobileStatusOpen[status] === true;
+              const panelId = `quote-mobile-status-${status}`;
               return (
-              <article
-                key={row.id}
-                className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-md shadow-black/20"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-mono text-xs text-slate-500">#{row.quoteNumber}</p>
-                    <h3 className="mt-1 text-base font-semibold text-slate-100">{row.title}</h3>
-                    <p className="mt-1 text-sm text-slate-400">{row.customerName}</p>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(row.status)}`}
+                <article key={status} className={LIST_PAGE_ACCORDION_SHELL}>
+                  <button
+                    type="button"
+                    className={LIST_PAGE_ACCORDION_TRIGGER}
+                    onClick={() =>
+                      setMobileStatusOpen((prev) => ({
+                        ...prev,
+                        [status]: !prev[status]
+                      }))
+                    }
+                    aria-expanded={expanded}
+                    aria-controls={panelId}
                   >
-                    {STATUS_LABELS[row.status]}
-                  </span>
-                </div>
-                <div className="mt-3 border-t border-slate-800 pt-3">
-                  <p className="text-sm text-slate-500">Total</p>
-                  <p className="mt-1 text-xl font-bold text-emerald-300">{money(row.total)}</p>
-                </div>
-                <Link
-                  to={`/quotes/${row.id}`}
-                  className={`${SECONDARY_GHOST_SM} mt-4 flex w-full min-h-[44px] justify-center py-2.5 text-sm`}
-                >
-                  Ver detalle
-                </Link>
-              </article>
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold uppercase tracking-wide text-slate-200">
+                          {STATUS_LABELS[status]}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {rows.length === 1 ? "1 presupuesto" : `${rows.length} presupuestos`}
+                        </p>
+                      </div>
+                      <StatusBadge variant={quoteStatusVariant(status)} size="card" className="leading-none tabular-nums">
+                        {rows.length}
+                      </StatusBadge>
+                    </div>
+                    <ChevronQuoteFold open={expanded} />
+                  </button>
+                  {expanded ? (
+                    <div id={panelId} className="space-y-2 border-t border-slate-800 p-3">
+                      {rows.map((row) => (
+                        <article
+                          key={row.id}
+                          className="rounded-xl border border-slate-800/90 bg-slate-900/40 p-3 shadow-sm"
+                        >
+                          <p className="font-mono text-xs text-slate-500">#{row.quoteNumber}</p>
+                          <h4 className="mt-1 text-base font-semibold leading-snug text-slate-100">{row.title}</h4>
+                          <p className="mt-1 text-sm text-slate-400">{row.customerName}</p>
+                          <CustomerProfileLink
+                            customerName={row.customerName}
+                            customerPhone={row.customerPhone}
+                            className="mt-2 inline-flex text-xs"
+                          />
+                          <div className="mt-2 border-t border-slate-800 pt-2">
+                            <p className="text-xs text-slate-500">Total</p>
+                            <p className="mt-0.5 text-lg font-bold text-emerald-300">{money(row.total)}</p>
+                          </div>
+                          <Link
+                            to={`/quotes/${row.id}`}
+                            className={`${SECONDARY_GHOST_SM} mt-3 flex w-full min-h-[44px] justify-center py-2.5 text-sm`}
+                          >
+                            Ver detalle
+                          </Link>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
               );
             })}
-          </section>
+          </div>
         </>
       )}
+      </div>
+      <div className={STICKY_PRIMARY_MOBILE_DOCK}>
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className={PRIMARY_ACTION_BUTTON}
+        >
+          {showForm ? "Ocultar formulario" : "Nuevo presupuesto"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { isPrebuiltPc, type Part } from "../../types/part";
 import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
 
 type PrebuiltInventorySaleSectionProps = {
   parts: Part[];
@@ -25,7 +26,7 @@ export function PrebuiltInventorySaleSection({
 
   if (loading) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Cargando inventario de PCs completos...</p>
       </section>
     );
@@ -42,7 +43,7 @@ export function PrebuiltInventorySaleSection({
       </div>
 
       {prebuiltWithStock.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+        <div className={SECTION_SHELL}>
           <p className="text-sm text-slate-300">
             No hay PCs premontados con stock. Añadelos en Inventario (tipo PC completo).
           </p>

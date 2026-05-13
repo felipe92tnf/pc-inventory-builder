@@ -35,9 +35,9 @@ export function SellPcModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="sell-pc-modal-title"
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl shadow-black/60"
+        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl shadow-black/60"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
           <div>
             <h2 id="sell-pc-modal-title" className="text-lg font-semibold text-slate-100">
               Vender PC
@@ -55,7 +55,7 @@ export function SellPcModal({
           </button>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-4">
           <RegisterSaleForm
             key={`${buildId}-${formResetKey}`}
             variant="plain"

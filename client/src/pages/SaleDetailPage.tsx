@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
 import { useSaleDetail } from "../hooks/useSaleDetail";
 import { PRIMARY_ACTION_BUTTON } from "../theme/actionButtons";
@@ -12,6 +13,8 @@ import {
   SUMMARY_VALUE_PROFIT_POS,
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
+import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
+import { StatusBadge } from "../components/ui/StatusBadge";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -100,23 +103,23 @@ export function SaleDetailPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl space-y-6 px-2 pb-8 md:px-4">
-        <div className="h-36 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className={PAGE_OUTER_7XL}>
+        <div className="h-32 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {[1, 2, 3].map((k) => (
-            <div key={k} className="h-28 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
+            <div key={k} className="h-24 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
           ))}
         </div>
-        <div className="h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
+        <div className="h-56 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
       </div>
     );
   }
 
   if (!sale) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">{error ?? "Venta no encontrada."}</p>
-        <Link to="/sales" className="mt-4 inline-flex text-sm font-medium text-indigo-300 hover:text-indigo-200">
+        <Link to="/sales" className="mt-3 inline-flex text-sm font-medium text-indigo-300 hover:text-indigo-200">
           Volver a ventas
         </Link>
       </section>
@@ -126,18 +129,18 @@ export function SaleDetailPage() {
   const b = sale.build;
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className={PAGE_OUTER_7XL}>
+      <section className={PAGE_HERO}>
+        <div className="flex flex-wrap items-start justify-between gap-2.5">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Venta · {b.name}</h1>
             <p className="mt-1 text-sm text-slate-300">
               Cliente: <span className="font-medium text-slate-100">{sale.customerName}</span>
             </p>
           </div>
-          <span className="rounded-full border border-cyan-500/40 bg-cyan-500/15 px-2.5 py-1 text-xs font-semibold text-cyan-300">
+          <StatusBadge variant="sold" size="detail">
             Vendido
-          </span>
+          </StatusBadge>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link
@@ -152,15 +155,22 @@ export function SaleDetailPage() {
           >
             Montaje
           </Link>
+          <CustomerProfileLink
+            customerName={sale.customerName}
+            customerPhone={sale.customerPhone}
+            className="rounded-full border border-slate-600 bg-slate-950/60 px-3 py-1 text-xs font-medium text-indigo-200 hover:bg-slate-800"
+          >
+            Ficha cliente
+          </CustomerProfileLink>
           {sale.paymentMethod ? (
-            <span className="rounded-full border border-indigo-500/35 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-200">
+            <StatusBadge variant="meta" size="detail" className="font-medium">
               {sale.paymentMethod}
-            </span>
+            </StatusBadge>
           ) : null}
           {sale.warrantyMonths != null ? (
-            <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
+            <StatusBadge variant="completed" size="detail" className="font-medium">
               Garantia {sale.warrantyMonths} meses
-            </span>
+            </StatusBadge>
           ) : null}
         </div>
       </section>
@@ -195,13 +205,13 @@ export function SaleDetailPage() {
         </article>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <h2 className="text-lg font-semibold text-slate-100">Editar datos de la venta</h2>
         <p className="mt-1 text-sm text-slate-400">
           Modifica cliente, precio o condiciones. El beneficio se recalcula si cambias el precio final.
         </p>
 
-        <form onSubmit={handleSave} className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <form onSubmit={handleSave} className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
             Nombre del cliente
             <input

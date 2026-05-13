@@ -6,7 +6,9 @@ import {
   type PartCategory
 } from "../../types/part";
 import { getInventoryCategoryStyle } from "./inventoryCategoryStyles";
+import { StatusBadge, partConditionVariant } from "../ui/StatusBadge";
 import { SECONDARY_GHOST_SM, DESTRUCTIVE_BUTTON_SM } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
 
 type PartsTableProps = {
   /** Lista completa (tras filtros); en escritorio se muestra por categorias desplegables. */
@@ -52,22 +54,14 @@ function formatCostPrice(value: number | string): string {
   return formatMoney(value);
 }
 
-function conditionBadgeClass(condition: string): string {
-  if (condition === "NEW") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
-  if (condition === "USED") return "bg-amber-500/15 text-amber-300 border-amber-500/40";
-  return "bg-indigo-500/15 text-indigo-300 border-indigo-500/40";
-}
-
 function PartConditionBadge({ part }: { part: Part }) {
   if (part.category && isNonStockCategory(part.category)) {
     return <span className="text-slate-500">—</span>;
   }
   return (
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`}
-    >
+    <StatusBadge variant={partConditionVariant(part.condition)} size="card">
       {part.condition}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -120,7 +114,7 @@ function CategoryAccordionTrigger({
   return (
     <button
       type="button"
-      className={`flex w-full items-center gap-3 text-left transition-colors duration-200 ${compact ? "px-3 py-2.5" : "px-4 py-3.5"} ${style.headerBg} ${style.headerHover}`}
+      className={`flex w-full items-center gap-3 text-left transition-colors duration-200 ${compact ? "px-3 py-2" : "px-3.5 py-3"} ${style.headerBg} ${style.headerHover}`}
       onClick={onToggle}
       aria-expanded={expanded}
       aria-controls={panelId}
@@ -166,29 +160,17 @@ function PartCard({
 }) {
   const catStyle = getInventoryCategoryStyle((part.category ?? "OTHER") as PartCategory);
 
+  const touchRowBtn =
+    "min-h-[44px] w-full justify-center px-4 py-2.5 text-sm font-semibold";
+
   return (
     <article
-      className={`rounded-2xl border border-slate-800 bg-slate-950/50 shadow-md shadow-black/20 ${compact ? "p-3" : "p-4"}`}
+      className={`rounded-2xl border border-slate-800 bg-slate-950/50 shadow-md shadow-black/20 ${compact ? "p-3" : "p-3.5"}`}
     >
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <h3 className="min-w-0 flex-1 text-base font-semibold leading-snug text-slate-100">{part.name}</h3>
-          <div className="flex shrink-0 gap-2">
-            <button type="button" onClick={() => onEdit(part)} className={SECONDARY_GHOST_SM}>
-              Editar
-            </button>
-            <button
-              type="button"
-              onClick={() => onDelete(part)}
-              disabled={deletingId === part.id}
-              className={DESTRUCTIVE_BUTTON_SM}
-            >
-              {deletingId === part.id ? "Eliminando..." : "Eliminar"}
-            </button>
-          </div>
-        </div>
+      <div className="flex flex-col gap-2.5">
+        <h3 className="break-words text-base font-semibold leading-snug text-slate-100">{part.name}</h3>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {showCategoryBadge ? (
             <span
               className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${catStyle.chipBg} ${catStyle.chipBorder} ${catStyle.chipText}`}
@@ -199,26 +181,42 @@ function PartCard({
           <PartConditionBadge part={part} />
         </div>
 
-        <dl
-          className={`grid grid-cols-1 border-t border-slate-800/80 text-sm sm:grid-cols-2 ${compact ? "gap-2 pt-2" : "gap-3 pt-3"}`}
-        >
-          <div className="flex justify-between gap-3 sm:flex-col sm:justify-start">
-            <dt className="text-xs uppercase tracking-wide text-slate-500">Precio coste</dt>
-            <dd className="font-medium text-slate-200">{formatCostPrice(part.costPrice)}</dd>
+        <dl className="space-y-1.5 border-t border-slate-800/80 pt-2.5 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 text-xs uppercase tracking-wide text-slate-500">Precio coste</dt>
+            <dd className="min-w-0 text-right font-medium text-slate-200">{formatCostPrice(part.costPrice)}</dd>
           </div>
-          <div className="flex justify-between gap-3 sm:flex-col sm:justify-start">
-            <dt className="text-xs uppercase tracking-wide text-slate-500">Precio venta</dt>
-            <dd className="font-medium text-emerald-300/95">{formatMoney(part.salePrice)}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 text-xs uppercase tracking-wide text-slate-500">Precio venta</dt>
+            <dd className="min-w-0 text-right font-medium text-emerald-300/95">{formatMoney(part.salePrice)}</dd>
           </div>
           {part.stock !== 0 || (part.category != null && isNonStockCategory(part.category)) ? (
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Stock</dt>
-              <dd>
+            <div className="flex justify-between gap-3 border-t border-slate-800/60 pt-1.5">
+              <dt className="shrink-0 text-xs uppercase tracking-wide text-slate-500">Stock</dt>
+              <dd className="text-right">
                 <StockBadges part={part} />
               </dd>
             </div>
           ) : null}
         </dl>
+
+        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-2.5">
+          <button
+            type="button"
+            onClick={() => onEdit(part)}
+            className={`${SECONDARY_GHOST_SM} ${touchRowBtn}`}
+          >
+            Editar
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(part)}
+            disabled={deletingId === part.id}
+            className={`${DESTRUCTIVE_BUTTON_SM} ${touchRowBtn}`}
+          >
+            {deletingId === part.id ? "Eliminando..." : "Eliminar"}
+          </button>
+        </div>
       </div>
     </article>
   );
@@ -362,7 +360,7 @@ function DesktopPartsByCategory({
     }));
   };
 
-  const cell = compact ? "px-3 py-2" : "px-4 py-3";
+  const cell = compact ? "px-3 py-2" : "px-3.5 py-2.5";
 
   return (
     <section className={`hidden md:block ${compact ? "space-y-2" : "space-y-3"}`}>
@@ -456,7 +454,7 @@ export function PartsTable({
 }: PartsTableProps) {
   if (loading) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Cargando piezas...</p>
       </section>
     );
@@ -466,7 +464,7 @@ export function PartsTable({
 
   if (parts.length === 0) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">{emptyMessage ?? "No hay piezas en inventario todavia."}</p>
       </section>
     );

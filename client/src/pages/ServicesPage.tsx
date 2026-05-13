@@ -1,26 +1,39 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import * as servicesApi from "../api/services";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useParts } from "../hooks/useParts";
 import { useServices } from "../hooks/useServices";
-import type { CreateServicePayload, ServiceRow, ServiceStatus, ServiceType } from "../types/service";
+import type {
+  CreateServicePayload,
+  PatchServicePayload,
+  ServiceRow,
+  ServiceStatus,
+  ServiceType
+} from "../types/service";
 import { isPartPiece, PART_CATEGORIES, partCategoryLabel, type PartCategory } from "../types/part";
 import { SERVICE_TYPES, SERVICE_STATUSES } from "../types/service";
 import {
   PRIMARY_ACTION_BUTTON,
+  PRIMARY_ACTION_BUTTON_HEADER,
+  STICKY_PRIMARY_MOBILE_DOCK,
   PRIMARY_ACTION_BUTTON_COMPACT,
+  SECONDARY_BUTTON,
   SECONDARY_BUTTON_SM,
   FILTER_TOGGLE_ROW,
-  DESTRUCTIVE_BUTTON_SM
+  DESTRUCTIVE_BUTTON_SM,
+  ORANGE_EDIT_BUTTON_SM,
+  ORANGE_EDIT_BUTTON_CARD
 } from "../theme/actionButtons";
+import { PAGE_HERO, PAGE_OUTER_7XL } from "../theme/layoutDensity";
 import {
-  SUMMARY_CARD_GRID,
-  SUMMARY_CARD_LABEL,
-  SUMMARY_CARD_SHELL,
-  SUMMARY_VALUE_NEGATIVE,
-  SUMMARY_VALUE_NEUTRAL,
-  SUMMARY_VALUE_PROFIT_CYAN,
-  SUMMARY_VALUE_REVENUE
-} from "../theme/summaryCards";
+  LIST_PAGE_ACCORDION_BODY,
+  LIST_PAGE_ACCORDION_SHELL,
+  LIST_PAGE_ACCORDION_TRIGGER,
+  LIST_PAGE_COUNT_BADGE,
+  LIST_PAGE_FILTER_SECTION,
+  LIST_PAGE_LISTING_REGION,
+  LIST_PAGE_LISTING_TITLE
+} from "../theme/listPageMobile";
+import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
+import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   SPARE_PART_SALE: "Venta de pieza suelta",
@@ -152,43 +165,8 @@ export function ServicesPage() {
     }));
   }, [partsForSpare]);
 
-  const [monthlyRows, setMonthlyRows] = useState<Awaited<ReturnType<typeof servicesApi.getMonthlyServicesSummary>>>(
-    []
-  );
-
-  useEffect(() => {
-    void servicesApi.getMonthlyServicesSummary().then(setMonthlyRows).catch(() => setMonthlyRows([]));
-  }, []);
-
-  const summaryBucket = useMemo(() => {
-    return monthlyRows.find((r) => r.month === filterMonth && r.year === filterYear);
-  }, [monthlyRows, filterMonth, filterYear]);
-
-  const statsFromList = useMemo(() => {
-    const completed = services.filter((s) => s.status === "COMPLETED");
-    const pending = services.filter((s) => s.status === "PENDING");
-    const revenue = completed.reduce((a, s) => a + s.salePrice, 0);
-    const profit = completed.reduce((a, s) => a + s.profit, 0);
-    return {
-      revenue,
-      profit,
-      completedCount: completed.length,
-      pendingCount: pending.length
-    };
-  }, [services]);
-
-  const showGlobalMonthly =
-    filterType === "ALL" && filterStatus === "ALL" && summaryBucket !== undefined;
-
-  const displayRevenue = showGlobalMonthly ? summaryBucket.totalRevenue : statsFromList.revenue;
-  const displayProfit = showGlobalMonthly ? summaryBucket.totalProfit : statsFromList.profit;
-  const displayCompleted = showGlobalMonthly ? summaryBucket.servicesCount : statsFromList.completedCount;
-
-  const refreshMonthlySummary = () => {
-    void servicesApi.getMonthlyServicesSummary().then(setMonthlyRows).catch(() => {});
-  };
-
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState<ServiceRow | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openPending, setOpenPending] = useState(true);
   const [openCompleted, setOpenCompleted] = useState(false);
@@ -259,6 +237,13 @@ export function ServicesPage() {
 
   const closeModal = () => {
     setCreateModalOpen(false);
+    setEditingService(null);
+  };
+
+  const openCreateModal = () => {
+    resetForm();
+    setEditingService(null);
+    setCreateModalOpen(true);
   };
 
   const updateSpareLine = (index: number, patch: Partial<SpareLineDraft>) => {
@@ -326,7 +311,105 @@ export function ServicesPage() {
       }
       resetForm();
       closeModal();
-      refreshMonthlySummary();
+    } catch {
+      /* error en estado del hook */
+    }
+  };
+
+  const openEditService = (s: ServiceRow) => {
+    setCreateModalOpen(false);
+    setFormType(s.type);
+    setTitle(s.title);
+    setCustomerName(s.customerName);
+    setCustomerPhone(s.customerPhone);
+    setDescription(s.description ?? "");
+    const sup = Number(s.homeServiceSupplement ?? 0);
+    setHomeServiceSupplement(s.homeServiceSupplement != null && sup > 0 ? sup : "");
+    setIsHomeService(s.isHomeService);
+    setHomeServiceAddress(s.homeServiceAddress ?? "");
+    setServiceDate(toIsoDate(new Date(s.serviceDate)));
+    setPaymentMethod(s.paymentMethod ?? "");
+    setNotes(s.notes ?? "");
+    if (s.type === "SPARE_PART_SALE") {
+      if (s.sparePartLines && s.sparePartLines.length > 0) {
+        setSpareLines(s.sparePartLines.map((l) => ({ partId: l.partId, quantity: l.quantity })));
+      } else if (s.selectedPartId && s.quantity) {
+        setSpareLines([{ partId: s.selectedPartId, quantity: s.quantity }]);
+      } else {
+        setSpareLines([{ partId: "", quantity: 1 }]);
+      }
+      setCostPrice(Number(s.costPrice));
+      setSalePrice(Number(s.salePrice) - sup);
+    } else {
+      setSpareLines([{ partId: "", quantity: 1 }]);
+      setCostPrice(Number(s.costPrice));
+      setSalePrice(Number(s.salePrice) - sup);
+    }
+    setEditingService(s);
+  };
+
+  const handleEditSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const svc = editingService;
+    if (!svc) return;
+
+    const base: PatchServicePayload = {
+      title: title.trim(),
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim(),
+      description: description.trim(),
+      isHomeService,
+      homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
+      homeServiceSupplement:
+        typeof homeServiceSupplement === "number" && homeServiceSupplement > 0
+          ? homeServiceSupplement
+          : null,
+      serviceDate: new Date(serviceDate).toISOString(),
+      paymentMethod: paymentMethod.trim() || null,
+      notes: notes.trim() || null
+    };
+
+    try {
+      if (svc.type === "SPARE_PART_SALE") {
+        const manualSale = typeof salePrice === "number" ? salePrice : NaN;
+        if (!Number.isFinite(manualSale) || manualSale < 0) {
+          window.alert("Indica el precio de venta (puede ser 0).");
+          return;
+        }
+        const c = typeof costPrice === "number" ? costPrice : NaN;
+        if (!Number.isFinite(c) || c < 0) {
+          window.alert("Indica el coste (puede ser 0).");
+          return;
+        }
+        await patchService(svc.id, {
+          ...base,
+          salePrice: manualSale,
+          costPrice: c
+        });
+      } else {
+        const c = typeof costPrice === "number" ? costPrice : 0;
+        const s = typeof salePrice === "number" ? salePrice : 0;
+        await patchService(svc.id, {
+          ...base,
+          costPrice: c,
+          salePrice: s
+        });
+      }
+      resetForm();
+      closeModal();
+    } catch {
+      /* error en estado del hook */
+    }
+  };
+
+  const handleDeleteFromEdit = async () => {
+    const svc = editingService;
+    if (!svc) return;
+    if (!window.confirm("Eliminar este servicio? Esta accion no se puede deshacer.")) return;
+    try {
+      await deleteService(svc.id);
+      resetForm();
+      closeModal();
     } catch {
       /* error en estado del hook */
     }
@@ -369,25 +452,22 @@ export function ServicesPage() {
   const serviceActions = {
     onComplete: (id: string) => {
       void completeService(id);
-      refreshMonthlySummary();
     },
     onCancel: (id: string) => {
       void patchService(id, { status: "CANCELLED" });
-      refreshMonthlySummary();
     },
     onDelete: (id: string) => {
       if (window.confirm("Eliminar este servicio?")) {
         void deleteService(id);
-        refreshMonthlySummary();
       }
     }
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 px-2 pb-10 text-slate-100 md:space-y-6 md:px-4">
-      <section className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-5 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)] md:flex-row md:items-start md:justify-between md:p-6">
+    <div className={`${PAGE_OUTER_7XL} max-md:pb-32`}>
+      <section className={`${PAGE_HERO} flex flex-col gap-3 md:flex-row md:items-start md:justify-between`}>
         <h1 className="text-3xl font-bold tracking-tight">Servicios</h1>
-        <button type="button" onClick={() => setCreateModalOpen(true)} className={PRIMARY_ACTION_BUTTON}>
+        <button type="button" onClick={openCreateModal} className={PRIMARY_ACTION_BUTTON_HEADER}>
           Nuevo servicio
         </button>
       </section>
@@ -407,37 +487,18 @@ export function ServicesPage() {
         </div>
       ) : null}
 
-      {/* Resumen compacto */}
-      <section className={SUMMARY_CARD_GRID}>
-        <div className={SUMMARY_CARD_SHELL}>
-          <p className={SUMMARY_CARD_LABEL}>Ingresos</p>
-          <p className={SUMMARY_VALUE_REVENUE}>{money(displayRevenue)}</p>
-        </div>
-        <div className={SUMMARY_CARD_SHELL}>
-          <p className={SUMMARY_CARD_LABEL}>Beneficio</p>
-          <p className={displayProfit >= 0 ? SUMMARY_VALUE_PROFIT_CYAN : SUMMARY_VALUE_NEGATIVE}>
-            {money(displayProfit)}
-          </p>
-        </div>
-        <div className={SUMMARY_CARD_SHELL}>
-          <p className={SUMMARY_CARD_LABEL}>Completados</p>
-          <p className={SUMMARY_VALUE_NEUTRAL}>{displayCompleted}</p>
-        </div>
-        <div className={SUMMARY_CARD_SHELL}>
-          <p className={SUMMARY_CARD_LABEL}>Pendientes</p>
-          <p className={SUMMARY_VALUE_NEUTRAL}>{statsFromList.pendingCount}</p>
-        </div>
-      </section>
-
       {/* Filtros colapsables */}
-      <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 shadow-inner shadow-black/20">
+      <section className={LIST_PAGE_FILTER_SECTION}>
         <button
           type="button"
           className={FILTER_TOGGLE_ROW}
           onClick={() => setFiltersOpen((v) => !v)}
           aria-expanded={filtersOpen}
         >
-          <span>Filtros</span>
+          <span className="min-w-0 text-left">
+            <span className="block text-sm font-semibold text-slate-200">Filtros</span>
+            <span className="mt-0.5 block text-xs font-normal text-slate-500">Mes, tipo y estado</span>
+          </span>
           <ChevronDown open={filtersOpen} />
         </button>
         {filtersOpen ? (
@@ -507,8 +568,8 @@ export function ServicesPage() {
       </section>
 
       {/* Servicios agrupados */}
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-slate-200">Servicios registrados</h2>
+      <section className={LIST_PAGE_LISTING_REGION}>
+        <h2 className={LIST_PAGE_LISTING_TITLE}>Listado de servicios</h2>
 
         {loading ? (
           <p className="text-sm text-slate-400">Cargando...</p>
@@ -517,7 +578,7 @@ export function ServicesPage() {
             No hay servicios en este periodo con los filtros actuales.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <StatusAccordion
               title="Pendientes"
               tone="amber"
@@ -544,6 +605,7 @@ export function ServicesPage() {
                     accent="border-cyan-500/40 bg-cyan-500/5"
                     rows={completedParts.spare}
                     actionId={actionId}
+                    onEditService={openEditService}
                     {...serviceActions}
                   />
                 ) : null}
@@ -553,6 +615,7 @@ export function ServicesPage() {
                     accent="border-indigo-500/40 bg-indigo-500/5"
                     rows={completedParts.technical}
                     actionId={actionId}
+                    onEditService={openEditService}
                     {...serviceActions}
                   />
                 ) : null}
@@ -562,6 +625,7 @@ export function ServicesPage() {
                     accent="border-violet-500/40 bg-violet-500/5"
                     rows={completedParts.home}
                     actionId={actionId}
+                    onEditService={openEditService}
                     {...serviceActions}
                   />
                 ) : null}
@@ -582,8 +646,8 @@ export function ServicesPage() {
         )}
       </section>
 
-      {/* Modal nuevo servicio */}
-      {createModalOpen ? (
+      {/* Modal nuevo servicio / editar completado */}
+      {createModalOpen || editingService ? (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4"
           role="dialog"
@@ -600,7 +664,7 @@ export function ServicesPage() {
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 px-4 py-4 sm:px-6">
               <div>
                 <h2 id="service-modal-title" className="text-xl font-semibold text-slate-100">
-                  Nuevo servicio
+                  {editingService ? "Editar servicio" : "Nuevo servicio"}
                 </h2>
               </div>
               <button type="button" onClick={closeModal} className={SECONDARY_BUTTON_SM}>
@@ -608,13 +672,17 @@ export function ServicesPage() {
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-2 sm:px-6">
-              <form onSubmit={(e) => void handleSubmit(e)} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <form
+                onSubmit={(e) => void (editingService ? handleEditSubmit(e) : handleSubmit(e))}
+                className="grid grid-cols-1 gap-4 md:grid-cols-2"
+              >
                 <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
                   Tipo
                   <select
                     value={formType}
                     onChange={(e) => setFormType(e.target.value as ServiceType)}
-                    className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                    disabled={!!editingService}
+                    className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {SERVICE_TYPES.map((t) => (
                       <option key={t} value={t}>
@@ -665,6 +733,70 @@ export function ServicesPage() {
                 </label>
 
                 {formType === "SPARE_PART_SALE" ? (
+                  editingService?.status === "COMPLETED" ? (
+                    <>
+                      <div className="space-y-2 md:col-span-2">
+                        <p className="text-sm font-medium text-slate-200">Piezas vendidas</p>
+                        <p className="text-xs text-slate-500">
+                          No se pueden cambiar las piezas tras completar; solo datos y precios.
+                        </p>
+                        <ul className="space-y-1 rounded-lg border border-slate-700 bg-slate-950/40 p-3 text-sm text-slate-200">
+                          {editingService.sparePartLines && editingService.sparePartLines.length > 0
+                            ? editingService.sparePartLines.map((l) => (
+                                <li key={l.id}>
+                                  {l.part.name} × {l.quantity}
+                                </li>
+                              ))
+                            : editingService.selectedPart ? (
+                                <li>
+                                  {editingService.selectedPart.name} × {editingService.quantity ?? 1}
+                                </li>
+                              ) : (
+                                <li className="text-slate-500">—</li>
+                              )}
+                        </ul>
+                      </div>
+                      <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
+                        Coste (registrado)
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={costPrice === "" ? "" : costPrice}
+                          onChange={(e) =>
+                            setCostPrice(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                          required
+                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
+                        Precio de venta (base piezas, sin suplemento domicilio)
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={salePrice === "" ? "" : salePrice}
+                          onChange={(e) =>
+                            setSalePrice(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                          required
+                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                        />
+                      </label>
+                      <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/30 p-4 text-sm md:col-span-2">
+                        <p className="text-xs uppercase tracking-wide text-slate-500">
+                          Venta total (base + domicilio)
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-emerald-300">
+                          {money(
+                            (typeof salePrice === "number" ? salePrice : 0) +
+                              (typeof homeServiceSupplement === "number" ? homeServiceSupplement : 0)
+                          )}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
                   <>
                     <div className="space-y-3 md:col-span-2">
                       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -751,6 +883,7 @@ export function ServicesPage() {
                       </div>
                     ) : null}
                   </>
+                  )
                 ) : (
                   <>
                     <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
@@ -853,18 +986,37 @@ export function ServicesPage() {
                 </label>
 
                 <div className="flex flex-wrap gap-2 md:col-span-2">
-                  <button type="submit" disabled={submitting} className={PRIMARY_ACTION_BUTTON}>
-                    {submitting ? "Guardando..." : "Registrar servicio"}
+                  <button
+                    type="submit"
+                    disabled={submitting || (editingService != null && actionId === editingService.id)}
+                    className={PRIMARY_ACTION_BUTTON}
+                  >
+                    {submitting ? "Guardando..." : editingService ? "Guardar cambios" : "Registrar servicio"}
                   </button>
                   <button type="button" onClick={closeModal} className={SECONDARY_BUTTON_SM}>
                     Cancelar
                   </button>
+                  {editingService ? (
+                    <button
+                      type="button"
+                      disabled={submitting || actionId === editingService.id}
+                      onClick={() => void handleDeleteFromEdit()}
+                      className={DESTRUCTIVE_BUTTON_SM}
+                    >
+                      Eliminar servicio
+                    </button>
+                  ) : null}
                 </div>
               </form>
             </div>
           </div>
         </div>
       ) : null}
+      <div className={STICKY_PRIMARY_MOBILE_DOCK}>
+        <button type="button" onClick={openCreateModal} className={PRIMARY_ACTION_BUTTON}>
+          Nuevo servicio
+        </button>
+      </div>
     </div>
   );
 }
@@ -886,39 +1038,29 @@ function StatusAccordion({
   emptyHint: string;
   children: ReactNode;
 }) {
-  const toneBorder =
-    tone === "amber"
-      ? "border-amber-500/25"
-      : tone === "emerald"
-        ? "border-emerald-500/25"
-        : "border-slate-600/80";
   const toneBadge =
     tone === "amber"
-      ? "bg-amber-500/15 text-amber-200 border-amber-500/30"
+      ? "border-amber-500/30 bg-amber-500/15 text-amber-200"
       : tone === "emerald"
-        ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/30"
-        : "bg-slate-800 text-slate-300 border-slate-600";
+        ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-200"
+        : "border-slate-600 bg-slate-800 text-slate-300";
 
   return (
-    <div className={`rounded-xl border ${toneBorder} bg-slate-950/40`}>
+    <section className={LIST_PAGE_ACCORDION_SHELL}>
       <button
         type="button"
-        className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-3 text-left sm:px-4"
+        className={LIST_PAGE_ACCORDION_TRIGGER}
         onClick={onToggle}
         aria-expanded={open}
       >
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
           <span className="text-lg font-semibold text-slate-100">{title}</span>
-          <span
-            className={`inline-flex shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${toneBadge}`}
-          >
-            {stats.count}
-          </span>
+          <span className={`${LIST_PAGE_COUNT_BADGE} ${toneBadge}`}>{stats.count}</span>
         </div>
         <ChevronDown open={open} />
       </button>
       {open ? (
-        <div className="border-t border-slate-800/90 px-3 pb-3 pt-1 sm:px-4">
+        <div className={LIST_PAGE_ACCORDION_BODY}>
           {stats.count === 0 ? (
             <p className="py-3 text-sm text-slate-500">{emptyHint}</p>
           ) : (
@@ -926,7 +1068,7 @@ function StatusAccordion({
           )}
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -937,7 +1079,8 @@ function CompletedSubsection({
   actionId,
   onComplete,
   onCancel,
-  onDelete
+  onDelete,
+  onEditService
 }: {
   label: string;
   accent: string;
@@ -946,30 +1089,47 @@ function CompletedSubsection({
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
+  onEditService: (s: ServiceRow) => void;
 }) {
   const st = aggregateStats(rows);
   return (
     <div className={`rounded-lg border ${accent} p-4`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">{label}</h3>
-        <span className="rounded-full border border-slate-600 bg-slate-900/80 px-2 py-0.5 text-xs font-semibold text-slate-300">
+        <StatusBadge variant="neutral" size="table" className="tabular-nums">
           {st.count}
-        </span>
+        </StatusBadge>
       </div>
-      <ServiceListSection rows={rows} actionId={actionId} onComplete={onComplete} onCancel={onCancel} onDelete={onDelete} />
+      <ServiceListSection
+        rows={rows}
+        actionId={actionId}
+        completedActions
+        onEditService={onEditService}
+        onComplete={onComplete}
+        onCancel={onCancel}
+        onDelete={onDelete}
+      />
     </div>
   );
 }
 
+/** Botones táctiles en cards móvil de servicios */
+const SERVICE_CARD_ACTION_TOUCH =
+  "min-h-[44px] w-full justify-center px-4 py-2.5 text-sm font-semibold";
+
 function ServiceListSection({
   rows,
   actionId,
+  completedActions = false,
+  onEditService,
   onComplete,
   onCancel,
   onDelete
 }: {
   rows: ServiceRow[];
   actionId: string | null;
+  completedActions?: boolean;
+  onEditService?: (s: ServiceRow) => void;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
@@ -998,6 +1158,8 @@ function ServiceListSection({
                   key={s.id}
                   s={s}
                   actionId={actionId}
+                  completedActions={completedActions}
+                  onEditService={onEditService}
                   onComplete={onComplete}
                   onCancel={onCancel}
                   onDelete={onDelete}
@@ -1013,6 +1175,8 @@ function ServiceListSection({
             key={s.id}
             s={s}
             actionId={actionId}
+            completedActions={completedActions}
+            onEditService={onEditService}
             onComplete={onComplete}
             onCancel={onCancel}
             onDelete={onDelete}
@@ -1026,12 +1190,16 @@ function ServiceListSection({
 function ServiceTableRow({
   s,
   actionId,
+  completedActions = false,
+  onEditService,
   onComplete,
   onCancel,
   onDelete
 }: {
   s: ServiceRow;
   actionId: string | null;
+  completedActions?: boolean;
+  onEditService?: (row: ServiceRow) => void;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
@@ -1055,21 +1223,20 @@ function ServiceTableRow({
       <td className="max-w-[100px] truncate px-2 py-2 text-[11px] text-slate-400" title={SERVICE_LABELS[s.type]}>
         {SERVICE_LABELS[s.type]}
       </td>
-      <td className="max-w-[100px] truncate px-2 py-2 text-slate-300" title={s.customerName}>
-        {s.customerName}
+      <td className="max-w-[120px] px-2 py-2 text-slate-300">
+        <div className="truncate font-medium" title={s.customerName}>
+          {s.customerName}
+        </div>
+        <CustomerProfileLink
+          customerName={s.customerName}
+          customerPhone={s.customerPhone}
+          className="mt-0.5 inline-flex text-[10px]"
+        />
       </td>
       <td className="px-2 py-2">
-        <span
-          className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-            s.status === "COMPLETED"
-              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-              : s.status === "PENDING"
-                ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-                : "border-slate-600 bg-slate-800 text-slate-400"
-          }`}
-        >
+        <StatusBadge variant={serviceStatusVariant(s.status)} size="table">
           {STATUS_LABELS[s.status]}
-        </span>
+        </StatusBadge>
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-slate-300">{money(s.salePrice)}</td>
       <td className="whitespace-nowrap px-2 py-2 text-emerald-300/90">{money(s.profit)}</td>
@@ -1095,14 +1262,25 @@ function ServiceTableRow({
               </button>
             </>
           ) : null}
-          <button
-            type="button"
-            disabled={actionId === s.id}
-            onClick={() => onDelete(s.id)}
-            className={DESTRUCTIVE_BUTTON_SM}
-          >
-            Eliminar
-          </button>
+          {completedActions && s.status === "COMPLETED" && onEditService ? (
+            <button
+              type="button"
+              disabled={actionId === s.id}
+              onClick={() => onEditService(s)}
+              className={ORANGE_EDIT_BUTTON_SM}
+            >
+              Editar
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={actionId === s.id}
+              onClick={() => onDelete(s.id)}
+              className={DESTRUCTIVE_BUTTON_SM}
+            >
+              Eliminar
+            </button>
+          )}
         </div>
       </td>
     </tr>
@@ -1112,12 +1290,16 @@ function ServiceTableRow({
 function ServiceCard({
   s,
   actionId,
+  completedActions = false,
+  onEditService,
   onComplete,
   onCancel,
   onDelete
 }: {
   s: ServiceRow;
   actionId: string | null;
+  completedActions?: boolean;
+  onEditService?: (row: ServiceRow) => void;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
@@ -1128,45 +1310,49 @@ function ServiceCard({
     <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-slate-100">{s.title}</p>
+          <p className="line-clamp-2 break-words font-semibold text-slate-100">{s.title}</p>
           {spareHint ? (
             <p className="truncate text-[11px] text-slate-500" title={spareHint}>
               {spareHint}
             </p>
           ) : null}
           <p className="text-[11px] text-slate-500">{d.toLocaleDateString("es-ES")}</p>
+          <p className="mt-0.5 truncate text-[11px] text-slate-400" title={SERVICE_LABELS[s.type]}>
+            {SERVICE_LABELS[s.type]}
+          </p>
         </div>
-        <span
-          className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-            s.status === "COMPLETED"
-              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-              : s.status === "PENDING"
-                ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-                : "border-slate-600 bg-slate-800 text-slate-400"
-          }`}
-        >
+        <StatusBadge variant={serviceStatusVariant(s.status)} size="table">
           {STATUS_LABELS[s.status]}
-        </span>
+        </StatusBadge>
       </div>
       <p className="truncate text-sm text-slate-300">{s.customerName}</p>
-      <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-800 pt-3 text-sm">
-        <div>
-          <dt className="text-xs text-slate-500">Venta</dt>
-          <dd className="text-base font-semibold text-slate-200">{money(s.salePrice)}</dd>
+      <CustomerProfileLink
+        customerName={s.customerName}
+        customerPhone={s.customerPhone}
+        className="mt-1 inline-flex text-xs"
+      />
+      <dl className="mt-3 space-y-1.5 border-t border-slate-800 pt-3 text-sm">
+        <div className="flex justify-between gap-3">
+          <dt className="shrink-0 text-xs text-slate-500">Coste</dt>
+          <dd className="min-w-0 text-right font-medium text-slate-300">{money(s.costPrice)}</dd>
         </div>
-        <div>
-          <dt className="text-xs text-slate-500">Beneficio</dt>
-          <dd className="text-base font-semibold text-emerald-300">{money(s.profit)}</dd>
+        <div className="flex justify-between gap-3">
+          <dt className="shrink-0 text-xs text-slate-500">Venta</dt>
+          <dd className="min-w-0 text-right text-base font-semibold text-emerald-300">{money(s.salePrice)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="shrink-0 text-xs text-slate-500">Beneficio</dt>
+          <dd className="min-w-0 text-right text-base font-semibold text-emerald-300">{money(s.profit)}</dd>
         </div>
       </dl>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-col gap-2 border-t border-slate-800 pt-3">
         {s.status === "PENDING" ? (
           <>
             <button
               type="button"
               disabled={actionId === s.id}
               onClick={() => onComplete(s.id)}
-              className={PRIMARY_ACTION_BUTTON_COMPACT}
+              className={`${PRIMARY_ACTION_BUTTON} text-sm`}
             >
               Completar
             </button>
@@ -1174,20 +1360,31 @@ function ServiceCard({
               type="button"
               disabled={actionId === s.id}
               onClick={() => onCancel(s.id)}
-              className={SECONDARY_BUTTON_SM}
+              className={`${SECONDARY_BUTTON} ${SERVICE_CARD_ACTION_TOUCH}`}
             >
               Cancelar
             </button>
           </>
         ) : null}
-        <button
-          type="button"
-          disabled={actionId === s.id}
-          onClick={() => onDelete(s.id)}
-          className={DESTRUCTIVE_BUTTON_SM}
-        >
-          Eliminar
-        </button>
+        {completedActions && s.status === "COMPLETED" && onEditService ? (
+          <button
+            type="button"
+            disabled={actionId === s.id}
+            onClick={() => onEditService(s)}
+            className={ORANGE_EDIT_BUTTON_CARD}
+          >
+            Editar
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={actionId === s.id}
+            onClick={() => onDelete(s.id)}
+            className={`${DESTRUCTIVE_BUTTON_SM} ${SERVICE_CARD_ACTION_TOUCH}`}
+          >
+            Eliminar
+          </button>
+        )}
       </div>
     </article>
   );

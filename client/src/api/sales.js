@@ -20,6 +20,12 @@ export function patchSale(saleId, payload) {
         body: payload
     });
 }
+export function registerSalePayment(saleId, amount) {
+    return http(`/sales/${saleId}/register-payment`, {
+        method: "POST",
+        body: { amount }
+    });
+}
 export function deleteSale(saleId) {
     return http(`/sales/${saleId}`, {
         method: "DELETE"

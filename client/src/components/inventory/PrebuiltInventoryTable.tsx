@@ -1,5 +1,7 @@
 import type { Part } from "../../types/part";
+import { StatusBadge, partConditionVariant } from "../ui/StatusBadge";
 import { SECONDARY_GHOST_SM, DESTRUCTIVE_BUTTON_SM } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
 
 type PrebuiltInventoryTableProps = {
   items: Part[];
@@ -21,11 +23,8 @@ function formatCostPrice(value: number | string): string {
   return formatMoney(value);
 }
 
-function conditionBadgeClass(condition: string): string {
-  if (condition === "NEW") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
-  if (condition === "USED") return "bg-amber-500/15 text-amber-300 border-amber-500/40";
-  return "bg-indigo-500/15 text-indigo-300 border-indigo-500/40";
-}
+const MOBILE_CARD_BTN =
+  "min-h-[44px] w-full justify-center px-4 py-2.5 text-sm font-semibold";
 
 export function PrebuiltInventoryTable({
   items,
@@ -38,7 +37,7 @@ export function PrebuiltInventoryTable({
 }: PrebuiltInventoryTableProps) {
   if (loading) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Cargando...</p>
       </section>
     );
@@ -46,7 +45,7 @@ export function PrebuiltInventoryTable({
 
   if (items.length === 0) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">
           {emptyMessage ?? "No hay PCs completos en inventario todavia."}
         </p>
@@ -54,7 +53,7 @@ export function PrebuiltInventoryTable({
     );
   }
 
-  const cell = compact ? "px-3 py-2" : "px-4 py-3";
+  const cell = compact ? "px-3 py-2" : "px-3.5 py-2.5";
 
   return (
     <>
@@ -80,11 +79,9 @@ export function PrebuiltInventoryTable({
                     <span className="line-clamp-2 text-xs">{part.description || "—"}</span>
                   </td>
                   <td className={cell}>
-                    <span
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`}
-                    >
+                    <StatusBadge variant={partConditionVariant(part.condition)} size="card">
                       {part.condition}
-                    </span>
+                    </StatusBadge>
                   </td>
                   <td className={`${cell} text-slate-300`}>{formatCostPrice(part.costPrice)}</td>
                   <td className={`${cell} text-emerald-300/95`}>{formatMoney(part.salePrice)}</td>
@@ -119,7 +116,7 @@ export function PrebuiltInventoryTable({
           >
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <h3 className="min-w-0 flex-1 text-base font-semibold text-slate-100">{part.name}</h3>
+                <h3 className="min-w-0 flex-1 break-words text-base font-semibold text-slate-100">{part.name}</h3>
                 <span className="shrink-0 rounded border border-cyan-500/35 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-200">
                   PC completo
                 </span>
@@ -128,31 +125,29 @@ export function PrebuiltInventoryTable({
                 <p className="text-xs leading-relaxed text-slate-400">{part.description}</p>
               ) : null}
               <div className="flex flex-wrap gap-2">
-                <span
-                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`}
-                >
+                <StatusBadge variant={partConditionVariant(part.condition)} size="card">
                   {part.condition}
-                </span>
+                </StatusBadge>
               </div>
-              <dl className="grid grid-cols-2 gap-2 border-t border-slate-800/80 pt-2 text-sm">
-                <div>
+              <dl className="space-y-1.5 border-t border-slate-800/80 pt-2 text-sm">
+                <div className="flex justify-between gap-3">
                   <dt className="text-xs text-slate-500">Coste</dt>
-                  <dd className="font-medium text-slate-200">{formatCostPrice(part.costPrice)}</dd>
+                  <dd className="min-w-0 text-right font-medium text-slate-200">{formatCostPrice(part.costPrice)}</dd>
                 </div>
-                <div>
+                <div className="flex justify-between gap-3">
                   <dt className="text-xs text-slate-500">Venta</dt>
-                  <dd className="font-medium text-emerald-300/95">{formatMoney(part.salePrice)}</dd>
+                  <dd className="min-w-0 text-right font-medium text-emerald-300/95">{formatMoney(part.salePrice)}</dd>
                 </div>
-                <div>
+                <div className="flex justify-between gap-3 border-t border-slate-800/60 pt-1.5">
                   <dt className="text-xs text-slate-500">Stock</dt>
-                  <dd className="text-slate-200">{part.stock}</dd>
+                  <dd className="text-right font-medium text-slate-200">{part.stock}</dd>
                 </div>
               </dl>
-              <div className="flex gap-2 pt-1">
+              <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-2.5">
                 <button
                   type="button"
                   onClick={() => onEdit(part)}
-                  className={`${SECONDARY_GHOST_SM} flex-1 justify-center py-2`}
+                  className={`${SECONDARY_GHOST_SM} ${MOBILE_CARD_BTN}`}
                 >
                   Editar
                 </button>
@@ -160,9 +155,9 @@ export function PrebuiltInventoryTable({
                   type="button"
                   onClick={() => onDelete(part)}
                   disabled={deletingId === part.id}
-                  className={`${DESTRUCTIVE_BUTTON_SM} flex-1 justify-center py-2`}
+                  className={`${DESTRUCTIVE_BUTTON_SM} ${MOBILE_CARD_BTN}`}
                 >
-                  {deletingId === part.id ? "..." : "Eliminar"}
+                  {deletingId === part.id ? "Eliminando..." : "Eliminar"}
                 </button>
               </div>
             </div>

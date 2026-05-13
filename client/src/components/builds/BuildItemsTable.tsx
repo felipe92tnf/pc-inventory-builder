@@ -1,4 +1,5 @@
 import type { BuildItem, BuildStatus } from "../../types/build";
+import { SECTION_SHELL, TABLE_CELL } from "../../theme/layoutDensity";
 
 type BuildItemsTableProps = {
   items: BuildItem[];
@@ -31,7 +32,7 @@ export function BuildItemsTable({
 }: BuildItemsTableProps) {
   if (items.length === 0) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Este montaje aun no tiene piezas.</p>
       </section>
     );
@@ -45,11 +46,11 @@ export function BuildItemsTable({
         <table className="min-w-full text-left text-sm text-slate-200">
           <thead className="bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400">
             <tr>
-              <th className="px-4 py-3">Pieza</th>
-              <th className="px-4 py-3">Cantidad</th>
-              <th className="px-4 py-3">Coste unitario</th>
-              <th className="px-4 py-3">Venta unitaria</th>
-              <th className="px-4 py-3 text-right">Acciones</th>
+              <th className={TABLE_CELL}>Pieza</th>
+              <th className={TABLE_CELL}>Cantidad</th>
+              <th className={TABLE_CELL}>Coste unitario</th>
+              <th className={TABLE_CELL}>Venta unitaria</th>
+              <th className={`${TABLE_CELL} text-right`}>Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
@@ -92,10 +93,10 @@ function BuildItemRow({
 
   return (
     <tr className="transition hover:bg-slate-800/50">
-      <td className="px-4 py-3 font-medium text-slate-100">{item.part.name}</td>
-      <td className="px-4 py-3 text-slate-300">{item.quantity}</td>
-      <td className="px-4 py-3 text-slate-300">{money(item.unitCost)}</td>
-      <td className="px-4 py-3">
+      <td className={`${TABLE_CELL} font-medium text-slate-100`}>{item.part.name}</td>
+      <td className={`${TABLE_CELL} text-slate-300`}>{item.quantity}</td>
+      <td className={`${TABLE_CELL} text-slate-300`}>{money(item.unitCost)}</td>
+      <td className={TABLE_CELL}>
         {editableSale && onUpdateLineSale ? (
           <div className="flex min-w-[12rem] flex-col gap-1 sm:min-w-[14rem]">
             <div className="flex flex-wrap items-center gap-2">
@@ -144,7 +145,7 @@ function BuildItemRow({
           </span>
         )}
       </td>
-      <td className="px-4 py-3 text-right">
+      <td className={`${TABLE_CELL} text-right`}>
         <button
           type="button"
           onClick={() => {

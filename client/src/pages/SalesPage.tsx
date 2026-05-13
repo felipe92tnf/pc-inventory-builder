@@ -1,8 +1,8 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSales } from "../hooks/useSales";
 import type { MonthlySalesSummaryRow, SaleListRow } from "../types/sale";
-import type { ServiceRow, ServiceType } from "../types/service";
+import type { ServiceRow, ServiceStatus, ServiceType } from "../types/service";
 import * as servicesApi from "../api/services";
 import {
   combinePcMonthWithServices,
@@ -20,7 +20,7 @@ import {
   rankClientsBySpend,
   yearTotalsFromSummary
 } from "../utils/salesStats";
-import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
+import { SECONDARY_BUTTON_SM, SECONDARY_GHOST_SM } from "../theme/actionButtons";
 import {
   SUMMARY_CARD_GRID,
   SUMMARY_CARD_LABEL,
@@ -32,6 +32,9 @@ import {
   SUMMARY_VALUE_PROFIT_POS,
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
+import { PAGE_HERO, PAGE_OUTER_7XL_SALES, SECTION_SHELL } from "../theme/layoutDensity";
+import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
+import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -55,6 +58,15 @@ function isPartSaleType(type: ServiceType | string): boolean {
 }
 
 const CHART_BAR_MAX_PX = 168;
+
+const SALES_MOBILE_ROW_BTN =
+  "min-h-[44px] w-full justify-center px-4 py-2.5 text-sm font-semibold";
+
+const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
+  PENDING: "Pendiente",
+  COMPLETED: "Completado",
+  CANCELLED: "Cancelado"
+};
 
 function DeltaBadge({ value, invert }: { value: number | null; invert?: boolean }) {
   if (value === null) return <span className="text-slate-500">—</span>;
@@ -358,7 +370,7 @@ export function SalesPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-8 px-2 pb-8 text-slate-100 md:px-4">
+    <div className={PAGE_OUTER_7XL_SALES}>
       {flashMessage ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
           <span>{flashMessage}</span>
@@ -372,11 +384,11 @@ export function SalesPage() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <section className={PAGE_HERO}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
 
-          <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-400">
             Mes
             <select
@@ -442,11 +454,11 @@ export function SalesPage() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40 md:p-7">
+      <section className={SECTION_SHELL}>
         <h2 className="text-xl font-semibold text-slate-100">
           Resumen global · {monthLabel(selectedMonth, selectedYear)}
         </h2>
-        <div className={`mt-5 ${SUMMARY_CARD_GRID}`}>
+        <div className={`mt-4 ${SUMMARY_CARD_GRID}`}>
           <article className={SUMMARY_CARD_SHELL}>
             <p className={SUMMARY_CARD_LABEL}>Ingresos</p>
             <p className={SUMMARY_VALUE_REVENUE}>{money(globalMonthSummary.totalRevenue)}</p>
@@ -476,7 +488,7 @@ export function SalesPage() {
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left md:hidden"
+          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 text-left md:hidden"
           onClick={() => toggleMobileSales("salesList")}
           aria-expanded={mobileSalesOpen.salesList}
         >
@@ -505,25 +517,32 @@ export function SalesPage() {
                     <table className="min-w-full text-left text-sm">
                       <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-400">
                         <tr>
-                          <th className="px-3 py-3 font-semibold">Fecha</th>
-                          <th className="px-3 py-3 font-semibold">Cliente</th>
-                          <th className="px-3 py-3 font-semibold">Montaje</th>
-                          <th className="px-3 py-3 font-semibold text-right">Coste</th>
-                          <th className="px-3 py-3 font-semibold text-right">Venta</th>
-                          <th className="px-3 py-3 font-semibold text-right">Beneficio</th>
+                          <th className="px-3 py-2 font-semibold">Fecha</th>
+                          <th className="px-3 py-2 font-semibold">Cliente</th>
+                          <th className="px-3 py-2 font-semibold">Montaje</th>
+                          <th className="px-3 py-2 font-semibold text-right">Coste</th>
+                          <th className="px-3 py-2 font-semibold text-right">Venta</th>
+                          <th className="px-3 py-2 font-semibold text-right">Beneficio</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                         {salesInSelectedMonth.map((sale) => (
                           <tr key={sale.id} className="transition hover:bg-slate-800/40">
-                            <td className="px-3 py-3 text-slate-400">
+                            <td className="px-3 py-2 text-slate-400">
                               {new Date(sale.soldAt).toLocaleDateString("es-ES")}
                             </td>
-                            <td className="px-3 py-3 text-slate-300">{sale.customerName}</td>
-                            <td className="px-3 py-3 font-medium text-slate-100">{sale.build.name}</td>
-                            <td className="px-3 py-3 text-right text-slate-400">{money(sale.totalCost)}</td>
-                            <td className="px-3 py-3 text-right text-emerald-400">{money(sale.finalSalePrice)}</td>
-                            <td className={`px-3 py-3 text-right font-semibold ${profitClass(sale.profit)}`}>
+                            <td className="px-3 py-2 text-slate-300">
+                              <div>{sale.customerName}</div>
+                              <CustomerProfileLink
+                                customerName={sale.customerName}
+                                customerPhone={sale.customerPhone}
+                                className="mt-0.5 inline-flex text-[11px]"
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-medium text-slate-100">{sale.build.name}</td>
+                            <td className="px-3 py-2 text-right text-slate-400">{money(sale.totalCost)}</td>
+                            <td className="px-3 py-2 text-right text-emerald-400">{money(sale.finalSalePrice)}</td>
+                            <td className={`px-3 py-2 text-right font-semibold ${profitClass(sale.profit)}`}>
                               {money(sale.profit)}
                             </td>
                           </tr>
@@ -533,14 +552,41 @@ export function SalesPage() {
                   }
                   mobileCards={salesInSelectedMonth.map((sale) => (
                     <article key={sale.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-                      <p className="text-xs text-slate-500">{new Date(sale.soldAt).toLocaleDateString("es-ES")}</p>
-                      <p className="mt-1 font-semibold text-slate-100">{sale.build.name}</p>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-xs text-slate-500">{new Date(sale.soldAt).toLocaleDateString("es-ES")}</p>
+                        <StatusBadge variant="sold" size="table">
+                          Vendido
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-1 break-words font-semibold text-slate-100">{sale.build.name}</p>
                       <p className="text-sm text-slate-300">{sale.customerName}</p>
-                      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                        <div><dt className="text-slate-500">Coste</dt><dd className="text-slate-300">{money(sale.totalCost)}</dd></div>
-                        <div><dt className="text-slate-500">Venta</dt><dd className="text-emerald-300">{money(sale.finalSalePrice)}</dd></div>
-                        <div><dt className="text-slate-500">Beneficio</dt><dd className={profitClass(sale.profit)}>{money(sale.profit)}</dd></div>
+                      <CustomerProfileLink
+                        customerName={sale.customerName}
+                        customerPhone={sale.customerPhone}
+                        className="mt-1 inline-flex text-xs"
+                      />
+                      <dl className="mt-2 space-y-1 border-t border-slate-800/80 pt-2 text-xs">
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Coste</dt>
+                          <dd className="min-w-0 text-right text-slate-300">{money(sale.totalCost)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Venta</dt>
+                          <dd className="min-w-0 text-right text-emerald-300">{money(sale.finalSalePrice)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Beneficio</dt>
+                          <dd className={`min-w-0 text-right font-semibold ${profitClass(sale.profit)}`}>
+                            {money(sale.profit)}
+                          </dd>
+                        </div>
                       </dl>
+                      <Link
+                        to={`/sales/${sale.id}`}
+                        className={`${SECONDARY_GHOST_SM} ${SALES_MOBILE_ROW_BTN} mt-3 inline-flex`}
+                      >
+                        Ver venta
+                      </Link>
                     </article>
                   ))}
                 />
@@ -556,31 +602,38 @@ export function SalesPage() {
                     <table className="min-w-full text-left text-sm">
                       <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-400">
                         <tr>
-                          <th className="px-3 py-3 font-semibold">Fecha</th>
-                          <th className="px-3 py-3 font-semibold">Cliente</th>
-                          <th className="px-3 py-3 font-semibold">Telefono</th>
-                          <th className="px-3 py-3 font-semibold">Tipo</th>
-                          <th className="px-3 py-3 font-semibold">Descripcion</th>
-                          <th className="px-3 py-3 font-semibold text-right">Coste</th>
-                          <th className="px-3 py-3 font-semibold text-right">Venta</th>
-                          <th className="px-3 py-3 font-semibold text-right">Beneficio</th>
-                          <th className="px-3 py-3 font-semibold">Pago</th>
+                          <th className="px-3 py-2 font-semibold">Fecha</th>
+                          <th className="px-3 py-2 font-semibold">Cliente</th>
+                          <th className="px-3 py-2 font-semibold">Telefono</th>
+                          <th className="px-3 py-2 font-semibold">Tipo</th>
+                          <th className="px-3 py-2 font-semibold">Descripcion</th>
+                          <th className="px-3 py-2 font-semibold text-right">Coste</th>
+                          <th className="px-3 py-2 font-semibold text-right">Venta</th>
+                          <th className="px-3 py-2 font-semibold text-right">Beneficio</th>
+                          <th className="px-3 py-2 font-semibold">Pago</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                         {technicalServices.map((row) => (
                           <tr key={row.id} className="transition hover:bg-slate-800/40">
-                            <td className="px-3 py-3 text-slate-400">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</td>
-                            <td className="px-3 py-3 text-slate-300">{row.customerName}</td>
-                            <td className="px-3 py-3 text-slate-400">{row.customerPhone || "—"}</td>
-                            <td className="px-3 py-3 text-slate-400">{row.title}</td>
-                            <td className="max-w-[280px] truncate px-3 py-3 text-slate-300" title={row.description || row.title}>
+                            <td className="px-3 py-2 text-slate-400">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</td>
+                            <td className="px-3 py-2 text-slate-300">
+                              <div>{row.customerName}</div>
+                              <CustomerProfileLink
+                                customerName={row.customerName}
+                                customerPhone={row.customerPhone}
+                                className="mt-0.5 inline-flex text-[11px]"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-slate-400">{row.customerPhone || "—"}</td>
+                            <td className="px-3 py-2 text-slate-400">{row.title}</td>
+                            <td className="max-w-[280px] truncate px-3 py-2 text-slate-300" title={row.description || row.title}>
                               {row.description || row.title}
                             </td>
-                            <td className="px-3 py-3 text-right text-slate-400">{money(row.costPrice)}</td>
-                            <td className="px-3 py-3 text-right text-emerald-400">{money(row.salePrice)}</td>
-                            <td className={`px-3 py-3 text-right font-semibold ${profitClass(row.profit)}`}>{money(row.profit)}</td>
-                            <td className="px-3 py-3 text-slate-400">{row.paymentMethod || "—"}</td>
+                            <td className="px-3 py-2 text-right text-slate-400">{money(row.costPrice)}</td>
+                            <td className="px-3 py-2 text-right text-emerald-400">{money(row.salePrice)}</td>
+                            <td className={`px-3 py-2 text-right font-semibold ${profitClass(row.profit)}`}>{money(row.profit)}</td>
+                            <td className="px-3 py-2 text-slate-400">{row.paymentMethod || "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -588,15 +641,39 @@ export function SalesPage() {
                   }
                   mobileCards={technicalServices.map((row) => (
                     <article key={row.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-                      <p className="text-xs text-slate-500">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</p>
-                      <p className="mt-1 font-semibold text-slate-100">{row.title}</p>
-                      <p className="text-sm text-slate-300">{row.customerName} · {row.customerPhone || "—"}</p>
-                      <p className="mt-1 text-xs text-slate-400">{row.description || row.title}</p>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-xs text-slate-500">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</p>
+                        <StatusBadge variant={serviceStatusVariant(row.status)} size="table">
+                          {SERVICE_STATUS_LABELS[row.status]}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-1 break-words font-semibold text-slate-100">{row.title}</p>
+                      <p className="text-sm text-slate-300">
+                        {row.customerName}
+                        {row.customerPhone ? ` · ${row.customerPhone}` : ""}
+                      </p>
+                      <CustomerProfileLink
+                        customerName={row.customerName}
+                        customerPhone={row.customerPhone}
+                        className="mt-1 inline-flex text-xs"
+                      />
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-400">{row.description || row.title}</p>
                       <p className="mt-1 text-xs text-slate-500">Pago: {row.paymentMethod || "—"}</p>
-                      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                        <div><dt className="text-slate-500">Coste</dt><dd className="text-slate-300">{money(row.costPrice)}</dd></div>
-                        <div><dt className="text-slate-500">Venta</dt><dd className="text-emerald-300">{money(row.salePrice)}</dd></div>
-                        <div><dt className="text-slate-500">Beneficio</dt><dd className={profitClass(row.profit)}>{money(row.profit)}</dd></div>
+                      <dl className="mt-2 space-y-1 border-t border-slate-800/80 pt-2 text-xs">
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Coste</dt>
+                          <dd className="min-w-0 text-right text-slate-300">{money(row.costPrice)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Venta</dt>
+                          <dd className="min-w-0 text-right text-emerald-300">{money(row.salePrice)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Beneficio</dt>
+                          <dd className={`min-w-0 text-right font-semibold ${profitClass(row.profit)}`}>
+                            {money(row.profit)}
+                          </dd>
+                        </div>
                       </dl>
                     </article>
                   ))}
@@ -613,31 +690,38 @@ export function SalesPage() {
                     <table className="min-w-full text-left text-sm">
                       <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-400">
                         <tr>
-                          <th className="px-3 py-3 font-semibold">Fecha</th>
-                          <th className="px-3 py-3 font-semibold">Cliente</th>
-                          <th className="px-3 py-3 font-semibold">Telefono</th>
-                          <th className="px-3 py-3 font-semibold">Tipo</th>
-                          <th className="px-3 py-3 font-semibold">Pieza / descripcion</th>
-                          <th className="px-3 py-3 font-semibold text-right">Coste</th>
-                          <th className="px-3 py-3 font-semibold text-right">Venta</th>
-                          <th className="px-3 py-3 font-semibold text-right">Beneficio</th>
-                          <th className="px-3 py-3 font-semibold">Pago</th>
+                          <th className="px-3 py-2 font-semibold">Fecha</th>
+                          <th className="px-3 py-2 font-semibold">Cliente</th>
+                          <th className="px-3 py-2 font-semibold">Telefono</th>
+                          <th className="px-3 py-2 font-semibold">Tipo</th>
+                          <th className="px-3 py-2 font-semibold">Pieza / descripcion</th>
+                          <th className="px-3 py-2 font-semibold text-right">Coste</th>
+                          <th className="px-3 py-2 font-semibold text-right">Venta</th>
+                          <th className="px-3 py-2 font-semibold text-right">Beneficio</th>
+                          <th className="px-3 py-2 font-semibold">Pago</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                         {partSales.map((row) => (
                           <tr key={row.id} className="transition hover:bg-slate-800/40">
-                            <td className="px-3 py-3 text-slate-400">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</td>
-                            <td className="px-3 py-3 text-slate-300">{row.customerName}</td>
-                            <td className="px-3 py-3 text-slate-400">{row.customerPhone || "—"}</td>
-                            <td className="px-3 py-3 text-slate-400">{row.title}</td>
-                            <td className="max-w-[280px] truncate px-3 py-3 text-slate-300" title={row.selectedPart?.name ?? row.description}>
+                            <td className="px-3 py-2 text-slate-400">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</td>
+                            <td className="px-3 py-2 text-slate-300">
+                              <div>{row.customerName}</div>
+                              <CustomerProfileLink
+                                customerName={row.customerName}
+                                customerPhone={row.customerPhone}
+                                className="mt-0.5 inline-flex text-[11px]"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-slate-400">{row.customerPhone || "—"}</td>
+                            <td className="px-3 py-2 text-slate-400">{row.title}</td>
+                            <td className="max-w-[280px] truncate px-3 py-2 text-slate-300" title={row.selectedPart?.name ?? row.description}>
                               {row.selectedPart?.name ?? row.description ?? row.title}
                             </td>
-                            <td className="px-3 py-3 text-right text-slate-400">{money(row.costPrice)}</td>
-                            <td className="px-3 py-3 text-right text-emerald-400">{money(row.salePrice)}</td>
-                            <td className={`px-3 py-3 text-right font-semibold ${profitClass(row.profit)}`}>{money(row.profit)}</td>
-                            <td className="px-3 py-3 text-slate-400">{row.paymentMethod || "—"}</td>
+                            <td className="px-3 py-2 text-right text-slate-400">{money(row.costPrice)}</td>
+                            <td className="px-3 py-2 text-right text-emerald-400">{money(row.salePrice)}</td>
+                            <td className={`px-3 py-2 text-right font-semibold ${profitClass(row.profit)}`}>{money(row.profit)}</td>
+                            <td className="px-3 py-2 text-slate-400">{row.paymentMethod || "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -645,15 +729,41 @@ export function SalesPage() {
                   }
                   mobileCards={partSales.map((row) => (
                     <article key={row.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-                      <p className="text-xs text-slate-500">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</p>
-                      <p className="mt-1 font-semibold text-slate-100">{row.selectedPart?.name ?? row.title}</p>
-                      <p className="text-sm text-slate-300">{row.customerName} · {row.customerPhone || "—"}</p>
-                      <p className="mt-1 text-xs text-slate-400">{row.description || row.title}</p>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-xs text-slate-500">{new Date(row.serviceDate).toLocaleDateString("es-ES")}</p>
+                        <StatusBadge variant={serviceStatusVariant(row.status)} size="table">
+                          {SERVICE_STATUS_LABELS[row.status]}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-1 break-words font-semibold text-slate-100">
+                        {row.selectedPart?.name ?? row.title}
+                      </p>
+                      <p className="text-sm text-slate-300">
+                        {row.customerName}
+                        {row.customerPhone ? ` · ${row.customerPhone}` : ""}
+                      </p>
+                      <CustomerProfileLink
+                        customerName={row.customerName}
+                        customerPhone={row.customerPhone}
+                        className="mt-1 inline-flex text-xs"
+                      />
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-400">{row.description || row.title}</p>
                       <p className="mt-1 text-xs text-slate-500">Pago: {row.paymentMethod || "—"}</p>
-                      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                        <div><dt className="text-slate-500">Coste</dt><dd className="text-slate-300">{money(row.costPrice)}</dd></div>
-                        <div><dt className="text-slate-500">Venta</dt><dd className="text-emerald-300">{money(row.salePrice)}</dd></div>
-                        <div><dt className="text-slate-500">Beneficio</dt><dd className={profitClass(row.profit)}>{money(row.profit)}</dd></div>
+                      <dl className="mt-2 space-y-1 border-t border-slate-800/80 pt-2 text-xs">
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Coste</dt>
+                          <dd className="min-w-0 text-right text-slate-300">{money(row.costPrice)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Venta</dt>
+                          <dd className="min-w-0 text-right text-emerald-300">{money(row.salePrice)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-slate-500">Beneficio</dt>
+                          <dd className={`min-w-0 text-right font-semibold ${profitClass(row.profit)}`}>
+                            {money(row.profit)}
+                          </dd>
+                        </div>
                       </dl>
                     </article>
                   ))}
@@ -667,7 +777,7 @@ export function SalesPage() {
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3.5 text-left"
+          className="flex w-full items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 text-left"
           onClick={() => setAdvancedOpen((prev) => !prev)}
           aria-expanded={advancedOpen}
         >
@@ -677,12 +787,12 @@ export function SalesPage() {
           <ChevronSales open={advancedOpen} />
         </button>
         {advancedOpen ? (
-          <div className="space-y-6 p-4 md:p-5">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-5">
+          <div className="space-y-4 p-3 md:p-4">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
               <h3 className="text-lg font-semibold text-slate-100">
                 Comparativa vs {monthLabel(prevYM.month, prevYM.year)}
               </h3>
-              <dl className={`mt-4 ${SUMMARY_CARD_GRID}`}>
+              <dl className={`mt-3 ${SUMMARY_CARD_GRID}`}>
                 <div className={SUMMARY_CARD_SHELL}>
                   <dt className={SUMMARY_CARD_LABEL}>Ingresos</dt>
                   <dd className="mt-2 flex flex-wrap items-center gap-2">
@@ -715,7 +825,7 @@ export function SalesPage() {
               </dl>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
               <article className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                 <h3 className="text-base font-semibold text-slate-100">Acumulado anual {selectedYear}</h3>
                 <dl className="mt-3 space-y-2 text-sm">
@@ -734,7 +844,7 @@ export function SalesPage() {
               </article>
             </div>
 
-            <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <article className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                 <h3 className="text-base font-semibold text-slate-100">Montajes más rentables</h3>
                 {topBuilds.length === 0 ? (
@@ -772,7 +882,7 @@ export function SalesPage() {
               {mergedHistoricSummary.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">Sin datos de ventas ni servicios todavía.</p>
               ) : (
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                   {mergedHistoricSummary.map((row) => (
                     <MonthlySummaryCard key={`${row.year}-${row.month}`} row={row} />
                   ))}
@@ -790,10 +900,10 @@ function MonthlySummaryCard({ row }: { row: MonthlySalesSummaryRow }) {
   const margin = marginPercentOnRevenue(row.totalRevenue, row.totalProfit);
   return (
     <article className={SUMMARY_CARD_SHELL_MONTH}>
-      <p className="text-sm font-semibold capitalize leading-tight text-slate-100">
+      <p className="text-xs font-semibold capitalize leading-tight text-slate-100 sm:text-sm">
         {monthLabel(row.month, row.year)}
       </p>
-      <dl className="mt-4 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+      <dl className="mt-2 grid flex-1 grid-cols-2 gap-2 sm:mt-3 sm:gap-2.5">
         <div>
           <dt className={SUMMARY_CARD_LABEL}>Operaciones</dt>
           <dd className={SUMMARY_VALUE_NEUTRAL}>{row.salesCount}</dd>
@@ -841,15 +951,15 @@ function SalesOverviewSection({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left md:px-5 md:py-4"
+        className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left md:px-4 md:py-3.5"
         aria-expanded={open}
       >
         <div className="min-w-0">
           <p className="text-lg font-semibold text-slate-100">{title}</p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <span className="inline-flex rounded-full border border-indigo-500/40 bg-indigo-500/15 px-3 py-1 text-sm font-semibold text-indigo-200">
+            <StatusBadge variant="meta" size="detail" className="text-sm tabular-nums">
               {count}
-            </span>
+            </StatusBadge>
             <span className="text-lg font-semibold text-emerald-300">{money(totalRevenue)}</span>
             <span className={`text-base font-semibold ${totalProfit >= 0 ? "text-cyan-300" : "text-rose-300"}`}>
               {money(totalProfit)}

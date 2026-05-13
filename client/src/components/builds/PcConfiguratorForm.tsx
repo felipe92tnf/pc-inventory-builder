@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { isNonStockCategory, type ConfiguratorPart, type PartCategory } from "../../types/part";
 import { PRIMARY_ACTION_BUTTON, PRIMARY_ACTION_BUTTON_COMPACT } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
 
 export type ConfiguratorSlotId =
   | "CPU"
@@ -245,15 +246,15 @@ export function PcConfiguratorForm({
       className={
         compact
           ? "rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/40 sm:p-4"
-          : "rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40"
+          : SECTION_SHELL
       }
     >
       <h2 className={compact ? "mb-0.5 text-base font-semibold text-slate-100" : "mb-1 text-lg font-semibold text-slate-100"}>
         {heading}
       </h2>
-      <p className={compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-4 text-sm text-slate-400"}>{lead}</p>
+      <p className={compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-3 text-sm text-slate-400"}>{lead}</p>
 
-      <div className={compact ? "space-y-2" : "space-y-4"}>
+      <div className={compact ? "space-y-2" : "space-y-3"}>
         {CONFIGURATOR_SLOTS.map((slot) => {
           const options = partsBySlot.get(slot.id) ?? [];
           const selected = selectedPartBySlot.get(slot.id) ?? null;

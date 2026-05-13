@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import * as buildsApi from "../api/builds";
 import type { Build } from "../types/build";
 import { PartForm } from "../components/inventory/PartForm";
@@ -29,6 +30,8 @@ import {
   SUMMARY_VALUE_PROFIT_POS,
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
+import { PAGE_HERO, PAGE_OUTER_6XL } from "../theme/layoutDensity";
+import { StatusBadge } from "../components/ui/StatusBadge";
 
 function finiteNonNegative(n: number, fallback: number): number {
   if (!Number.isFinite(n) || n < 0) return fallback;
@@ -160,7 +163,12 @@ const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
   { id: "prebuilt", label: "PCs completos" }
 ];
 
+/** Paginación cards móvil (< md): más piezas por página. ≥ md: valor anterior para la porción paginada (tabla desktop no la usa). */
+const INVENTORY_MOBILE_PAGE_SIZE = 12;
+const INVENTORY_WIDE_PAGE_SIZE = 8;
+
 export function InventoryPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { parts, loading, error, submitting, deletingId, createPart, updatePart, deletePart, reload } = useParts();
   const [builds, setBuilds] = useState<Build[]>([]);
   const [partIdsInBuiltPcs, setPartIdsInBuiltPcs] = useState<Set<string>>(new Set());
@@ -172,13 +180,54 @@ export function InventoryPage() {
   const [conditionFilter, setConditionFilter] = useState<PartCondition | "ALL">("ALL");
   const [stockFilter, setStockFilter] = useState<StockFilter>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 8;
+  const [isNarrowViewport, setIsNarrowViewport] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setIsNarrowViewport(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  const pageSize = isNarrowViewport ? INVENTORY_MOBILE_PAGE_SIZE : INVENTORY_WIDE_PAGE_SIZE;
+
+  /** Pestaña Componentes: panel de filtros plegado por defecto en móvil/escritorio. */
+  const [componentsFiltersOpen, setComponentsFiltersOpen] = useState(false);
+
+  /** Pestaña PCs completos: filtros plegables en móvil, plegados por defecto. */
+  const [prebuiltFiltersOpen, setPrebuiltFiltersOpen] = useState(false);
 
   useEffect(() => {
     if (selectedPart) {
       setActiveTab("add");
     }
   }, [selectedPart]);
+
+  const highlightPartId = searchParams.get("highlightPart");
+  useEffect(() => {
+    if (!highlightPartId) return;
+    if (parts.length === 0) return;
+    const part = parts.find((p) => p.id === highlightPartId);
+    const clearParam = () =>
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("highlightPart");
+          return next;
+        },
+        { replace: true }
+      );
+    if (!part) {
+      clearParam();
+      return;
+    }
+    setActiveTab(isPrebuiltPc(part) ? "prebuilt" : "components");
+    setSelectedPart(part);
+    clearParam();
+  }, [highlightPartId, parts, setSearchParams]);
 
   const refreshBuilds = useCallback(async () => {
     try {
@@ -299,7 +348,7 @@ export function InventoryPage() {
   const paginatedPieces = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return sortedPieceParts.slice(start, start + pageSize);
-  }, [sortedPieceParts, currentPage]);
+  }, [sortedPieceParts, currentPage, pageSize]);
 
   const hasActiveFilters =
     query.trim().length > 0 ||
@@ -372,15 +421,15 @@ export function InventoryPage() {
 
   const tabButtonClass = (id: InventoryTabId) =>
     [
-      "shrink-0 snap-start whitespace-nowrap rounded-t-lg border border-b-0 px-3 py-2.5 text-sm font-semibold transition md:px-4",
+      "shrink-0 snap-start whitespace-nowrap rounded-t-lg border border-b-0 px-3 py-2 text-sm font-semibold transition md:px-4",
       activeTab === id
         ? "border-slate-700 bg-slate-900 text-slate-100 shadow-sm"
         : "border-transparent bg-slate-950/50 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
     ].join(" ");
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 px-2 pb-8 text-slate-100 md:space-y-6 md:px-4">
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-5 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)] md:p-6">
+    <div className={PAGE_OUTER_6XL}>
+      <section className={PAGE_HERO}>
         <h1 className="text-3xl font-bold tracking-tight">Inventario</h1>
       </section>
 
@@ -429,7 +478,7 @@ export function InventoryPage() {
         role="tabpanel"
         aria-labelledby="inventory-tab-summary"
         hidden={activeTab !== "summary"}
-        className={activeTab === "summary" ? "space-y-5" : "hidden"}
+        className={activeTab === "summary" ? "space-y-4" : "hidden"}
       >
         <div className={SUMMARY_CARD_GRID}>
           <article className={SUMMARY_CARD_SHELL}>
@@ -452,8 +501,8 @@ export function InventoryPage() {
           </article>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <article className="rounded-xl border border-amber-500/25 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <article className="rounded-xl border border-amber-500/25 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-100">Stock bajo</h2>
             </div>
@@ -488,7 +537,7 @@ export function InventoryPage() {
             )}
           </article>
 
-          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
+          <article className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
             <h2 className="text-base font-semibold text-slate-100">Últimas actualizaciones</h2>
             {recentParts.length === 0 ? (
               <p className="mt-3 text-sm text-slate-400">Sin datos todavia.</p>
@@ -503,15 +552,13 @@ export function InventoryPage() {
                     >
                       <span className="min-w-0 flex-1 font-medium text-slate-200">{p.name}</span>
                       <span className="flex shrink-0 flex-wrap items-center gap-2">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                            isPrebuiltPc(p)
-                              ? "border border-violet-500/35 bg-violet-500/10 text-violet-200"
-                              : "border border-slate-600 bg-slate-800/80 text-slate-300"
-                          }`}
+                        <StatusBadge
+                          variant={isPrebuiltPc(p) ? "prebuilt" : "neutral"}
+                          size="table"
+                          className="uppercase tracking-wide"
                         >
                           {isPrebuiltPc(p) ? "PC" : "Pieza"}
-                        </span>
+                        </StatusBadge>
                         <span className="text-xs text-slate-500">{formatShortDate(p.updatedAt)}</span>
                       </span>
                     </button>
@@ -530,9 +577,9 @@ export function InventoryPage() {
         hidden={activeTab !== "add"}
         className={activeTab === "add" ? "space-y-3" : "hidden"}
       >
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40 md:p-6">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
           <h2 className="text-xl font-semibold text-slate-100">{formTitle}</h2>
-          <div className="mt-4">
+          <div className="mt-3">
             <PartForm
               selectedPart={selectedPart}
               submitting={submitting}
@@ -549,94 +596,122 @@ export function InventoryPage() {
         role="tabpanel"
         aria-labelledby="inventory-tab-components"
         hidden={activeTab !== "components"}
-        className={activeTab === "components" ? "space-y-4" : "hidden"}
+        className={activeTab === "components" ? "space-y-3" : "hidden"}
       >
         <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 backdrop-blur">
-          <div className="px-4 pb-4 pt-4 md:px-5 md:pb-5 md:pt-5">
-            <h2 className="mb-4 text-lg font-semibold text-slate-100">Filtros de búsqueda</h2>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6 lg:gap-3">
-              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200 lg:col-span-2">
-                Buscar por nombre
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Ej: RTX, Ryzen, SSD..."
-                  className="min-h-[42px] w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring sm:text-sm"
-                />
-              </label>
-
-              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-                Tipo
-                <select
-                  value={kindFilter}
-                  onChange={(event) => setKindFilter(event.target.value as KindFilter)}
-                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-                >
-                  <option value="ALL">Todos</option>
-                  <option value="PART">Piezas</option>
-                  <option value="PREBUILT_PC">PCs completos</option>
-                </select>
-              </label>
-
-              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-                Categoria
-                <select
-                  value={categoryFilter}
-                  onChange={(event) => setCategoryFilter(event.target.value as PartCategory | "ALL")}
-                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-                >
-                  <option value="ALL">Todas</option>
-                  {PART_CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {partCategoryLabel(category)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-                Estado
-                <select
-                  value={conditionFilter}
-                  onChange={(event) => setConditionFilter(event.target.value as PartCondition | "ALL")}
-                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-                >
-                  <option value="ALL">Todos</option>
-                  {PART_CONDITIONS.map((condition) => (
-                    <option key={condition} value={condition}>
-                      {condition}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-                Stock
-                <select
-                  value={stockFilter}
-                  onChange={(event) => setStockFilter(event.target.value as StockFilter)}
-                  className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-                >
-                  <option value="ALL">Todos</option>
-                  <option value="IN_STOCK">Con stock</option>
-                  <option value="OUT_OF_STOCK">Sin stock</option>
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 border-t border-slate-800 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
-            <p className="text-sm font-medium text-slate-200">{sortedPieceParts.length} piezas</p>
-            <button
-              type="button"
-              onClick={clearFilters}
-              disabled={!hasActiveFilters}
-              className={`${SECONDARY_BUTTON_SM} min-h-[40px] disabled:cursor-not-allowed`}
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/20 px-3.5 py-3 text-left transition hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/50 md:px-4"
+            onClick={() => setComponentsFiltersOpen((open) => !open)}
+            aria-expanded={componentsFiltersOpen}
+            aria-controls="inventory-components-filters-panel"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-semibold text-slate-100">Filtros de búsqueda</span>
+              <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                {sortedPieceParts.length} piezas
+                {hasActiveFilters ? " · hay filtros activos" : ""}
+              </span>
+            </span>
+            <svg
+              className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${componentsFiltersOpen ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              aria-hidden
             >
-              Limpiar filtros
-            </button>
-          </div>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {componentsFiltersOpen ? (
+            <div id="inventory-components-filters-panel">
+              <div className="px-3.5 pb-3 pt-1 md:px-4 md:pb-4 md:pt-2">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6 lg:gap-2.5">
+                  <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200 lg:col-span-2">
+                    Buscar por nombre
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Ej: RTX, Ryzen, SSD..."
+                      className="min-h-[42px] w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring sm:text-sm"
+                    />
+                  </label>
+
+                  <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                    Tipo
+                    <select
+                      value={kindFilter}
+                      onChange={(event) => setKindFilter(event.target.value as KindFilter)}
+                      className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                    >
+                      <option value="ALL">Todos</option>
+                      <option value="PART">Piezas</option>
+                      <option value="PREBUILT_PC">PCs completos</option>
+                    </select>
+                  </label>
+
+                  <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                    Categoria
+                    <select
+                      value={categoryFilter}
+                      onChange={(event) => setCategoryFilter(event.target.value as PartCategory | "ALL")}
+                      className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                    >
+                      <option value="ALL">Todas</option>
+                      {PART_CATEGORIES.map((category) => (
+                        <option key={category} value={category}>
+                          {partCategoryLabel(category)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                    Estado
+                    <select
+                      value={conditionFilter}
+                      onChange={(event) => setConditionFilter(event.target.value as PartCondition | "ALL")}
+                      className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                    >
+                      <option value="ALL">Todos</option>
+                      {PART_CONDITIONS.map((condition) => (
+                        <option key={condition} value={condition}>
+                          {condition}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                    Stock
+                    <select
+                      value={stockFilter}
+                      onChange={(event) => setStockFilter(event.target.value as StockFilter)}
+                      className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                    >
+                      <option value="ALL">Todos</option>
+                      <option value="IN_STOCK">Con stock</option>
+                      <option value="OUT_OF_STOCK">Sin stock</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5 border-t border-slate-800 px-3.5 py-2.5 md:flex-row md:items-center md:justify-between md:px-4">
+                <p className="text-sm font-medium text-slate-200">{sortedPieceParts.length} piezas</p>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  disabled={!hasActiveFilters}
+                  className={`${SECONDARY_BUTTON_SM} min-h-[40px] disabled:cursor-not-allowed`}
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <div className="space-y-3">
@@ -690,7 +765,7 @@ export function InventoryPage() {
         role="tabpanel"
         aria-labelledby="inventory-tab-prebuilt"
         hidden={activeTab !== "prebuilt"}
-        className={activeTab === "prebuilt" ? "space-y-4" : "hidden"}
+        className={activeTab === "prebuilt" ? "space-y-3" : "hidden"}
       >
         {kindFilter === "PART" ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
@@ -698,56 +773,89 @@ export function InventoryPage() {
           </div>
         ) : null}
 
-        <section className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-4 shadow-lg shadow-slate-950/40 md:px-5 md:py-5">
-          <h2 className="mb-3 text-lg font-semibold text-slate-100">Filtros</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-              Buscar por nombre
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Nombre del equipo..."
-                className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring sm:text-sm"
-              />
-            </label>
-            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-              Estado
-              <select
-                value={conditionFilter}
-                onChange={(event) => setConditionFilter(event.target.value as PartCondition | "ALL")}
-                className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-              >
-                <option value="ALL">Todos</option>
-                {PART_CONDITIONS.map((condition) => (
-                  <option key={condition} value={condition}>
-                    {condition}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
-              Stock
-              <select
-                value={stockFilter}
-                onChange={(event) => setStockFilter(event.target.value as StockFilter)}
-                className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-              >
-                <option value="ALL">Todos</option>
-                <option value="IN_STOCK">Con stock</option>
-                <option value="OUT_OF_STOCK">Sin stock</option>
-              </select>
-            </label>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-4">
-            <p className="text-sm text-slate-300">{partPrebuilt.length} PC(s) mostrado(s)</p>
-            <button
-              type="button"
-              onClick={clearFilters}
-              disabled={!hasActiveFilters}
-              className={`${SECONDARY_BUTTON_SM} min-h-[40px] disabled:cursor-not-allowed`}
+        <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 backdrop-blur">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/20 px-3.5 py-3 text-left transition hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/50 md:hidden"
+            onClick={() => setPrebuiltFiltersOpen((open) => !open)}
+            aria-expanded={prebuiltFiltersOpen}
+            aria-controls="inventory-prebuilt-filters-panel"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-semibold text-slate-100">Filtros</span>
+              <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                {partPrebuilt.length} PCs completos
+                {hasActiveFilters ? " · hay filtros activos" : ""}
+              </span>
+            </span>
+            <svg
+              className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${prebuiltFiltersOpen ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              aria-hidden
             >
-              Limpiar filtros
-            </button>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div
+            id="inventory-prebuilt-filters-panel"
+            className={prebuiltFiltersOpen ? "" : "max-md:hidden"}
+          >
+            <div className="px-3.5 py-3 md:px-4 md:py-4">
+              <h2 className="mb-2.5 hidden text-lg font-semibold text-slate-100 md:block">Filtros</h2>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                  Buscar por nombre
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Nombre del equipo..."
+                    className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring sm:text-sm"
+                  />
+                </label>
+                <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                  Estado
+                  <select
+                    value={conditionFilter}
+                    onChange={(event) => setConditionFilter(event.target.value as PartCondition | "ALL")}
+                    className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                  >
+                    <option value="ALL">Todos</option>
+                    {PART_CONDITIONS.map((condition) => (
+                      <option key={condition} value={condition}>
+                        {condition}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium text-slate-200">
+                  Stock
+                  <select
+                    value={stockFilter}
+                    onChange={(event) => setStockFilter(event.target.value as StockFilter)}
+                    className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
+                  >
+                    <option value="ALL">Todos</option>
+                    <option value="IN_STOCK">Con stock</option>
+                    <option value="OUT_OF_STOCK">Sin stock</option>
+                  </select>
+                </label>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-4">
+                <p className="text-sm text-slate-300">{partPrebuilt.length} PC(s) mostrado(s)</p>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  disabled={!hasActiveFilters}
+                  className={`${SECONDARY_BUTTON_SM} min-h-[40px] disabled:cursor-not-allowed`}
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
 
 type BuildFormProps = {
   loading: boolean;
@@ -33,7 +34,7 @@ export function BuildForm({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+    <section className={SECTION_SHELL}>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
         {onCancel ? (

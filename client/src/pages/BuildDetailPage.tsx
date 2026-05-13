@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import * as salesApi from "../api/sales";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
@@ -20,6 +20,8 @@ import {
   SUMMARY_VALUE_NEUTRAL,
   SUMMARY_VALUE_PROFIT_POS
 } from "../theme/summaryCards";
+import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
+import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
 
 function money(value: number): string {
   return `${value.toFixed(2)} EUR`;
@@ -119,7 +121,7 @@ export function BuildDetailPage() {
 
   if (loading) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Cargando detalle del montaje...</p>
       </section>
     );
@@ -127,14 +129,14 @@ export function BuildDetailPage() {
 
   if (!build) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">No se encontro el montaje solicitado.</p>
       </section>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
+    <div className={PAGE_OUTER_7XL}>
       {flashMessage ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
           <span>{flashMessage}</span>
@@ -147,8 +149,8 @@ export function BuildDetailPage() {
           </button>
         </div>
       ) : null}
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <section className={PAGE_HERO}>
+        <div className="flex flex-wrap items-start justify-between gap-2.5">
           <div>
             <h1 className="text-2xl font-bold">{build.name}</h1>
             <p className="mt-1 text-sm text-slate-300">{build.notes || "Sin descripcion."}</p>
@@ -167,17 +169,9 @@ export function BuildDetailPage() {
                 Vender PC
               </button>
             ) : null}
-            <span
-              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                build.status === "SOLD"
-                  ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-300"
-                  : build.status === "CONFIRMED"
-                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                    : "border-amber-500/40 bg-amber-500/15 text-amber-300"
-              }`}
-            >
+            <StatusBadge variant={buildStatusVariant(build.status)} size="card">
               {build.status === "SOLD" ? "Vendido" : build.status === "CONFIRMED" ? "Assembled" : "Draft"}
-            </span>
+            </StatusBadge>
             {build.status === "SOLD" ? (
               linkedSaleId ? (
                 <Link
@@ -302,8 +296,8 @@ export function BuildDetailPage() {
         }
       />
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <section className={SECTION_SHELL}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-100">Confirmar montaje</h2>
             <p className="text-sm text-slate-300">

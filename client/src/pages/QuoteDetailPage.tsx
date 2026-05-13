@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import * as quotesApi from "../api/quotes";
+import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 import { PcConfiguratorForm, type ConfiguratorAddItem } from "../components/builds/PcConfiguratorForm";
 import { useParts } from "../hooks/useParts";
 import { isConfiguratorPart, isPrebuiltPc } from "../types/part";
@@ -29,6 +30,7 @@ import {
   SUMMARY_VALUE_PROFIT_POS,
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
+import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL, TABLE_CELL } from "../theme/layoutDensity";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -403,7 +405,7 @@ export function QuoteDetailPage() {
 
   if (loading && !quote) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Cargando presupuesto...</p>
       </section>
     );
@@ -411,9 +413,9 @@ export function QuoteDetailPage() {
 
   if (!quote) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Presupuesto no encontrado.</p>
-        <Link to="/quotes" className="mt-4 inline-flex text-indigo-300 hover:text-indigo-200">
+        <Link to="/quotes" className="mt-3 inline-flex text-indigo-300 hover:text-indigo-200">
           Volver a presupuestos
         </Link>
       </section>
@@ -421,9 +423,9 @@ export function QuoteDetailPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-2 pb-8 text-slate-100 md:px-4">
-      <header className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className={PAGE_OUTER_7XL}>
+      <header className={PAGE_HERO}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="font-mono text-sm text-slate-400">Presupuesto #{quote.quoteNumber}</p>
             <h1 className="mt-1 text-2xl font-bold text-slate-100">{quote.title}</h1>
@@ -471,7 +473,7 @@ export function QuoteDetailPage() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <h2 className="text-lg font-semibold text-slate-100">Estado</h2>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
@@ -510,8 +512,11 @@ export function QuoteDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
-        <h2 className="text-lg font-semibold text-slate-100">Cliente y datos generales</h2>
+      <section className={SECTION_SHELL}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-slate-100">Cliente y datos generales</h2>
+          <CustomerProfileLink customerName={quote.customerName} customerPhone={quote.customerPhone} />
+        </div>
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
             Nombre del cliente
@@ -594,7 +599,7 @@ export function QuoteDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <h2 className="text-lg font-semibold text-slate-100">Totales</h2>
         {quoteFinancials && quoteFinancials.linesWithoutCost > 0 ? (
           <p className="mt-2 text-xs text-amber-200/90">
@@ -718,7 +723,7 @@ export function QuoteDetailPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
+        <div className={SECTION_SHELL}>
           <h3 className="font-semibold text-slate-100">Linea manual o servicio</h3>
           <div className="mt-4 flex gap-2">
             <button
@@ -806,29 +811,29 @@ export function QuoteDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <h2 className="text-lg font-semibold text-slate-100">Lineas del presupuesto</h2>
 
-        <div className="mt-4 hidden overflow-x-auto rounded-xl border border-slate-800 md:block">
+        <div className="mt-3 hidden overflow-x-auto rounded-xl border border-slate-800 md:block">
           <table className="min-w-full text-left text-sm text-slate-200">
             <thead className="bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400">
               <tr>
-                <th className="px-4 py-3">Nombre</th>
-                <th className="px-4 py-3">Descripcion</th>
-                <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Cant.</th>
-                <th className="px-4 py-3">Coste u.</th>
-                <th className="px-4 py-3">Coste linea</th>
-                <th className="px-4 py-3">P. venta u.</th>
-                <th className="px-4 py-3">Total venta</th>
-                <th className="px-4 py-3">Beneficio</th>
-                <th className="px-4 py-3 text-right">Acciones</th>
+                <th className={TABLE_CELL}>Nombre</th>
+                <th className={TABLE_CELL}>Descripcion</th>
+                <th className={TABLE_CELL}>Tipo</th>
+                <th className={TABLE_CELL}>Cant.</th>
+                <th className={TABLE_CELL}>Coste u.</th>
+                <th className={TABLE_CELL}>Coste linea</th>
+                <th className={TABLE_CELL}>P. venta u.</th>
+                <th className={TABLE_CELL}>Total venta</th>
+                <th className={TABLE_CELL}>Beneficio</th>
+                <th className={`${TABLE_CELL} text-right`}>Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {quote.items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={10} className={`${TABLE_CELL} py-4 text-center text-slate-500`}>
                     Sin lineas. Anade desde inventario o manualmente.
                   </td>
                 </tr>
@@ -838,18 +843,18 @@ export function QuoteDetailPage() {
                   const lineProfit = itemLineProfit(item);
                   return (
                   <tr key={item.id} className="hover:bg-slate-800/40">
-                    <td className="px-4 py-3 font-medium text-slate-100">{item.name}</td>
-                    <td className="max-w-xs px-4 py-3 text-xs text-slate-400">
+                    <td className={`${TABLE_CELL} font-medium text-slate-100`}>{item.name}</td>
+                    <td className={`max-w-xs ${TABLE_CELL} text-xs text-slate-400`}>
                       <span className="line-clamp-2">{item.description || "—"}</span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{item.itemType}</td>
-                    <td className="px-4 py-3">{item.quantity}</td>
-                    <td className="px-4 py-3 text-slate-300">{moneyOrDash(item.unitCost)}</td>
-                    <td className="px-4 py-3 text-slate-300">{moneyOrDash(lineCost)}</td>
-                    <td className="px-4 py-3">{money(item.unitSalePrice)}</td>
-                    <td className="px-4 py-3 font-semibold text-emerald-300/95">{money(item.total)}</td>
+                    <td className={`whitespace-nowrap ${TABLE_CELL} text-xs text-slate-500`}>{item.itemType}</td>
+                    <td className={TABLE_CELL}>{item.quantity}</td>
+                    <td className={`${TABLE_CELL} text-slate-300`}>{moneyOrDash(item.unitCost)}</td>
+                    <td className={`${TABLE_CELL} text-slate-300`}>{moneyOrDash(lineCost)}</td>
+                    <td className={TABLE_CELL}>{money(item.unitSalePrice)}</td>
+                    <td className={`${TABLE_CELL} font-semibold text-emerald-300/95`}>{money(item.total)}</td>
                     <td
-                      className={`px-4 py-3 font-medium ${
+                      className={`${TABLE_CELL} font-medium ${
                         lineProfit === null
                           ? "text-slate-500"
                           : lineProfit >= 0
@@ -859,7 +864,7 @@ export function QuoteDetailPage() {
                     >
                       {moneyOrDash(lineProfit)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className={`${TABLE_CELL} text-right`}>
                       <div className="flex justify-end gap-2">
                         <button type="button" onClick={() => setEditingItem(item)} className={SECONDARY_GHOST_SM}>
                           Editar
@@ -882,14 +887,14 @@ export function QuoteDetailPage() {
           </table>
         </div>
 
-        <div className="mt-4 space-y-3 md:hidden">
+        <div className="mt-3 space-y-2.5 md:hidden">
           {quote.items.length === 0 ? (
             <p className="text-center text-sm text-slate-500">Sin lineas.</p>
           ) : (
             quote.items.map((item) => (
               <article
                 key={item.id}
-                className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 shadow-md shadow-black/20"
+                className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5 shadow-md shadow-black/20"
               >
                 <div className="flex justify-between gap-2">
                   <h3 className="font-semibold text-slate-100">{item.name}</h3>
@@ -968,7 +973,7 @@ export function QuoteDetailPage() {
           <div
             role="dialog"
             aria-modal="true"
-            className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"
+            className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
           >
             <h3 className="text-lg font-semibold text-slate-100">Editar linea</h3>
             <div className="mt-4 grid gap-3">

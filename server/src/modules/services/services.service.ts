@@ -235,8 +235,24 @@ export async function patchService(id: string, payload: unknown) {
   if (!existing) {
     throw new Error("SERVICE_NOT_FOUND");
   }
-  if (existing.status === ServiceStatus.COMPLETED) {
-    throw new Error("SERVICE_ALREADY_COMPLETED");
+
+  const isCompleted = existing.status === ServiceStatus.COMPLETED;
+  if (isCompleted) {
+    if (data.status !== undefined && data.status !== ServiceStatus.COMPLETED) {
+      throw new Error("SERVICE_COMPLETED_STATUS_LOCKED");
+    }
+    if (data.type !== undefined && data.type !== existing.type) {
+      throw new Error("SERVICE_COMPLETED_TYPE_LOCKED");
+    }
+    if (data.sparePartLines !== undefined) {
+      throw new Error("SERVICE_COMPLETED_LINES_LOCKED");
+    }
+    if (data.selectedPartId !== undefined) {
+      throw new Error("SERVICE_COMPLETED_LINES_LOCKED");
+    }
+    if (data.quantity !== undefined) {
+      throw new Error("SERVICE_COMPLETED_LINES_LOCKED");
+    }
   }
 
   const patch: Prisma.ServiceUncheckedUpdateInput = {};
@@ -304,7 +320,26 @@ export async function patchService(id: string, payload: unknown) {
   let spareLinesSync: SpareLine[] | null = null;
 
   if (mustRecalcEconomics) {
-    if (nextType === ServiceType.SPARE_PART_SALE) {
+    if (isCompleted) {
+      if (nextType === ServiceType.SPARE_PART_SALE) {
+        const cost = data.costPrice !== undefined ? data.costPrice : Number(existing.costPrice);
+        const existingSaleTotal = Number(existing.salePrice);
+        const manualSaleBase =
+          data.salePrice !== undefined ? data.salePrice : existingSaleTotal - existingSup;
+        const saleTotal = manualSaleBase + nextSup;
+        patch.costPrice = moneyDecimal(cost);
+        patch.salePrice = moneyDecimal(saleTotal);
+        patch.profit = moneyDecimal(saleTotal - cost);
+      } else {
+        const cost = data.costPrice ?? Number(existing.costPrice);
+        const baseSale =
+          data.salePrice !== undefined ? data.salePrice : Number(existing.salePrice) - existingSup;
+        const saleTotal = baseSale + nextSup;
+        patch.costPrice = moneyDecimal(cost);
+        patch.salePrice = moneyDecimal(saleTotal);
+        patch.profit = moneyDecimal(saleTotal - cost);
+      }
+    } else if (nextType === ServiceType.SPARE_PART_SALE) {
       spareLinesSync = await effectiveSpareLinesForPatch(existing, data);
       await validateSpareLinesStock(spareLinesSync);
 
@@ -336,19 +371,25 @@ export async function patchService(id: string, payload: unknown) {
     }
   }
 
+  const shouldSyncSpareLines =
+    !isCompleted &&
+    (leavesSpare || (mustRecalcEconomics && nextType === ServiceType.SPARE_PART_SALE && spareLinesSync));
+
   return prisma.$transaction(async (tx) => {
-    if (leavesSpare) {
-      await tx.serviceSparePartLine.deleteMany({ where: { serviceId: id } });
-    } else if (mustRecalcEconomics && nextType === ServiceType.SPARE_PART_SALE && spareLinesSync) {
-      await tx.serviceSparePartLine.deleteMany({ where: { serviceId: id } });
-      await tx.serviceSparePartLine.createMany({
-        data: spareLinesSync.map((l) => ({
-          id: randomUUID(),
-          serviceId: id,
-          partId: l.partId,
-          quantity: l.quantity
-        }))
-      });
+    if (shouldSyncSpareLines) {
+      if (leavesSpare) {
+        await tx.serviceSparePartLine.deleteMany({ where: { serviceId: id } });
+      } else {
+        await tx.serviceSparePartLine.deleteMany({ where: { serviceId: id } });
+        await tx.serviceSparePartLine.createMany({
+          data: spareLinesSync!.map((l) => ({
+            id: randomUUID(),
+            serviceId: id,
+            partId: l.partId,
+            quantity: l.quantity
+          }))
+        });
+      }
     }
 
     return tx.service.update({

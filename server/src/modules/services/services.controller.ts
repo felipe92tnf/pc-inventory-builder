@@ -66,6 +66,20 @@ function mapServiceError(error: unknown, res: Response) {
     res.status(409).json({ message: "El servicio ya esta completado" });
     return true;
   }
+  if (msg === "SERVICE_COMPLETED_STATUS_LOCKED") {
+    res.status(400).json({ message: "No se puede cambiar el estado de un servicio completado" });
+    return true;
+  }
+  if (msg === "SERVICE_COMPLETED_TYPE_LOCKED") {
+    res.status(400).json({ message: "No se puede cambiar el tipo de un servicio completado" });
+    return true;
+  }
+  if (msg === "SERVICE_COMPLETED_LINES_LOCKED") {
+    res.status(400).json({
+      message: "En servicios completados no se pueden cambiar las piezas vendidas; solo datos y precios."
+    });
+    return true;
+  }
   if (msg === "SERVICE_CANCELLED") {
     res.status(400).json({ message: "No se puede completar un servicio cancelado" });
     return true;

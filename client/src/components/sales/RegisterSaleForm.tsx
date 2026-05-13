@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import * as salesApi from "../../api/sales";
 import type { CreateSaleFromBuildPayload, SaleDetail } from "../../types/sale";
 import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
 
 type RegisterSaleFormProps = {
   buildId: string;
@@ -171,12 +172,12 @@ export function RegisterSaleForm({
   }
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+    <section className={SECTION_SHELL}>
       <h2 className="text-lg font-semibold text-slate-100">Registrar venta</h2>
       <p className="mt-1 text-sm text-slate-400">
         El montaje esta ensamblado. Completa los datos del cliente y confirma el precio final de venta.
       </p>
-      <div className="mt-4">{form}</div>
+      <div className="mt-3">{form}</div>
     </section>
   );
 }

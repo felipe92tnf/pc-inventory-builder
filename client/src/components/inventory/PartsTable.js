@@ -2,7 +2,9 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useMemo, useState } from "react";
 import { PART_CATEGORIES, isNonStockCategory } from "../../types/part";
 import { getInventoryCategoryStyle } from "./inventoryCategoryStyles";
+import { StatusBadge, partConditionVariant } from "../ui/StatusBadge";
 import { SECONDARY_GHOST_SM, DESTRUCTIVE_BUTTON_SM } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
 /** Unidades en categoría para la cabecera del acordeón: mapa global o suma del stock visible. */
 function categoryUnitsDisplay(category, items, categoryStockTotals) {
     const mapped = categoryStockTotals?.get(category);
@@ -25,18 +27,11 @@ function formatCostPrice(value) {
         return "";
     return formatMoney(value);
 }
-function conditionBadgeClass(condition) {
-    if (condition === "NEW")
-        return "bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
-    if (condition === "USED")
-        return "bg-amber-500/15 text-amber-300 border-amber-500/40";
-    return "bg-indigo-500/15 text-indigo-300 border-indigo-500/40";
-}
 function PartConditionBadge({ part }) {
     if (part.category && isNonStockCategory(part.category)) {
         return _jsx("span", { className: "text-slate-500", children: "\u2014" });
     }
-    return (_jsx("span", { className: `inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${conditionBadgeClass(part.condition)}`, children: part.condition }));
+    return (_jsx(StatusBadge, { variant: partConditionVariant(part.condition), size: "card", children: part.condition }));
 }
 function StockBadges({ part }) {
     if (part.category && isNonStockCategory(part.category)) {
@@ -52,11 +47,12 @@ function ChevronCategory({ open, className = "text-slate-400" }) {
 function CategoryAccordionTrigger({ categoryKey, pieceSummary, summaryAriaLabel, expanded, panelId, onToggle, compact = false, categoryLowStock = false }) {
     const style = getInventoryCategoryStyle(categoryKey);
     const Icon = style.Icon;
-    return (_jsxs("button", { type: "button", className: `flex w-full items-center gap-3 text-left transition-colors duration-200 ${compact ? "px-3 py-2.5" : "px-4 py-3.5"} ${style.headerBg} ${style.headerHover}`, onClick: onToggle, "aria-expanded": expanded, "aria-controls": panelId, "aria-label": summaryAriaLabel, children: [_jsx("span", { className: `flex shrink-0 items-center justify-center rounded-xl border ${compact ? "h-9 w-9" : "h-10 w-10"} ${style.chipBorder} ${style.chipBg}`, "aria-hidden": true, children: _jsx(Icon, { className: `${compact ? "h-4 w-4" : "h-[1.125rem] w-[1.125rem]"} ${style.accentIcon}`, strokeWidth: 2 }) }), _jsx("span", { className: `inline-flex max-w-[min(100%,14rem)] shrink-0 truncate rounded-full border px-2.5 py-1 text-xs font-semibold ${style.chipBg} ${style.chipBorder} ${style.chipText}`, children: style.label }), _jsx("span", { className: `min-w-0 flex-1 text-sm tabular-nums ${style.accentText}`, children: pieceSummary }), categoryLowStock ? (_jsx("span", { className: "shrink-0 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300", children: "Stock bajo" })) : null, _jsx(ChevronCategory, { open: expanded, className: style.accentIcon })] }));
+    return (_jsxs("button", { type: "button", className: `flex w-full items-center gap-3 text-left transition-colors duration-200 ${compact ? "px-3 py-2" : "px-3.5 py-3"} ${style.headerBg} ${style.headerHover}`, onClick: onToggle, "aria-expanded": expanded, "aria-controls": panelId, "aria-label": summaryAriaLabel, children: [_jsx("span", { className: `flex shrink-0 items-center justify-center rounded-xl border ${compact ? "h-9 w-9" : "h-10 w-10"} ${style.chipBorder} ${style.chipBg}`, "aria-hidden": true, children: _jsx(Icon, { className: `${compact ? "h-4 w-4" : "h-[1.125rem] w-[1.125rem]"} ${style.accentIcon}`, strokeWidth: 2 }) }), _jsx("span", { className: `inline-flex max-w-[min(100%,14rem)] shrink-0 truncate rounded-full border px-2.5 py-1 text-xs font-semibold ${style.chipBg} ${style.chipBorder} ${style.chipText}`, children: style.label }), _jsx("span", { className: `min-w-0 flex-1 text-sm tabular-nums ${style.accentText}`, children: pieceSummary }), categoryLowStock ? (_jsx("span", { className: "shrink-0 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300", children: "Stock bajo" })) : null, _jsx(ChevronCategory, { open: expanded, className: style.accentIcon })] }));
 }
 function PartCard({ part, deletingId, onEdit, onDelete, showCategoryBadge = true, compact = false }) {
     const catStyle = getInventoryCategoryStyle((part.category ?? "OTHER"));
-    return (_jsx("article", { className: `rounded-2xl border border-slate-800 bg-slate-950/50 shadow-md shadow-black/20 ${compact ? "p-3" : "p-4"}`, children: _jsxs("div", { className: "flex flex-col gap-3", children: [_jsxs("div", { className: "flex flex-wrap items-start justify-between gap-2", children: [_jsx("h3", { className: "min-w-0 flex-1 text-base font-semibold leading-snug text-slate-100", children: part.name }), _jsxs("div", { className: "flex shrink-0 gap-2", children: [_jsx("button", { type: "button", onClick: () => onEdit(part), className: SECONDARY_GHOST_SM, children: "Editar" }), _jsx("button", { type: "button", onClick: () => onDelete(part), disabled: deletingId === part.id, className: DESTRUCTIVE_BUTTON_SM, children: deletingId === part.id ? "Eliminando..." : "Eliminar" })] })] }), _jsxs("div", { className: "flex flex-wrap gap-2", children: [showCategoryBadge ? (_jsx("span", { className: `inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${catStyle.chipBg} ${catStyle.chipBorder} ${catStyle.chipText}`, children: catStyle.label })) : null, _jsx(PartConditionBadge, { part: part })] }), _jsxs("dl", { className: `grid grid-cols-1 border-t border-slate-800/80 text-sm sm:grid-cols-2 ${compact ? "gap-2 pt-2" : "gap-3 pt-3"}`, children: [_jsxs("div", { className: "flex justify-between gap-3 sm:flex-col sm:justify-start", children: [_jsx("dt", { className: "text-xs uppercase tracking-wide text-slate-500", children: "Precio coste" }), _jsx("dd", { className: "font-medium text-slate-200", children: formatCostPrice(part.costPrice) })] }), _jsxs("div", { className: "flex justify-between gap-3 sm:flex-col sm:justify-start", children: [_jsx("dt", { className: "text-xs uppercase tracking-wide text-slate-500", children: "Precio venta" }), _jsx("dd", { className: "font-medium text-emerald-300/95", children: formatMoney(part.salePrice) })] }), part.stock !== 0 || (part.category != null && isNonStockCategory(part.category)) ? (_jsxs("div", { className: "flex flex-col gap-1.5 sm:col-span-2", children: [_jsx("dt", { className: "text-xs uppercase tracking-wide text-slate-500", children: "Stock" }), _jsx("dd", { children: _jsx(StockBadges, { part: part }) })] })) : null] })] }) }));
+    const touchRowBtn = "min-h-[44px] w-full justify-center px-4 py-2.5 text-sm font-semibold";
+    return (_jsx("article", { className: `rounded-2xl border border-slate-800 bg-slate-950/50 shadow-md shadow-black/20 ${compact ? "p-3" : "p-3.5"}`, children: _jsxs("div", { className: "flex flex-col gap-2.5", children: [_jsx("h3", { className: "break-words text-base font-semibold leading-snug text-slate-100", children: part.name }), _jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [showCategoryBadge ? (_jsx("span", { className: `inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${catStyle.chipBg} ${catStyle.chipBorder} ${catStyle.chipText}`, children: catStyle.label })) : null, _jsx(PartConditionBadge, { part: part })] }), _jsxs("dl", { className: "space-y-1.5 border-t border-slate-800/80 pt-2.5 text-sm", children: [_jsxs("div", { className: "flex justify-between gap-3", children: [_jsx("dt", { className: "shrink-0 text-xs uppercase tracking-wide text-slate-500", children: "Precio coste" }), _jsx("dd", { className: "min-w-0 text-right font-medium text-slate-200", children: formatCostPrice(part.costPrice) })] }), _jsxs("div", { className: "flex justify-between gap-3", children: [_jsx("dt", { className: "shrink-0 text-xs uppercase tracking-wide text-slate-500", children: "Precio venta" }), _jsx("dd", { className: "min-w-0 text-right font-medium text-emerald-300/95", children: formatMoney(part.salePrice) })] }), part.stock !== 0 || (part.category != null && isNonStockCategory(part.category)) ? (_jsxs("div", { className: "flex justify-between gap-3 border-t border-slate-800/60 pt-1.5", children: [_jsx("dt", { className: "shrink-0 text-xs uppercase tracking-wide text-slate-500", children: "Stock" }), _jsx("dd", { className: "text-right", children: _jsx(StockBadges, { part: part }) })] })) : null] }), _jsxs("div", { className: "flex flex-col gap-2 border-t border-slate-800/80 pt-2.5", children: [_jsx("button", { type: "button", onClick: () => onEdit(part), className: `${SECONDARY_GHOST_SM} ${touchRowBtn}`, children: "Editar" }), _jsx("button", { type: "button", onClick: () => onDelete(part), disabled: deletingId === part.id, className: `${DESTRUCTIVE_BUTTON_SM} ${touchRowBtn}`, children: deletingId === part.id ? "Eliminando..." : "Eliminar" })] })] }) }));
 }
 function groupPartsByCategory(parts) {
     const map = new Map();
@@ -112,7 +108,7 @@ function DesktopPartsByCategory({ parts, deletingId, onEdit, onDelete, compact =
             [category]: !(prev[category] === true)
         }));
     };
-    const cell = compact ? "px-3 py-2" : "px-4 py-3";
+    const cell = compact ? "px-3 py-2" : "px-3.5 py-2.5";
     return (_jsx("section", { className: `hidden md:block ${compact ? "space-y-2" : "space-y-3"}`, children: groups.map(({ category, items }) => {
             const expanded = isOpen(category);
             const panelId = `inv-desktop-cat-${category}`;
@@ -125,11 +121,11 @@ function DesktopPartsByCategory({ parts, deletingId, onEdit, onDelete, compact =
 }
 export function PartsTable({ parts, partsMobilePage, compact = false, loading, deletingId, categoryStockTotals, categoryStockThreshold = 3, onEdit, onDelete, emptyMessage }) {
     if (loading) {
-        return (_jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40", children: _jsx("p", { className: "text-sm text-slate-300", children: "Cargando piezas..." }) }));
+        return (_jsx("section", { className: SECTION_SHELL, children: _jsx("p", { className: "text-sm text-slate-300", children: "Cargando piezas..." }) }));
     }
     const mobileParts = partsMobilePage ?? parts;
     if (parts.length === 0) {
-        return (_jsx("section", { className: "rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40", children: _jsx("p", { className: "text-sm text-slate-300", children: emptyMessage ?? "No hay piezas en inventario todavia." }) }));
+        return (_jsx("section", { className: SECTION_SHELL, children: _jsx("p", { className: "text-sm text-slate-300", children: emptyMessage ?? "No hay piezas en inventario todavia." }) }));
     }
     return (_jsxs(_Fragment, { children: [_jsx(DesktopPartsByCategory, { parts: parts, deletingId: deletingId, onEdit: onEdit, onDelete: onDelete, compact: compact, categoryStockTotals: categoryStockTotals, categoryStockThreshold: categoryStockThreshold }), _jsx(MobilePartsByCategory, { parts: mobileParts, deletingId: deletingId, onEdit: onEdit, onDelete: onDelete, compact: compact, categoryStockTotals: categoryStockTotals, categoryStockThreshold: categoryStockThreshold })] }));
 }

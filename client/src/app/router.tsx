@@ -1,11 +1,13 @@
-﻿import { LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { SecondByteLogo } from "../components/brand/SecondByteLogo";
 import { ProtectedRoute } from "../components/auth/ProtectedRoute";
 import { PwaUpdateNotifier } from "../components/pwa/PwaUpdateNotifier";
+import { GlobalSearchModal } from "../components/search/GlobalSearchModal";
 import { useAuth } from "../hooks/useAuth";
 import { BuildDetailPage } from "../pages/BuildDetailPage";
 import { BuildsPage } from "../pages/BuildsPage";
+import { CustomerDetailPage } from "../pages/CustomerDetailPage";
 import { InventoryPage } from "../pages/InventoryPage";
 import { LoginPage } from "../pages/LoginPage";
 import { QuoteDetailPage } from "../pages/QuoteDetailPage";
@@ -85,7 +87,7 @@ function CpuIcon({ className }: { className?: string }) {
 }
 
 const navLinkClass =
-  "group flex min-h-[2.75rem] shrink-0 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold tracking-tight transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 sm:min-h-[3rem] sm:gap-2.5 sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-base";
+  "group flex min-h-[2.5rem] shrink-0 items-center justify-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-semibold tracking-tight transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 sm:min-h-[2.75rem] sm:gap-2 sm:rounded-2xl sm:px-4 sm:py-2 sm:text-base";
 
 const navInactive =
   "border-blue-800/70 bg-blue-950/80 text-blue-100/85 hover:border-cyan-600/35 hover:bg-blue-900/70 hover:text-white";
@@ -99,7 +101,7 @@ function AppShell() {
   return (
     <div className="min-h-screen bg-blue-950">
       <PwaUpdateNotifier />
-      <header className="relative overflow-hidden border-b border-cyan-500/25 bg-gradient-to-br from-blue-950 via-[#0a1628] to-blue-950 shadow-[0_12px_40px_-8px_rgba(8,47,73,0.85)]">
+      <header className="sticky top-0 z-30 relative overflow-hidden border-b border-cyan-500/25 bg-gradient-to-br from-blue-950/78 via-[#0a1628]/72 to-blue-950/78 shadow-[0_12px_40px_-8px_rgba(8,47,73,0.85)] backdrop-blur-md backdrop-saturate-150">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.4]"
           style={{
@@ -116,9 +118,9 @@ function AppShell() {
             <SecondByteLogo variant="header" className="select-none" />
           </div>
         </div>
-        <div className="relative z-10 mx-auto max-w-7xl px-3 py-2.5 sm:px-5 sm:py-3">
+        <div className="relative z-10 mx-auto max-w-7xl px-3 py-2 sm:px-5 sm:py-2.5">
           <nav
-            className="flex flex-nowrap items-stretch justify-center gap-1.5 overflow-x-auto rounded-2xl border border-white/12 bg-blue-950/65 px-2 py-2 shadow-inner shadow-black/35 backdrop-blur-md [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-2 sm:px-2.5 [&::-webkit-scrollbar]:hidden"
+            className="flex flex-nowrap items-stretch justify-start gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth scroll-pl-3 scroll-pr-3 rounded-2xl border border-white/12 bg-blue-950/65 px-3 py-2 shadow-inner shadow-black/35 backdrop-blur-md [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-2 sm:px-4 md:justify-center md:px-3 [&::-webkit-scrollbar]:hidden"
             aria-label="Secciones"
           >
             <NavLink
@@ -170,9 +172,10 @@ function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl p-4 sm:p-6 md:p-8">
+      <main className="mx-auto max-w-7xl p-3 sm:p-4 md:p-6">
         <Outlet />
       </main>
+      <GlobalSearchModal />
     </div>
   );
 }
@@ -191,6 +194,7 @@ export function AppRouter() {
           <Route path="quotes" element={<QuotesPage />} />
           <Route path="quotes/:id" element={<QuoteDetailPage />} />
           <Route path="services" element={<ServicesPage />} />
+          <Route path="customers" element={<CustomerDetailPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>

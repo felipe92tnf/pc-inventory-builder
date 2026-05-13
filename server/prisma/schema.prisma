@@ -74,6 +74,15 @@ enum QuoteItemType {
   SERVICE
 }
 
+/// Notas de ficha de cliente (clave deduplicada en aplicacion: telefono + nombre).
+model CustomerProfile {
+  id         String   @id @default(cuid())
+  lookupKey  String   @unique
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 model Part {
   id              String         @id @default(cuid())
   inventoryKind   InventoryKind  @default(PART)

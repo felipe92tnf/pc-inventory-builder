@@ -6,6 +6,8 @@ import {
   SECONDARY_BUTTON_SM,
   DESTRUCTIVE_BUTTON_SM
 } from "../../theme/actionButtons";
+import { SECTION_SHELL } from "../../theme/layoutDensity";
+import { StatusBadge, buildStatusVariant } from "../ui/StatusBadge";
 
 function isInventoryPrebuiltBuild(build: Build): boolean {
   return build.items?.length === 1 && build.items[0]?.part?.inventoryKind === "PREBUILT_PC";
@@ -23,7 +25,7 @@ type BuildsListProps = {
 export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, onDelete }: BuildsListProps) {
   if (loading) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">Cargando montajes...</p>
       </section>
     );
@@ -31,7 +33,7 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
 
   if (builds.length === 0) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/40">
+      <section className={SECTION_SHELL}>
         <p className="text-sm text-slate-300">
           Todavía no has creado montajes.
         </p>
@@ -40,33 +42,25 @@ export function BuildsList({ builds, loading, updatingId, deletingId, onEdit, on
   }
 
   return (
-    <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
       {builds.map((build) => (
         <article
           key={build.id}
-          className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-slate-950/40"
+          className={SECTION_SHELL}
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold text-slate-100">{build.name}</h3>
               {isInventoryPrebuiltBuild(build) ? (
-                <span className="shrink-0 rounded-full border border-violet-500/35 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+                <StatusBadge variant="prebuilt" size="table" className="uppercase tracking-wide">
                   PC inventario
-                </span>
+                </StatusBadge>
               ) : null}
             </div>
 
-            <span
-              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                build.status === "SOLD"
-                  ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-300"
-                  : build.status === "CONFIRMED"
-                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                    : "border-amber-500/40 bg-amber-500/15 text-amber-300"
-              }`}
-            >
+            <StatusBadge variant={buildStatusVariant(build.status)} size="card">
               {build.status === "SOLD" ? "Vendido" : build.status === "CONFIRMED" ? "Assembled" : "Draft"}
-            </span>
+            </StatusBadge>
           </div>
 
           <p className="mt-2 text-sm text-slate-300">
