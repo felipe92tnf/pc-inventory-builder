@@ -83,6 +83,27 @@ model CustomerProfile {
   updatedAt  DateTime @updatedAt
 }
 
+/// Plantilla reutilizable (catalogo). Las filas de inventario `Part` pueden enlazar aqui.
+model PartCatalog {
+  id               String       @id @default(cuid())
+  sku              String?
+  name             String
+  category         PartCategory
+  brand            String       @default("")
+  model            String       @default("")
+  defaultCostPrice Decimal      @db.Decimal(12, 2)
+  defaultSalePrice Decimal      @db.Decimal(12, 2)
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  parts Part[]
+
+  @@unique([sku])
+  @@index([name])
+  @@index([category])
+}
+
 model Part {
   id              String         @id @default(cuid())
   inventoryKind   InventoryKind  @default(PART)
@@ -96,9 +117,12 @@ model Part {
   notes           String?
   /// Componentes / especificaciones (principalmente PREBUILT_PC).
   description     String         @default("")
+  /// Si la pieza viene del catalogo, referencia a la plantilla.
+  catalogPartId   String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  catalogPart            PartCatalog? @relation(fields: [catalogPartId], references: [id], onDelete: SetNull)
   buildItems             BuildPartItem[]
   sparePartServices      Service[]             @relation("SparePart")
   serviceSparePartLines  ServiceSparePartLine[]
@@ -108,6 +132,7 @@ model Part {
   @@index([condition])
   @@index([name])
   @@index([inventoryKind])
+  @@index([catalogPartId])
 }
 
 model Service {
@@ -188,12 +213,21 @@ model Sale {
   paymentMethod  String?
   warrantyMonths Int?
   notes          String?
+  /// Venta creada por importación Excel (histórico); no modifica inventario.
+  isImported     Boolean  @default(false)
+  /// Mismo valor para todas las filas de una misma confirmación de importación.
+  importBatchId  String?
+  /// Momento en que se confirmó la importación (compartido por el lote).
+  importedAt     DateTime?
+  /// Nombre del archivo importado (compartido por el lote).
+  importFileName String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
 
   @@index([soldAt])
+  @@index([importBatchId])
 }
 
 model BuildPartItem {

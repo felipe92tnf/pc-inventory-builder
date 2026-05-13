@@ -33,12 +33,6 @@ export function patchService(id, payload) {
         body: payload
     });
 }
-export function registerServicePayment(id, amount) {
-    return http(`/services/${id}/register-payment`, {
-        method: "POST",
-        body: { amount }
-    });
-}
 export function deleteService(id) {
     return http(`/services/${id}`, {
         method: "DELETE"

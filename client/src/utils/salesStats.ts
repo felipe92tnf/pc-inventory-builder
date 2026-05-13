@@ -102,6 +102,23 @@ export function monthlyRevenueSeriesCombined(
   return out;
 }
 
+export function monthlyProfitSeriesCombined(
+  salesSummary: MonthlySalesSummaryRow[],
+  servicesSummary: MonthlyServiceSummaryRow[],
+  year: number
+): { month: number; profit: number }[] {
+  const out: { month: number; profit: number }[] = [];
+  for (let m = 1; m <= 12; m++) {
+    const s = salesSummary.find((r) => r.year === year && r.month === m);
+    const sv = servicesSummary.find((r) => r.year === year && r.month === m);
+    out.push({
+      month: m,
+      profit: (s?.totalProfit ?? 0) + (sv?.totalProfit ?? 0)
+    });
+  }
+  return out;
+}
+
 export function extendYearRangeWithServices(
   base: { minYear: number; maxYear: number },
   servicesSummary: Pick<MonthlyServiceSummaryRow, "year">[]

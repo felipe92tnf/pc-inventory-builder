@@ -9,18 +9,22 @@
     "start": "node dist/index.js",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:generate": "prisma generate",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "migrate:inventory-catalog": "node scripts/migrate-inventory-to-catalog.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "cors": "latest",
     "dotenv": "latest",
     "express": "latest",
+    "multer": "^2.1.1",
+    "xlsx": "^0.18.5",
     "zod": "latest"
   },
   "devDependencies": {
     "@types/cors": "latest",
     "@types/express": "latest",
+    "@types/multer": "^2.1.0",
     "@types/node": "latest",
     "prisma": "^6.19.3",
     "tsx": "latest",

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import * as buildsApi from "../api/builds";
 import type { Build } from "../types/build";
+import { AddStockFromCatalogSection } from "../components/inventory/AddStockFromCatalogSection";
+import { NewCatalogPartForm } from "../components/inventory/NewCatalogPartForm";
 import { PartForm } from "../components/inventory/PartForm";
 import { PartsTable } from "../components/inventory/PartsTable";
 import { PrebuiltInventoryTable } from "../components/inventory/PrebuiltInventoryTable";
@@ -154,11 +156,12 @@ function formatShortDate(iso: string): string {
 type KindFilter = "ALL" | "PART" | "PREBUILT_PC";
 type StockFilter = "ALL" | "IN_STOCK" | "OUT_OF_STOCK";
 
-type InventoryTabId = "summary" | "add" | "components" | "prebuilt";
+type InventoryTabId = "summary" | "stock" | "catalog" | "components" | "prebuilt";
 
 const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
   { id: "summary", label: "Resumen" },
-  { id: "add", label: "Añadir item" },
+  { id: "stock", label: "Añadir stock" },
+  { id: "catalog", label: "Catálogo" },
   { id: "components", label: "Componentes" },
   { id: "prebuilt", label: "PCs completos" }
 ];
@@ -169,7 +172,18 @@ const INVENTORY_WIDE_PAGE_SIZE = 8;
 
 export function InventoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { parts, loading, error, submitting, deletingId, createPart, updatePart, deletePart, reload } = useParts();
+  const {
+    parts,
+    loading,
+    error,
+    submitting,
+    deletingId,
+    createPart,
+    createStockFromCatalog,
+    updatePart,
+    deletePart,
+    reload
+  } = useParts();
   const [builds, setBuilds] = useState<Build[]>([]);
   const [partIdsInBuiltPcs, setPartIdsInBuiltPcs] = useState<Set<string>>(new Set());
   const [selectedPart, setSelectedPart] = useState<Part | null>(null);
@@ -200,9 +214,15 @@ export function InventoryPage() {
   /** Pestaña PCs completos: filtros plegables en móvil, plegados por defecto. */
   const [prebuiltFiltersOpen, setPrebuiltFiltersOpen] = useState(false);
 
+  /** Refresca listas de catálogo en «Añadir stock» al crear plantillas. */
+  const [catalogRefreshSignal, setCatalogRefreshSignal] = useState(0);
+
+  /** Acordeón «Nuevo PC completo» en pestaña Catálogo (plegado por defecto). */
+  const [catalogPrebuiltAccordionOpen, setCatalogPrebuiltAccordionOpen] = useState(false);
+
   useEffect(() => {
     if (selectedPart) {
-      setActiveTab("add");
+      setActiveTab("catalog");
     }
   }, [selectedPart]);
 
@@ -413,12 +433,6 @@ export function InventoryPage() {
     setStockFilter("ALL");
   };
 
-  const formTitle = selectedPart
-    ? selectedPart.inventoryKind === "PREBUILT_PC"
-      ? "Editar PC completo"
-      : "Editar pieza"
-    : "Añadir al inventario";
-
   const tabButtonClass = (id: InventoryTabId) =>
     [
       "shrink-0 snap-start whitespace-nowrap rounded-t-lg border border-b-0 px-3 py-2 text-sm font-semibold transition md:px-4",
@@ -571,24 +585,91 @@ export function InventoryPage() {
       </section>
 
       <section
-        id="inventory-panel-add"
+        id="inventory-panel-stock"
         role="tabpanel"
-        aria-labelledby="inventory-tab-add"
-        hidden={activeTab !== "add"}
-        className={activeTab === "add" ? "space-y-3" : "hidden"}
+        aria-labelledby="inventory-tab-stock"
+        hidden={activeTab !== "stock"}
+        className={activeTab === "stock" ? "space-y-3" : "hidden"}
       >
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
-          <h2 className="text-xl font-semibold text-slate-100">{formTitle}</h2>
-          <div className="mt-3">
-            <PartForm
-              selectedPart={selectedPart}
-              submitting={submitting}
-              onSubmit={handleSubmit}
-              onCancelEdit={() => setSelectedPart(null)}
-              className="border-0 bg-transparent p-0 shadow-none"
-            />
+        <AddStockFromCatalogSection
+          submitting={submitting}
+          onRegisterStock={createStockFromCatalog}
+          catalogRefreshSignal={catalogRefreshSignal}
+        />
+      </section>
+
+      <section
+        id="inventory-panel-catalog"
+        role="tabpanel"
+        aria-labelledby="inventory-tab-catalog"
+        hidden={activeTab !== "catalog"}
+        className={activeTab === "catalog" ? "space-y-4" : "hidden"}
+      >
+        <NewCatalogPartForm onSuccess={() => setCatalogRefreshSignal((n) => n + 1)} />
+        {selectedPart ? (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5">
+            <p className="text-sm text-slate-400">
+              Edición de una línea de inventario existente (stock físico). Las piezas sueltas nuevas deben crearse
+              como plantilla arriba y luego darse de alta en «Añadir stock».
+            </p>
+            <div className="mt-3">
+              <PartForm
+                selectedPart={selectedPart}
+                submitting={submitting}
+                onSubmit={handleSubmit}
+                onCancelEdit={() => setSelectedPart(null)}
+                className="border-0 bg-transparent p-0 shadow-none"
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 backdrop-blur">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/20 px-3.5 py-3 text-left transition hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/50 md:px-4"
+              onClick={() => setCatalogPrebuiltAccordionOpen((open) => !open)}
+              aria-expanded={catalogPrebuiltAccordionOpen}
+              aria-controls="catalog-prebuilt-pc-panel"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-semibold text-slate-100">Nuevo PC completo en inventario</span>
+                <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                  Alta directa en stock · sin plantilla de catálogo
+                </span>
+              </span>
+              <svg
+                className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${catalogPrebuiltAccordionOpen ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <div
+              id="catalog-prebuilt-pc-panel"
+              hidden={!catalogPrebuiltAccordionOpen}
+              className="border-t border-slate-800 px-3.5 pb-4 pt-3 md:px-4 md:pb-5 md:pt-4"
+            >
+              <p className="text-sm text-slate-400">
+                Los PCs completos no usan plantillas del catálogo de piezas; se dan de alta directamente en
+                inventario.
+              </p>
+              <div className="mt-3">
+                <PartForm
+                  selectedPart={null}
+                  submitting={submitting}
+                  onSubmit={handleSubmit}
+                  onCancelEdit={() => setSelectedPart(null)}
+                  createInventoryKindDefault="PREBUILT_PC"
+                  className="border-0 bg-transparent p-0 shadow-none"
+                />
+              </div>
+            </div>
+          </section>
+        )}
       </section>
 
       <section

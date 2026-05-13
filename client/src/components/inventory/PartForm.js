@@ -44,7 +44,7 @@ function salePriceDiffersFromCalculated(saved, cost, condition) {
 function conditionForPricing(category, condition) {
     return isNonStockCategory(category) ? OS_PART_CONDITION : condition;
 }
-export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, className = "" }) {
+export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, className = "", createInventoryKindDefault = "PART" }) {
     const [form, setForm] = useState(defaultValues);
     const [accordionOpen, setAccordionOpen] = useState({
         basic: true,
@@ -73,9 +73,22 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
     };
     const isEditMode = useMemo(() => selectedPart !== null, [selectedPart]);
     const isPrebuilt = form.inventoryKind === "PREBUILT_PC";
+    const hideInventoryKindPicker = !isEditMode && createInventoryKindDefault === "PREBUILT_PC";
     useEffect(() => {
         if (!selectedPart) {
-            setForm(defaultValues);
+            if (createInventoryKindDefault === "PREBUILT_PC") {
+                setForm({
+                    ...defaultValues,
+                    inventoryKind: "PREBUILT_PC",
+                    manualSalePrice: true,
+                    description: PREBUILT_DESCRIPTION_TEMPLATE,
+                    salePrice: calculateSalePrice(0, "USED"),
+                    condition: "USED"
+                });
+            }
+            else {
+                setForm(defaultValues);
+            }
             return;
         }
         const cost = toNumber(selectedPart.costPrice);
@@ -111,7 +124,7 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
             notes: selectedPart.notes ?? "",
             description: selectedPart.description ?? ""
         });
-    }, [selectedPart]);
+    }, [selectedPart, createInventoryKindDefault]);
     useEffect(() => {
         if (form.manualSalePrice)
             return;
@@ -135,7 +148,19 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
         event.preventDefault();
         await onSubmit(form);
         if (!isEditMode) {
-            setForm(defaultValues);
+            if (createInventoryKindDefault === "PREBUILT_PC") {
+                setForm({
+                    ...defaultValues,
+                    inventoryKind: "PREBUILT_PC",
+                    manualSalePrice: true,
+                    description: PREBUILT_DESCRIPTION_TEMPLATE,
+                    salePrice: calculateSalePrice(0, "USED"),
+                    condition: "USED"
+                });
+            }
+            else {
+                setForm(defaultValues);
+            }
         }
     };
     const formTitle = isEditMode
@@ -145,7 +170,7 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
         : isPrebuilt
             ? "Nuevo PC completo"
             : "Nueva pieza";
-    return (_jsxs("section", { className: `${SECTION_SHELL} backdrop-blur ${className}`.trim(), children: [_jsxs("div", { className: "mb-4 flex items-center justify-between", children: [_jsx("h2", { className: "text-lg font-semibold text-slate-100", children: formTitle }), isEditMode ? (_jsx("button", { type: "button", onClick: onCancelEdit, className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800", children: "Cancelar" })) : null] }), _jsxs("form", { id: "inventory-part-form", onSubmit: handleSubmit, className: "max-md:pb-32 space-y-4", children: [_jsxs("section", { className: "space-y-3 rounded-xl border border-slate-800/90 bg-slate-950/30 p-4", children: [_jsx("p", { className: "text-xs font-semibold uppercase tracking-wide text-slate-400", children: "Tipo de articulo" }), _jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [_jsxs("button", { type: "button", disabled: isEditMode || submitting, onClick: () => {
+    return (_jsxs("section", { className: `${SECTION_SHELL} backdrop-blur ${className}`.trim(), children: [_jsxs("div", { className: "mb-4 flex items-center justify-between", children: [_jsx("h2", { className: "text-lg font-semibold text-slate-100", children: formTitle }), isEditMode ? (_jsx("button", { type: "button", onClick: onCancelEdit, className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800", children: "Cancelar" })) : null] }), _jsxs("form", { id: "inventory-part-form", onSubmit: handleSubmit, className: "max-md:pb-32 space-y-4", children: [!hideInventoryKindPicker ? (_jsxs("section", { className: "space-y-3 rounded-xl border border-slate-800/90 bg-slate-950/30 p-4", children: [_jsx("p", { className: "text-xs font-semibold uppercase tracking-wide text-slate-400", children: "Tipo de articulo" }), _jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [_jsxs("button", { type: "button", disabled: isEditMode || submitting, onClick: () => {
                                             setForm((prev) => ({
                                                 ...defaultValues,
                                                 inventoryKind: "PART",
@@ -167,7 +192,7 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
                                             }));
                                         }, className: `group rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${isPrebuilt
                                             ? "border-cyan-400/70 bg-cyan-500/15 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]"
-                                            : "border-slate-700 bg-slate-950/80 hover:border-slate-500"}`, children: [_jsxs("div", { className: "mb-2 flex items-center gap-2", children: [_jsx(Cpu, { className: `h-5 w-5 ${isPrebuilt ? "text-cyan-300" : "text-slate-400"}` }), _jsx("h3", { className: "text-sm font-semibold text-slate-100", children: "PC completo / premontado" })] }), _jsx("p", { className: "text-xs text-slate-400", children: "Equipos terminados con descripci\u00F3n de componentes y stock por unidad." })] })] }), isEditMode ? (_jsx("p", { className: "text-xs text-slate-500", children: "El tipo no se puede cambiar al editar; crea un art\u00EDculo nuevo." })) : null] }), _jsxs("div", { className: "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start", children: [_jsxs("div", { className: "space-y-4", children: [_jsx(FormCollapsibleSection, { narrow: isNarrowViewport, sectionKey: "basic", title: "Informacion basica", open: accordionOpen.basic, onToggle: toggleAccordion, children: _jsxs("div", { className: "grid grid-cols-2 gap-3", children: [_jsxs("label", { className: `col-span-2 flex flex-col gap-1 text-sm font-medium text-slate-200 ${isPrebuilt ? "md:col-span-2" : "md:col-span-1"}`, children: [isPrebuilt ? "Nombre del PC" : "Nombre", _jsx("input", { value: form.name, onChange: (event) => updateField("name", event.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring", required: true })] }), !isPrebuilt ? (_jsxs("label", { className: "col-span-1 flex min-w-0 flex-col gap-1 text-sm font-medium text-slate-200", children: ["Categoria", _jsx("select", { value: form.category, onChange: (event) => {
+                                            : "border-slate-700 bg-slate-950/80 hover:border-slate-500"}`, children: [_jsxs("div", { className: "mb-2 flex items-center gap-2", children: [_jsx(Cpu, { className: `h-5 w-5 ${isPrebuilt ? "text-cyan-300" : "text-slate-400"}` }), _jsx("h3", { className: "text-sm font-semibold text-slate-100", children: "PC completo / premontado" })] }), _jsx("p", { className: "text-xs text-slate-400", children: "Equipos terminados con descripci\u00F3n de componentes y stock por unidad." })] })] }), isEditMode ? (_jsx("p", { className: "text-xs text-slate-500", children: "El tipo no se puede cambiar al editar; crea un art\u00EDculo nuevo." })) : null] })) : (_jsxs("p", { className: "text-xs text-slate-500", children: ["Alta de ", _jsx("span", { className: "font-medium text-slate-300", children: "PC completo" }), " en inventario (sin plantilla de cat\u00E1logo)."] })), _jsxs("div", { className: "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start", children: [_jsxs("div", { className: "space-y-4", children: [_jsx(FormCollapsibleSection, { narrow: isNarrowViewport, sectionKey: "basic", title: "Informacion basica", open: accordionOpen.basic, onToggle: toggleAccordion, children: _jsxs("div", { className: "grid grid-cols-2 gap-3", children: [_jsxs("label", { className: `col-span-2 flex flex-col gap-1 text-sm font-medium text-slate-200 ${isPrebuilt ? "md:col-span-2" : "md:col-span-1"}`, children: [isPrebuilt ? "Nombre del PC" : "Nombre", _jsx("input", { value: form.name, onChange: (event) => updateField("name", event.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring", required: true })] }), !isPrebuilt ? (_jsxs("label", { className: "col-span-1 flex min-w-0 flex-col gap-1 text-sm font-medium text-slate-200", children: ["Categoria", _jsx("select", { value: form.category, onChange: (event) => {
                                                                 const cat = event.target.value;
                                                                 setForm((prev) => {
                                                                     const next = { ...prev, category: cat };

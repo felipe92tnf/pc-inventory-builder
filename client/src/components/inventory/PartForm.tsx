@@ -47,6 +47,8 @@ type PartFormProps = {
   onCancelEdit: () => void;
   submitting: boolean;
   className?: string;
+  /** Si no hay pieza seleccionada, fija el tipo de alta nueva (p. ej. solo PC completo en inventario). */
+  createInventoryKindDefault?: InventoryKind;
 };
 
 type AccordionSectionKey = "basic" | "pricing" | "notes" | "summary";
@@ -125,7 +127,14 @@ function conditionForPricing(category: PartCategory, condition: PartCondition): 
   return isNonStockCategory(category) ? OS_PART_CONDITION : condition;
 }
 
-export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, className = "" }: PartFormProps) {
+export function PartForm({
+  selectedPart,
+  onSubmit,
+  onCancelEdit,
+  submitting,
+  className = "",
+  createInventoryKindDefault = "PART"
+}: PartFormProps) {
   const [form, setForm] = useState<PartFormValues>(defaultValues);
 
   const [accordionOpen, setAccordionOpen] = useState<Record<AccordionSectionKey, boolean>>({
@@ -161,10 +170,22 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
 
   const isEditMode = useMemo(() => selectedPart !== null, [selectedPart]);
   const isPrebuilt = form.inventoryKind === "PREBUILT_PC";
+  const hideInventoryKindPicker = !isEditMode && createInventoryKindDefault === "PREBUILT_PC";
 
   useEffect(() => {
     if (!selectedPart) {
-      setForm(defaultValues);
+      if (createInventoryKindDefault === "PREBUILT_PC") {
+        setForm({
+          ...defaultValues,
+          inventoryKind: "PREBUILT_PC",
+          manualSalePrice: true,
+          description: PREBUILT_DESCRIPTION_TEMPLATE,
+          salePrice: calculateSalePrice(0, "USED"),
+          condition: "USED"
+        });
+      } else {
+        setForm(defaultValues);
+      }
       return;
     }
 
@@ -203,7 +224,7 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
       notes: selectedPart.notes ?? "",
       description: selectedPart.description ?? ""
     });
-  }, [selectedPart]);
+  }, [selectedPart, createInventoryKindDefault]);
 
   useEffect(() => {
     if (form.manualSalePrice) return;
@@ -241,7 +262,18 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
     event.preventDefault();
     await onSubmit(form);
     if (!isEditMode) {
-      setForm(defaultValues);
+      if (createInventoryKindDefault === "PREBUILT_PC") {
+        setForm({
+          ...defaultValues,
+          inventoryKind: "PREBUILT_PC",
+          manualSalePrice: true,
+          description: PREBUILT_DESCRIPTION_TEMPLATE,
+          salePrice: calculateSalePrice(0, "USED"),
+          condition: "USED"
+        });
+      } else {
+        setForm(defaultValues);
+      }
     }
   };
 
@@ -271,64 +303,71 @@ export function PartForm({ selectedPart, onSubmit, onCancelEdit, submitting, cla
       </div>
 
       <form id="inventory-part-form" onSubmit={handleSubmit} className="max-md:pb-32 space-y-4">
-        <section className="space-y-3 rounded-xl border border-slate-800/90 bg-slate-950/30 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipo de articulo</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              disabled={isEditMode || submitting}
-              onClick={() => {
-                setForm((prev) => ({
-                  ...defaultValues,
-                  inventoryKind: "PART",
-                  name: prev.name,
-                  notes: prev.notes
-                }));
-              }}
-              className={`group rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                !isPrebuilt
-                  ? "border-indigo-400/70 bg-indigo-500/15 shadow-[0_0_0_1px_rgba(129,140,248,0.3)]"
-                  : "border-slate-700 bg-slate-950/80 hover:border-slate-500"
-              }`}
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <PackageSearch className={`h-5 w-5 ${!isPrebuilt ? "text-indigo-300" : "text-slate-400"}`} />
-                <h3 className="text-sm font-semibold text-slate-100">Pieza suelta</h3>
-              </div>
-              <p className="text-xs text-slate-400">Componentes individuales con categoría, stock y precio dinámico.</p>
-            </button>
-            <button
-              type="button"
-              disabled={isEditMode || submitting}
-              onClick={() => {
-                setForm((prev) => ({
-                  ...defaultValues,
-                  inventoryKind: "PREBUILT_PC",
-                  manualSalePrice: true,
-                  name: prev.name,
-                  notes: prev.notes,
-                  description: PREBUILT_DESCRIPTION_TEMPLATE,
-                  salePrice: calculateSalePrice(prev.costPrice || 0, "USED"),
-                  condition: "USED"
-                }));
-              }}
-              className={`group rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                isPrebuilt
-                  ? "border-cyan-400/70 bg-cyan-500/15 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]"
-                  : "border-slate-700 bg-slate-950/80 hover:border-slate-500"
-              }`}
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <Cpu className={`h-5 w-5 ${isPrebuilt ? "text-cyan-300" : "text-slate-400"}`} />
-                <h3 className="text-sm font-semibold text-slate-100">PC completo / premontado</h3>
-              </div>
-              <p className="text-xs text-slate-400">Equipos terminados con descripción de componentes y stock por unidad.</p>
-            </button>
-          </div>
-          {isEditMode ? (
-            <p className="text-xs text-slate-500">El tipo no se puede cambiar al editar; crea un artículo nuevo.</p>
-          ) : null}
-        </section>
+        {!hideInventoryKindPicker ? (
+          <section className="space-y-3 rounded-xl border border-slate-800/90 bg-slate-950/30 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipo de articulo</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={isEditMode || submitting}
+                onClick={() => {
+                  setForm((prev) => ({
+                    ...defaultValues,
+                    inventoryKind: "PART",
+                    name: prev.name,
+                    notes: prev.notes
+                  }));
+                }}
+                className={`group rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  !isPrebuilt
+                    ? "border-indigo-400/70 bg-indigo-500/15 shadow-[0_0_0_1px_rgba(129,140,248,0.3)]"
+                    : "border-slate-700 bg-slate-950/80 hover:border-slate-500"
+                }`}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <PackageSearch className={`h-5 w-5 ${!isPrebuilt ? "text-indigo-300" : "text-slate-400"}`} />
+                  <h3 className="text-sm font-semibold text-slate-100">Pieza suelta</h3>
+                </div>
+                <p className="text-xs text-slate-400">Componentes individuales con categoría, stock y precio dinámico.</p>
+              </button>
+              <button
+                type="button"
+                disabled={isEditMode || submitting}
+                onClick={() => {
+                  setForm((prev) => ({
+                    ...defaultValues,
+                    inventoryKind: "PREBUILT_PC",
+                    manualSalePrice: true,
+                    name: prev.name,
+                    notes: prev.notes,
+                    description: PREBUILT_DESCRIPTION_TEMPLATE,
+                    salePrice: calculateSalePrice(prev.costPrice || 0, "USED"),
+                    condition: "USED"
+                  }));
+                }}
+                className={`group rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isPrebuilt
+                    ? "border-cyan-400/70 bg-cyan-500/15 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]"
+                    : "border-slate-700 bg-slate-950/80 hover:border-slate-500"
+                }`}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <Cpu className={`h-5 w-5 ${isPrebuilt ? "text-cyan-300" : "text-slate-400"}`} />
+                  <h3 className="text-sm font-semibold text-slate-100">PC completo / premontado</h3>
+                </div>
+                <p className="text-xs text-slate-400">Equipos terminados con descripción de componentes y stock por unidad.</p>
+              </button>
+            </div>
+            {isEditMode ? (
+              <p className="text-xs text-slate-500">El tipo no se puede cambiar al editar; crea un artículo nuevo.</p>
+            ) : null}
+          </section>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Alta de <span className="font-medium text-slate-300">PC completo</span> en inventario (sin plantilla de
+            catálogo).
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
           <div className="space-y-4">

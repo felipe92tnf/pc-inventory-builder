@@ -47,6 +47,21 @@ export const OS_PART_CONDITION: PartCondition = "NEW";
 
 export type MoneyValue = number | string;
 
+/** Plantilla de catalogo (pieza reutilizable). */
+export type PartCatalogEntry = {
+  id: string;
+  sku: string | null;
+  name: string;
+  category: PartCategory;
+  brand: string;
+  model: string;
+  defaultCostPrice: MoneyValue;
+  defaultSalePrice: MoneyValue;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Part = {
   id: string;
   inventoryKind: InventoryKind;
@@ -60,8 +75,41 @@ export type Part = {
   notes: string | null;
   /** Componentes / especificaciones (PREBUILT_PC). */
   description: string;
+  /** Si viene del catalogo de plantillas. */
+  catalogPartId?: string | null;
+  catalogPart?: {
+    id: string;
+    sku: string | null;
+    name: string;
+    brand: string;
+    model: string;
+    category?: PartCategory;
+    defaultCostPrice?: MoneyValue;
+    defaultSalePrice?: MoneyValue;
+  } | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Alta de stock a partir de una entrada del catalogo (crea o suma unidades en `Part`). */
+export type StockFromCatalogPayload = {
+  catalogPartId: string;
+  quantity: number;
+  actualCostPrice: number;
+  salePrice?: number;
+  condition: "NEW" | "USED";
+  notes?: string | null;
+};
+
+export type CreateCatalogPayload = {
+  sku?: string | null;
+  name: string;
+  category: PartCategory;
+  brand?: string;
+  model?: string;
+  defaultCostPrice: number;
+  defaultSalePrice: number;
+  notes?: string | null;
 };
 
 export function isPartPiece(part: Part): boolean {

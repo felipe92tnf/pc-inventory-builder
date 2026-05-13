@@ -1,8 +1,15 @@
 import { http } from "./http";
-import type { Part, PartPayload } from "../types/part";
+import type { Part, PartPayload, StockFromCatalogPayload } from "../types/part";
 
 export function listParts() {
   return http<Part[]>("/parts");
+}
+
+export function createStockFromCatalog(payload: StockFromCatalogPayload) {
+  return http<Part>("/parts/from-catalog", {
+    method: "POST",
+    body: payload
+  });
 }
 
 export function createPart(payload: PartPayload) {

@@ -59,21 +59,6 @@ export function useServices(month, year, filterType, filterStatus) {
             setActionId(null);
         }
     }, [reload]);
-    const registerServicePayment = useCallback(async (id, amount) => {
-        setActionId(id);
-        setError(null);
-        try {
-            await servicesApi.registerServicePayment(id, amount);
-            await reload();
-        }
-        catch (err) {
-            setError(err instanceof Error ? err.message : "No se pudo registrar el pago.");
-            throw err;
-        }
-        finally {
-            setActionId(null);
-        }
-    }, [reload]);
     const deleteService = useCallback(async (id) => {
         setActionId(id);
         setError(null);
@@ -113,7 +98,6 @@ export function useServices(month, year, filterType, filterStatus) {
         reload,
         createService,
         patchService,
-        registerServicePayment,
         deleteService,
         completeService
     };

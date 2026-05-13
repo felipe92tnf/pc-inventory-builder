@@ -60,18 +60,6 @@ export function buildStatusVariant(status) {
             return "neutral";
     }
 }
-export function collectionPaymentVariant(status) {
-    switch (status) {
-        case "PAID":
-            return "completed";
-        case "PARTIAL":
-            return "sent";
-        case "OVERDUE":
-            return "rejected";
-        default:
-            return "pending";
-    }
-}
 export function partConditionVariant(condition) {
     if (condition === "NEW")
         return "new";

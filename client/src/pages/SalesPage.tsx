@@ -11,7 +11,7 @@ import {
   mergeSalesAndServicesMonthlySummaries,
   mergeYearTotalsFromMonthlySummaries,
   minMaxYearsFromData,
-  monthlyRevenueSeriesCombined,
+  monthlyProfitSeriesCombined,
   monthTotalsFromSales,
   marginPercentOnRevenue,
   pctDelta,
@@ -35,6 +35,8 @@ import {
 import { PAGE_HERO, PAGE_OUTER_7XL_SALES, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
+import { SalesExcelImportPanel } from "../components/sales/SalesExcelImportPanel";
+import { SalesImportBatchesPanel } from "../components/sales/SalesImportBatchesPanel";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -103,19 +105,30 @@ function ChevronSales({ open }: { open: boolean }) {
   );
 }
 
-function YearRevenueChart({ series, year }: { series: { month: number; revenue: number }[]; year: number }) {
-  const max = Math.max(...series.map((s) => s.revenue), 1);
+function YearMonthlyProfitChart({ series, year }: { series: { month: number; profit: number }[]; year: number }) {
+  const values = series.map((s) => s.profit);
+  const allZero = values.every((v) => v === 0);
+  const minV = Math.min(...values, 0);
+  const maxV = Math.max(...values, 0);
+  const span = allZero ? 1 : Math.max(maxV - minV, 1e-9);
+
   return (
     <div className="overflow-x-auto pb-2">
       <div className="flex min-w-[640px] items-end gap-2 md:gap-3" style={{ height: CHART_BAR_MAX_PX + 28 }}>
-        {series.map(({ month, revenue }) => {
-          const barH = max > 0 ? Math.max((revenue / max) * CHART_BAR_MAX_PX, revenue > 0 ? 3 : 0) : 0;
+        {series.map(({ month, profit }) => {
+          const barH = allZero
+            ? 0
+            : Math.max(((profit - minV) / span) * CHART_BAR_MAX_PX, Math.abs(profit) > 1e-6 ? 3 : 0);
           return (
             <div key={month} className="flex min-w-0 flex-1 flex-col items-center justify-end">
               <div
-                className="w-full max-w-full rounded-t-md bg-gradient-to-t from-indigo-700 to-cyan-500/75 shadow-sm shadow-indigo-900/40 transition hover:opacity-90"
+                className={`w-full max-w-full rounded-t-md shadow-sm transition hover:opacity-90 ${
+                  profit >= 0
+                    ? "bg-gradient-to-t from-indigo-700 to-emerald-500/75 shadow-indigo-900/40"
+                    : "bg-gradient-to-t from-rose-900 to-rose-500/80 shadow-rose-950/40"
+                }`}
                 style={{ height: barH }}
-                title={`${shortMonth(month, year)}: ${money(revenue)}`}
+                title={`${shortMonth(month, year)}: ${money(profit)}`}
               />
               <span className="mt-2 text-center text-[10px] font-medium capitalize leading-tight text-slate-500">
                 {shortMonth(month, year)}
@@ -214,8 +227,8 @@ export function SalesPage() {
     [annualTotals.totalRevenue, annualTotals.totalProfit]
   );
 
-  const revenueSeries = useMemo(
-    () => monthlyRevenueSeriesCombined(summary, servicesSummary, selectedYear),
+  const profitSeries = useMemo(
+    () => monthlyProfitSeriesCombined(summary, servicesSummary, selectedYear),
     [summary, servicesSummary, selectedYear]
   );
 
@@ -433,6 +446,12 @@ export function SalesPage() {
         </div>
         </div>
       </section>
+
+      <SalesExcelImportPanel onImported={() => void reload()} />
+
+      <div className="mt-6">
+        <SalesImportBatchesPanel onReverted={() => void reload()} />
+      </div>
 
       {error ? (
         <div className="flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between">
@@ -837,9 +856,9 @@ export function SalesPage() {
                 </dl>
               </article>
               <article className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 xl:col-span-2">
-                <h3 className="text-base font-semibold text-slate-100">Ingresos por mes ({selectedYear})</h3>
+                <h3 className="text-base font-semibold text-slate-100">Beneficio por mes ({selectedYear})</h3>
                 <div className="mt-3">
-                  <YearRevenueChart series={revenueSeries} year={selectedYear} />
+                  <YearMonthlyProfitChart series={profitSeries} year={selectedYear} />
                 </div>
               </article>
             </div>

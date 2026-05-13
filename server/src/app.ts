@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { catalogRouter } from "./modules/catalog/catalog.routes.js";
 import { partsRouter } from "./modules/parts/parts.routes.js";
 import { buildsRouter } from "./modules/builds/builds.routes.js";
 import { salesRouter } from "./modules/sales/sales.routes.js";
@@ -17,6 +18,9 @@ app.get("/api/v1/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.use("/api/v1/catalog", catalogRouter);
+/** Alias solicitado para buscador (misma API que /catalog). */
+app.use("/api/v1/catalog-parts", catalogRouter);
 app.use("/api/v1/parts", partsRouter);
 app.use("/api/v1/builds", buildsRouter);
 app.use("/api/v1/sales", salesRouter);

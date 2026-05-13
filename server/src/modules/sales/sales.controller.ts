@@ -1,7 +1,15 @@
 import type { Request, Response } from "express";
-import { ZodError } from "zod";
+import multer from "multer";
+import { z, ZodError } from "zod";
 import type { Build, BuildPartItem, Part, Sale } from "@prisma/client";
 import * as salesService from "./sales.service.js";
+import * as salesImportService from "./sales.import.service.js";
+import * as salesImportRevert from "./sales.import.revert.service.js";
+
+const uploadSalesImport = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }
+});
 
 type SaleWithUnknownBuild = Sale & { build?: unknown };
 
@@ -37,7 +45,9 @@ function serializeSale(sale: SaleWithUnknownBuild) {
     ...rest,
     finalSalePrice: Number(sale.finalSalePrice),
     totalCost: Number(sale.totalCost),
-    profit: Number(sale.profit)
+    profit: Number(sale.profit),
+    importedAt:
+      sale.importedAt instanceof Date ? sale.importedAt.toISOString() : (sale.importedAt as string | null | undefined)
   };
 
   if (!build || typeof build !== "object") {
@@ -97,6 +107,89 @@ function mapSaleError(error: unknown, res: Response) {
 export async function monthlySummaryHandler(_req: Request, res: Response) {
   const data = await salesService.getMonthlySalesSummary();
   res.json(data);
+}
+
+export async function listSalesImportBatchesHandler(_req: Request, res: Response) {
+  const batches = await salesImportRevert.listSalesImportBatches();
+  res.json({ batches });
+}
+
+export async function previewSalesImportBatchHandler(req: Request, res: Response) {
+  try {
+    const batchId = String(req.params.batchId);
+    const preview = await salesImportRevert.previewSalesImportBatchRevert(batchId);
+    res.json(preview);
+  } catch (error) {
+    if (error instanceof Error && error.message === "IMPORT_BATCH_NOT_FOUND") {
+      res.status(404).json({ message: "No existe ese lote de importación o ya fue revertido." });
+      return;
+    }
+    throw error;
+  }
+}
+
+const revertImportBodySchema = z.object({
+  confirmPhrase: z.string()
+});
+
+export async function revertSalesImportBatchHandler(req: Request, res: Response) {
+  try {
+    const batchId = String(req.params.batchId);
+    const parsed = revertImportBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "Falta confirmPhrase (string) en el cuerpo JSON." });
+      return;
+    }
+    const result = await salesImportRevert.revertSalesImportBatch(batchId, parsed.data.confirmPhrase);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "IMPORT_BATCH_NOT_FOUND") {
+        res.status(404).json({ message: "No existe ese lote de importación o ya fue revertido." });
+        return;
+      }
+      if (error.message === "CONFIRMATION_MISMATCH") {
+        res.status(400).json({
+          message: `Frase de confirmación incorrecta. Escribe exactamente: ${salesImportRevert.REVERT_IMPORT_CONFIRM_PHRASE}`
+        });
+        return;
+      }
+    }
+    throw error;
+  }
+}
+
+export async function salesImportPreviewHandler(req: Request, res: Response) {
+  try {
+    const file = req.file;
+    if (!file?.buffer) {
+      res.status(400).json({ message: "Falta el archivo (campo multipart file)." });
+      return;
+    }
+    if (!/\.(xlsx|xls|csv)$/i.test(file.originalname)) {
+      res.status(400).json({ message: "Solo se permiten archivos .xlsx, .xls o .csv." });
+      return;
+    }
+    const rows = salesImportService.buildSalesImportPreview(file.buffer, file.originalname);
+    res.json({ rows });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo leer el archivo.";
+    res.status(400).json({ message });
+  }
+}
+
+export async function salesImportConfirmHandler(req: Request, res: Response) {
+  try {
+    const result = await salesImportService.importSalesConfirm(req.body);
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({ message: "Datos de importación inválidos.", issues: error.flatten() });
+      return;
+    }
+    const message = error instanceof Error ? error.message : "Error al importar.";
+    res.status(400).json({ message });
+  }
 }
 
 export async function createSaleFromBuildHandler(req: Request, res: Response) {
@@ -167,3 +260,5 @@ export async function deleteSaleHandler(req: Request, res: Response) {
     }
   }
 }
+
+export { uploadSalesImport };

@@ -2,6 +2,12 @@ import { http } from "./http";
 export function listParts() {
     return http("/parts");
 }
+export function createStockFromCatalog(payload) {
+    return http("/parts/from-catalog", {
+        method: "POST",
+        body: payload
+    });
+}
 export function createPart(payload) {
     return http("/parts", {
         method: "POST",

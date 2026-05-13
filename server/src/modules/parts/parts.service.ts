@@ -1,19 +1,108 @@
 import type { Prisma } from "@prisma/client";
 import { InventoryKind, PartCategory, PartCondition } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
-import { createPartSchema, updatePartSchema } from "./parts.validators.js";
+import { createPartSchema, stockFromCatalogSchema, updatePartSchema } from "./parts.validators.js";
 import { calculateSalePrice } from "./pricing.js";
+
+const partCatalogSummaryInclude = {
+  catalogPart: {
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      brand: true,
+      model: true,
+      category: true,
+      defaultCostPrice: true,
+      defaultSalePrice: true
+    }
+  }
+} satisfies Prisma.PartInclude;
 
 function isNonStockPartCategory(category: PartCategory): boolean {
   return category === PartCategory.OS || category === PartCategory.LABOR;
 }
 
 export async function listParts() {
-  return prisma.part.findMany({ orderBy: { createdAt: "desc" } });
+  return prisma.part.findMany({
+    orderBy: { createdAt: "desc" },
+    include: partCatalogSummaryInclude
+  });
 }
 
 export async function getPart(id: string) {
-  return prisma.part.findUnique({ where: { id } });
+  return prisma.part.findUnique({
+    where: { id },
+    include: partCatalogSummaryInclude
+  });
+}
+
+export async function createStockFromCatalog(payload: unknown) {
+  const data = stockFromCatalogSchema.parse(payload);
+
+  const catalog = await prisma.partCatalog.findUnique({
+    where: { id: data.catalogPartId }
+  });
+
+  if (!catalog) {
+    throw new Error("CATALOG_NOT_FOUND");
+  }
+
+  const category = catalog.category;
+  const nonStock = isNonStockPartCategory(category);
+
+  let effectiveCondition: PartCondition = data.condition as PartCondition;
+  if (nonStock) {
+    effectiveCondition = PartCondition.NEW;
+  }
+
+  const salePriceResolved =
+    data.salePrice !== undefined
+      ? data.salePrice
+      : (() => {
+          const def = Number(catalog.defaultSalePrice);
+          return def > 0 ? def : calculateSalePrice(data.actualCostPrice, effectiveCondition);
+        })();
+
+  const existing = await prisma.part.findFirst({
+    where: {
+      inventoryKind: InventoryKind.PART,
+      catalogPartId: catalog.id,
+      condition: effectiveCondition
+    }
+  });
+
+  if (existing) {
+    const nextStock = nonStock ? existing.stock : existing.stock + data.quantity;
+    return prisma.part.update({
+      where: { id: existing.id },
+      data: {
+        stock: nextStock,
+        costPrice: data.actualCostPrice,
+        salePrice: salePriceResolved,
+        ...(data.notes !== undefined ? { notes: data.notes } : {})
+      },
+      include: partCatalogSummaryInclude
+    });
+  }
+
+  const stockVal = nonStock ? 0 : data.quantity;
+
+  return prisma.part.create({
+    data: {
+      inventoryKind: InventoryKind.PART,
+      catalogPartId: catalog.id,
+      name: catalog.name,
+      category,
+      condition: effectiveCondition,
+      costPrice: data.actualCostPrice,
+      salePrice: salePriceResolved,
+      stock: stockVal,
+      notes: data.notes ?? null,
+      description: ""
+    },
+    include: partCatalogSummaryInclude
+  });
 }
 
 export async function createPart(payload: unknown) {

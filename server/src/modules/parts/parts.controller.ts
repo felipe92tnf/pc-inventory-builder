@@ -7,6 +7,11 @@ function mapPartError(error: unknown, res: Response): boolean {
     return false;
   }
 
+  if (error.message === "CATALOG_NOT_FOUND") {
+    res.status(404).json({ message: "No existe esa pieza en el catalogo." });
+    return true;
+  }
+
   if (error.message === "PART_IN_USE") {
     res.status(400).json({
       message: "No se puede eliminar esta pieza porque está asociada a un montaje."
@@ -39,6 +44,24 @@ export async function createPartHandler(req: Request, res: Response) {
     const data = await partsService.createPart(req.body);
     res.status(201).json(data);
   } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({
+        message: error.issues.map((issue: ZodIssue) => issue.message).join("; ")
+      });
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function createStockFromCatalogHandler(req: Request, res: Response) {
+  try {
+    const data = await partsService.createStockFromCatalog(req.body);
+    res.status(201).json(data);
+  } catch (error) {
+    if (mapPartError(error, res)) {
+      return;
+    }
     if (error instanceof ZodError) {
       res.status(400).json({
         message: error.issues.map((issue: ZodIssue) => issue.message).join("; ")

@@ -1,6 +1,7 @@
 ﻿import { Router } from "express";
 import {
   createPartHandler,
+  createStockFromCatalogHandler,
   deletePartHandler,
   getPartHandler,
   listPartsHandler,
@@ -10,6 +11,7 @@ import {
 export const partsRouter = Router();
 
 partsRouter.get("/", listPartsHandler);
+partsRouter.post("/from-catalog", createStockFromCatalogHandler);
 partsRouter.get("/:id", getPartHandler);
 partsRouter.post("/", createPartHandler);
 partsRouter.patch("/:id", updatePartHandler);

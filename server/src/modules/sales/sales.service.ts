@@ -157,10 +157,14 @@ export async function deleteSale(id: string) {
 
   await prisma.$transaction(async (tx) => {
     await tx.sale.delete({ where: { id } });
-    await tx.build.update({
-      where: { id: sale.buildId },
-      data: { status: BuildStatus.CONFIRMED }
-    });
+    if (sale.isImported) {
+      await tx.build.delete({ where: { id: sale.buildId } });
+    } else {
+      await tx.build.update({
+        where: { id: sale.buildId },
+        data: { status: BuildStatus.CONFIRMED }
+      });
+    }
   });
 }
 

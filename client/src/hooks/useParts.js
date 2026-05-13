@@ -38,6 +38,29 @@ export function useParts() {
             setSubmitting(false);
         }
     }, []);
+    const createStockFromCatalog = useCallback(async (payload) => {
+        setSubmitting(true);
+        setError(null);
+        try {
+            const part = await partsApi.createStockFromCatalog(payload);
+            setParts((prev) => {
+                const idx = prev.findIndex((p) => p.id === part.id);
+                if (idx >= 0) {
+                    const next = [...prev];
+                    next[idx] = part;
+                    return next;
+                }
+                return [part, ...prev];
+            });
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo registrar el stock.");
+            throw err;
+        }
+        finally {
+            setSubmitting(false);
+        }
+    }, []);
     const updatePart = useCallback(async (partId, payload) => {
         setSubmitting(true);
         setError(null);
@@ -75,6 +98,7 @@ export function useParts() {
         submitting,
         deletingId,
         createPart,
+        createStockFromCatalog,
         updatePart,
         deletePart,
         reload

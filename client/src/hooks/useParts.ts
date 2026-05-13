@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import * as partsApi from "../api/parts";
-import type { Part, PartPayload } from "../types/part";
+import type { Part, PartPayload, StockFromCatalogPayload } from "../types/part";
 
 type UsePartsReturn = {
   parts: Part[];
@@ -9,6 +9,7 @@ type UsePartsReturn = {
   submitting: boolean;
   deletingId: string | null;
   createPart: (payload: PartPayload) => Promise<void>;
+  createStockFromCatalog: (payload: StockFromCatalogPayload) => Promise<void>;
   updatePart: (partId: string, payload: Partial<PartPayload>) => Promise<void>;
   deletePart: (partId: string) => Promise<void>;
   reload: () => Promise<void>;
@@ -53,6 +54,28 @@ export function useParts(): UsePartsReturn {
     }
   }, []);
 
+  const createStockFromCatalog = useCallback(async (payload: StockFromCatalogPayload) => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const part = await partsApi.createStockFromCatalog(payload);
+      setParts((prev) => {
+        const idx = prev.findIndex((p) => p.id === part.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = part;
+          return next;
+        }
+        return [part, ...prev];
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo registrar el stock.");
+      throw err;
+    } finally {
+      setSubmitting(false);
+    }
+  }, []);
+
   const updatePart = useCallback(async (partId: string, payload: Partial<PartPayload>) => {
     setSubmitting(true);
     setError(null);
@@ -88,6 +111,7 @@ export function useParts(): UsePartsReturn {
     submitting,
     deletingId,
     createPart,
+    createStockFromCatalog,
     updatePart,
     deletePart,
     reload

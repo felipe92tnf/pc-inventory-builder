@@ -76,6 +76,16 @@ export const createPartSchema = z.preprocess(
   z.discriminatedUnion("inventoryKind", [createPartPiece, createPartPrebuilt])
 );
 
+/** Alta de stock enlazando una pieza del catalogo (stock = fila `Part`). */
+export const stockFromCatalogSchema = z.object({
+  catalogPartId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  actualCostPrice: z.number().nonnegative(),
+  salePrice: z.number().nonnegative().optional(),
+  condition: z.enum(["NEW", "USED"]),
+  notes: z.string().optional().nullable()
+});
+
 export const updatePartSchema = z.preprocess(
   sanitizeUpdatePayload,
   z.object({
