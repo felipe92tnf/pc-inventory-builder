@@ -274,6 +274,10 @@ export async function patchSaleHandler(req: Request, res: Response) {
   try {
     const id = String(req.params.id);
     const data = await salesService.patchSale(id, req.body);
+    if (!data) {
+      res.status(404).json({ message: "Sale not found" });
+      return;
+    }
     res.json(serializeSale(data));
   } catch (error) {
     if (error instanceof ZodError) {

@@ -7,7 +7,7 @@ function moneyDecimal(value: number): Prisma.Decimal {
   return new Prisma.Decimal(Math.round(value * 100) / 100);
 }
 
-const SELLABLE_FOR_NEW_SALE = new Set([
+const SELLABLE_FOR_NEW_SALE: Set<BuildStatus> = new Set([
   BuildStatus.CONFIRMED,
   BuildStatus.PENDING_PAYMENT,
   BuildStatus.RESERVED
