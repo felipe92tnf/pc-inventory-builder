@@ -560,7 +560,10 @@ export async function convertQuoteToBuild(quoteId: string) {
         name: quote.title.trim(),
         notes: notesBody,
         status: BuildStatus.DRAFT,
-        saleTotalOverride: moneyDecimal(Number(quote.total))
+        saleTotalOverride: moneyDecimal(Number(quote.total)),
+        customerName: quote.customerName.trim(),
+        customerPhone: quote.customerPhone?.trim() || null,
+        customerEmail: quote.customerEmail?.trim() || null
       }
     });
 

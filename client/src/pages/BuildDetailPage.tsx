@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import * as salesApi from "../api/sales";
 import * as extraTemplatesApi from "../api/extraTemplates";
@@ -8,7 +8,7 @@ import { PcConfiguratorForm } from "../components/builds/PcConfiguratorForm";
 import { SellPcModal } from "../components/sales/SellPcModal";
 import { useBuildDetail } from "../hooks/useBuildDetail";
 import { isConfiguratorPart } from "../types/part";
-import type { BuildStatus, UpdateBuildPayload } from "../types/build";
+import type { BuildStatus, ConfirmBuildPayload, UpdateBuildPayload } from "../types/build";
 import type { SaleListRow } from "../types/sale";
 import {
   PRIMARY_ACTION_BUTTON,
@@ -24,7 +24,7 @@ import {
   SUMMARY_VALUE_NEUTRAL,
   SUMMARY_VALUE_PROFIT_POS
 } from "../theme/summaryCards";
-import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
+import { PAGE_HEADER_COMPACT, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
 import type { ExtraTemplate } from "../types/extraTemplate";
 import { buildStatusLabelEs } from "../utils/buildStatusLabel";
@@ -40,6 +40,13 @@ const OPERATIONAL_STATUS_OPTIONS: { value: BuildStatus; label: string }[] = [
   { value: "RESERVED", label: "Reservado" }
 ];
 
+/** Estados admitidos al confirmar desde borrador (sin venta / sin recogida). */
+const CONFIRM_INITIAL_STATUS_OPTIONS: { value: BuildStatus; label: string }[] = [
+  { value: "CONFIRMED", label: "Listo para la venta" },
+  { value: "RESERVED", label: "Reservado" },
+  { value: "PENDING_PAYMENT", label: "Pendiente de pago" }
+];
+
 function isAssembledOperational(status: BuildStatus): boolean {
   return (
     status === "CONFIRMED" ||
@@ -53,6 +60,27 @@ function parseMoneyInput(raw: string): number | null {
   const n = Number(raw.replace(",", ".").trim());
   if (!Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100) / 100;
+}
+
+function slugForPdfFilename(name: string): string {
+  const s = name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+  return s.length > 0 ? s : "montaje";
+}
+
+function roundMoney2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Restante de reserva = precio de venta total − reserva cobrada (no negativo). */
+function reservationRemainingFromTotalAndDeposit(totalSale: number, deposit: number): number {
+  return roundMoney2(Math.max(0, totalSale - deposit));
 }
 
 export function BuildDetailPage() {
@@ -104,6 +132,7 @@ export function BuildDetailPage() {
   }, [build]);
 
   const pricingLocked = build?.status === "SOLD" || build?.status === "PENDING_PICKUP";
+
   const canOpenSellModal =
     build &&
     ["CONFIRMED", "PENDING_PAYMENT", "RESERVED"].includes(build.status) &&
@@ -128,12 +157,55 @@ export function BuildDetailPage() {
   }, []);
   const [sellFormKey, setSellFormKey] = useState(0);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const mountSyncedBuildIdRef = useRef<string | null>(null);
+  const [mountForm, setMountForm] = useState({
+    name: "",
+    customerName: "",
+    customerPhone: "",
+    customerEmail: "",
+    notes: "",
+    initialStatus: "CONFIRMED" as BuildStatus,
+    confirmResDeposit: "",
+    confirmPayPaid: "",
+    confirmPayRemaining: ""
+  });
+  const [mountDataSaved, setMountDataSaved] = useState(false);
+
+  const headerClientLine = useMemo(() => {
+    if (!build) return null;
+    if (build.status === "DRAFT") {
+      const a = mountForm.customerName.trim();
+      const b = mountForm.customerPhone.trim();
+      if (!a && !b) return null;
+      return [a, b].filter(Boolean).join(" · ");
+    }
+    const a = (build.customerName ?? "").trim();
+    const b = (build.customerPhone ?? "").trim();
+    if (!a && !b) return null;
+    return [a, b].filter(Boolean).join(" · ");
+  }, [build, mountForm.customerName, mountForm.customerPhone]);
 
   const [opStatus, setOpStatus] = useState<BuildStatus>("CONFIRMED");
   const [resDeposit, setResDeposit] = useState("");
-  const [resRemaining, setResRemaining] = useState("");
   const [payPaid, setPayPaid] = useState("");
   const [payRemaining, setPayRemaining] = useState("");
+
+  /** Restante calculado al editar reserva (estado operativo Reservado). */
+  const derivedReservationRemaining = useMemo(() => {
+    const d = parseMoneyInput(resDeposit);
+    if (d === null) return null;
+    return reservationRemainingFromTotalAndDeposit(totalSaleShown, d);
+  }, [resDeposit, totalSaleShown]);
+
+  /** Restante al confirmar borrador como Reservado. */
+  const draftDerivedReservationRemaining = useMemo(() => {
+    const d = parseMoneyInput(mountForm.confirmResDeposit);
+    if (d === null) return null;
+    return reservationRemainingFromTotalAndDeposit(totalSaleShown, d);
+  }, [mountForm.confirmResDeposit, totalSaleShown]);
 
   useEffect(() => {
     if (!build) return;
@@ -152,7 +224,6 @@ export function BuildDetailPage() {
       setOpStatus(build.status);
     }
     setResDeposit(build.reservationDeposit != null ? Number(build.reservationDeposit).toFixed(2) : "");
-    setResRemaining(build.reservationRemaining != null ? Number(build.reservationRemaining).toFixed(2) : "");
     setPayPaid(build.pendingPaymentPaid != null ? Number(build.pendingPaymentPaid).toFixed(2) : "");
     setPayRemaining(
       build.pendingPaymentRemaining != null ? Number(build.pendingPaymentRemaining).toFixed(2) : ""
@@ -177,6 +248,24 @@ export function BuildDetailPage() {
     setFlashMessage(msg);
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (!build) return;
+    if (mountSyncedBuildIdRef.current === build.id) return;
+    mountSyncedBuildIdRef.current = build.id;
+    setMountForm({
+      name: build.name,
+      customerName: build.customerName ?? "",
+      customerPhone: build.customerPhone ?? "",
+      customerEmail: build.customerEmail ?? "",
+      notes: build.notes ?? "",
+      initialStatus: "CONFIRMED",
+      confirmResDeposit: "",
+      confirmPayPaid: "",
+      confirmPayRemaining: ""
+    });
+    setMountDataSaved(false);
+  }, [build]);
 
   useEffect(() => {
     if (loading || !build) return;
@@ -209,13 +298,16 @@ export function BuildDetailPage() {
     const payload: UpdateBuildPayload = { status: opStatus };
     if (opStatus === "RESERVED") {
       const d = parseMoneyInput(resDeposit);
-      const r = parseMoneyInput(resRemaining);
-      if (d === null || r === null) {
-        window.alert("Indica reserva cobrada y cantidad restante (numeros validos >= 0).");
+      if (d === null) {
+        window.alert("Indica la reserva cobrada (numero valido >= 0).");
+        return;
+      }
+      if (d > totalSaleShown + 0.005) {
+        window.alert("La reserva cobrada no puede ser mayor que el precio de venta total del montaje.");
         return;
       }
       payload.reservationDeposit = d;
-      payload.reservationRemaining = r;
+      payload.reservationRemaining = reservationRemainingFromTotalAndDeposit(totalSaleShown, d);
     } else if (opStatus === "PENDING_PAYMENT") {
       const p = parseMoneyInput(payPaid);
       const r = parseMoneyInput(payRemaining);
@@ -240,6 +332,139 @@ export function BuildDetailPage() {
       }
     })();
   };
+
+  const handleSaveMountData = async () => {
+    const emailTrim = mountForm.customerEmail.trim();
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      window.alert("Introduce un email valido o dejalo vacio.");
+      return;
+    }
+    if (!mountForm.name.trim()) {
+      window.alert("Indica al menos un nombre para el montaje.");
+      return;
+    }
+    try {
+      await updateBuildFields({
+        name: mountForm.name.trim(),
+        notes: mountForm.notes.trim() ? mountForm.notes.trim() : null,
+        customerName: mountForm.customerName.trim() ? mountForm.customerName.trim() : null,
+        customerPhone: mountForm.customerPhone.trim() ? mountForm.customerPhone.trim() : null,
+        customerEmail: emailTrim ? emailTrim : null
+      });
+      setMountDataSaved(true);
+      window.setTimeout(() => setMountDataSaved(false), 2800);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "No se pudieron guardar los datos.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const handleConfirmMontaje = async () => {
+    if (!build) return;
+    const name = mountForm.name.trim();
+    const customerName = mountForm.customerName.trim();
+    const phone = mountForm.customerPhone.trim();
+    const emailTrim = mountForm.customerEmail.trim();
+
+    if (!name) {
+      window.alert("Indica un nombre para el montaje.");
+      return;
+    }
+    if (!customerName) {
+      window.alert("Indica el nombre del cliente.");
+      return;
+    }
+    if (!phone) {
+      window.alert("Indica un telefono de contacto.");
+      return;
+    }
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      window.alert("Introduce un email valido o dejalo vacio.");
+      return;
+    }
+
+    const saleNum = parseMoneyInput(saleDraft);
+    if (saleNum === null) {
+      window.alert("Introduce un precio de venta total valido (mayor o igual que 0).");
+      return;
+    }
+
+    const patch: UpdateBuildPayload = {
+      name,
+      notes: mountForm.notes.trim() ? mountForm.notes.trim() : null,
+      customerName,
+      customerPhone: phone,
+      customerEmail: emailTrim ? emailTrim : null
+    };
+
+    const roundedSale = Math.round(saleNum * 100) / 100;
+    const computed = Number(build.computedSaleTotal);
+    if (Math.abs(roundedSale - computed) < 0.005) {
+      patch.saleTotalOverride = null;
+    } else {
+      patch.saleTotalOverride = roundedSale;
+    }
+
+    const confirmPayload: ConfirmBuildPayload = { initialStatus: mountForm.initialStatus };
+    if (mountForm.initialStatus === "RESERVED") {
+      const d = parseMoneyInput(mountForm.confirmResDeposit);
+      if (d === null) {
+        window.alert("Indica la reserva cobrada (numero valido >= 0).");
+        return;
+      }
+      const saleTotalForReserve = roundedSale;
+      if (d > saleTotalForReserve + 0.005) {
+        window.alert("La reserva cobrada no puede ser mayor que el precio de venta total.");
+        return;
+      }
+      confirmPayload.reservationDeposit = d;
+      confirmPayload.reservationRemaining = reservationRemainingFromTotalAndDeposit(saleTotalForReserve, d);
+    } else if (mountForm.initialStatus === "PENDING_PAYMENT") {
+      const p = parseMoneyInput(mountForm.confirmPayPaid);
+      const r = parseMoneyInput(mountForm.confirmPayRemaining);
+      if (p === null || r === null) {
+        window.alert("Indica importe cobrado y pendiente (numeros validos >= 0).");
+        return;
+      }
+      confirmPayload.pendingPaymentPaid = p;
+      confirmPayload.pendingPaymentRemaining = r;
+    }
+
+    try {
+      await updateBuildFields(patch);
+      await confirm(confirmPayload);
+      navigate("/builds", { state: { flash: `Montaje confirmado: ${name}.` } });
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "No se pudo confirmar el montaje.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const handleDownloadBuildPdf = useCallback(async () => {
+    if (!build) return;
+    setPdfGenerating(true);
+    setPdfError(null);
+    try {
+      const [{ pdf }, { BuildPdfDocument }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("../components/builds/BuildPdfDocument")
+      ]);
+      const blob = await pdf(<BuildPdfDocument build={build} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `montaje-${slugForPdfFilename(build.name)}.pdf`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : "No se pudo generar el PDF.");
+    } finally {
+      setPdfGenerating(false);
+    }
+  }, [build]);
 
   if (!id) {
     return (
@@ -279,13 +504,62 @@ export function BuildDetailPage() {
           </button>
         </div>
       ) : null}
-      <section className={PAGE_HERO}>
-        <div className="flex flex-wrap items-start justify-between gap-2.5">
-          <div>
-            <h1 className="text-2xl font-bold">{build.name}</h1>
-            <p className="mt-1 text-sm text-slate-300">{build.notes || "Sin descripcion."}</p>
+      {pdfError ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
+          <span>{pdfError}</span>
+          <button
+            type="button"
+            onClick={() => setPdfError(null)}
+            className="rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1 text-xs font-semibold text-rose-100 hover:bg-rose-800/70"
+          >
+            Cerrar
+          </button>
+        </div>
+      ) : null}
+      <header className={PAGE_HEADER_COMPACT}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="min-w-0 max-w-full truncate text-lg font-bold tracking-tight text-slate-50 sm:text-xl">
+                {build.status === "DRAFT" ? mountForm.name.trim() || "Montaje en borrador" : build.name}
+              </h1>
+              <StatusBadge variant={buildStatusVariant(build.status)} size="card">
+                {buildStatusLabelEs(build.status)}
+              </StatusBadge>
+            </div>
+            {headerClientLine ? (
+              <p className="truncate text-sm text-slate-400">{headerClientLine}</p>
+            ) : null}
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+            {showPickupBanner ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => handleConfirmPickupFromBuild()}
+                className="rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50 sm:text-sm"
+              >
+                Confirmar recogida
+              </button>
+            ) : null}
+            {linkedSale ? (
+              <Link
+                to={`/sales/${linkedSale.id}`}
+                className="text-xs font-semibold text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline sm:text-sm"
+              >
+                Ver venta
+              </Link>
+            ) : build.status === "SOLD" ? (
+              <span className="text-xs text-slate-500">Buscando venta…</span>
+            ) : null}
+            <button
+              type="button"
+              disabled={pdfGenerating || actionLoading}
+              onClick={() => void handleDownloadBuildPdf()}
+              className={SECONDARY_BUTTON_SM}
+            >
+              {pdfGenerating ? "PDF…" : "Descargar PDF"}
+            </button>
             {canOpenSellModal ? (
               <button
                 type="button"
@@ -299,35 +573,12 @@ export function BuildDetailPage() {
                 Vender PC
               </button>
             ) : null}
-            {showPickupBanner ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => handleConfirmPickupFromBuild()}
-                className="rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
-              >
-                Confirmar recogida
-              </button>
-            ) : null}
-            <StatusBadge variant={buildStatusVariant(build.status)} size="card">
-              {buildStatusLabelEs(build.status)}
-            </StatusBadge>
-            {linkedSale ? (
-              <Link
-                to={`/sales/${linkedSale.id}`}
-                className="text-sm font-semibold text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
-              >
-                Ver venta
-              </Link>
-            ) : build.status === "SOLD" ? (
-              <span className="text-xs text-slate-500">Buscando venta...</span>
-            ) : null}
+            <Link to="/builds" className={`${SECONDARY_BUTTON_SM} inline-flex items-center justify-center`}>
+              ← Montajes
+            </Link>
           </div>
         </div>
-        <Link to="/builds" className="mt-4 inline-flex text-sm font-medium text-indigo-300 hover:text-indigo-200">
-          ← Volver a montajes
-        </Link>
-      </section>
+      </header>
 
       {error ? (
         <div className="flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between">
@@ -344,128 +595,27 @@ export function BuildDetailPage() {
         </div>
       ) : null}
 
-      {isAssembledOperational(build.status) && build.status !== "SOLD" ? (
-        <section className={SECTION_SHELL}>
-          <h2 className="text-lg font-semibold text-slate-100">Estado del montaje</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Listo para la venta, pendiente de recogida (ya cobrado), pendiente de pago o reservado con anticipo. Pendiente
-            de recogida requiere registrar la venta marcando &quot;Pendiente de recogida&quot; al cobrar.
-          </p>
-          <div className="mt-4 flex max-w-2xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-sm font-medium text-slate-200">
-              Situacion
-              <select
-                value={opStatus}
-                onChange={(e) => {
-                  const next = e.target.value as BuildStatus;
-                  if (next === "PENDING_PAYMENT" && build) {
-                    setPayPaid("0.00");
-                    setPayRemaining(totalSaleShown > 0 ? totalSaleShown.toFixed(2) : "0.00");
-                  }
-                  setOpStatus(next);
-                }}
-                disabled={actionLoading}
-                className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-              >
-                {OPERATIONAL_STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {opStatus === "RESERVED" ? (
-              <>
-                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
-                  Reserva (EUR)
-                  <input
-                    value={resDeposit}
-                    onChange={(e) => setResDeposit(e.target.value)}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
-                  Restante (EUR)
-                  <input
-                    value={resRemaining}
-                    onChange={(e) => setResRemaining(e.target.value)}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-              </>
-            ) : null}
-            {opStatus === "PENDING_PAYMENT" ? (
-              <>
-                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
-                  Cobrado (EUR)
-                  <input
-                    value={payPaid}
-                    onChange={(e) => setPayPaid(e.target.value)}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-                <label className="flex w-36 flex-col gap-1 text-sm font-medium text-slate-200">
-                  Pendiente (EUR)
-                  <input
-                    value={payRemaining}
-                    onChange={(e) => setPayRemaining(e.target.value)}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-              </>
-            ) : null}
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() => void handleSaveOperationalStatus()}
-              className={SECONDARY_BUTTON_SM}
-            >
-              Guardar estado
-            </button>
-          </div>
-        </section>
-      ) : null}
-
       <section className={SUMMARY_CARD_GRID_THREE}>
         <article className={SUMMARY_CARD_SHELL}>
           <p className={SUMMARY_CARD_LABEL}>Coste total</p>
           <p className={SUMMARY_VALUE_NEUTRAL}>{money(build.totalCost)}</p>
         </article>
         <article className={SUMMARY_CARD_SHELL_AUTO}>
-          <p className={SUMMARY_CARD_LABEL}>Precio venta total</p>
+          <p className={SUMMARY_CARD_LABEL}>Precio venta</p>
           <input
             type="text"
             inputMode="decimal"
             value={saleDraft}
             onChange={(event) => setSaleDraft(event.target.value)}
             disabled={actionLoading || pricingLocked}
-            className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-xl font-bold text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-xl font-bold tabular-nums text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50 sm:text-2xl"
             aria-label="Precio de venta total"
+            title={`Calculado por líneas: ${money(build.computedSaleTotal)}`}
           />
-          <p className="mt-2 text-xs text-slate-500">
-            Suma piezas + extras:{" "}
-            <span className="font-medium text-slate-400">{money(build.computedSaleTotal)}</span>
-          </p>
           {build.saleTotalOverride != null ? (
-            <>
-              <p className="mt-1 text-xs font-medium text-amber-300/90">Precio personalizado activo</p>
-              <p className="mt-1 text-xs text-slate-500">
-                El total del campo superior sustituye a la suma de ventas por pieza. Puedes volver al total calculado con
-                el boton de abajo.
-              </p>
-            </>
-          ) : (
-            <p className="mt-1 text-xs text-slate-500">Usando suma de lineas (componentes + extras)</p>
-          )}
-          <div className="mt-3 flex flex-col gap-2">
+            <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">Total manual</p>
+          ) : null}
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={actionLoading || pricingLocked}
@@ -480,7 +630,7 @@ export function BuildDetailPage() {
               }}
               className={SECONDARY_BUTTON_SM}
             >
-              Guardar precio (total manual)
+              Guardar precio
             </button>
             {build.saleTotalOverride != null ? (
               <button
@@ -489,9 +639,9 @@ export function BuildDetailPage() {
                 onClick={() => {
                   void updateBuildFields({ saleTotalOverride: null });
                 }}
-                className="w-full rounded-lg border border-emerald-500/45 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 shadow-sm transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-start"
+                className="rounded-lg border border-emerald-500/45 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Usar suma calculada ({money(build.computedSaleTotal)})
+                Usar calculado ({money(build.computedSaleTotal)})
               </button>
             ) : null}
           </div>
@@ -505,19 +655,233 @@ export function BuildDetailPage() {
       </section>
 
       {build.status === "DRAFT" ? (
+        <section className={`${SECTION_SHELL} !py-3`} aria-label="Estado al confirmar">
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Estado al confirmar
+              <select
+                value={mountForm.initialStatus}
+                onChange={(e) => {
+                  const next = e.target.value as BuildStatus;
+                  setMountForm((m) => {
+                    const patch = { ...m, initialStatus: next };
+                    if (next === "PENDING_PAYMENT") {
+                      return {
+                        ...patch,
+                        confirmPayPaid: "0.00",
+                        confirmPayRemaining: totalSaleShown > 0 ? totalSaleShown.toFixed(2) : "0.00"
+                      };
+                    }
+                    return patch;
+                  });
+                }}
+                disabled={actionLoading}
+                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              >
+                {CONFIRM_INITIAL_STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {mountForm.initialStatus === "RESERVED" ? (
+              <>
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Reserva cobrada
+                  <input
+                    value={mountForm.confirmResDeposit}
+                    onChange={(e) => setMountForm((m) => ({ ...m, confirmResDeposit: e.target.value }))}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+                <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-3 py-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Restante</span>
+                  <span className="text-base font-bold tabular-nums text-slate-100">
+                    {draftDerivedReservationRemaining === null ? "—" : money(draftDerivedReservationRemaining)}
+                  </span>
+                </div>
+              </>
+            ) : null}
+            {mountForm.initialStatus === "PENDING_PAYMENT" ? (
+              <>
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Ya cobrado
+                  <input
+                    value={mountForm.confirmPayPaid}
+                    onChange={(e) => setMountForm((m) => ({ ...m, confirmPayPaid: e.target.value }))}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Pendiente
+                  <input
+                    value={mountForm.confirmPayRemaining}
+                    onChange={(e) => setMountForm((m) => ({ ...m, confirmPayRemaining: e.target.value }))}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+              </>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {isAssembledOperational(build.status) && build.status !== "SOLD" ? (
+        <section
+          className={`${SECTION_SHELL} !py-3`}
+          aria-label="Estado y cobro"
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+            <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Estado
+              <select
+                value={opStatus}
+                onChange={(e) => {
+                  const next = e.target.value as BuildStatus;
+                  if (next === "PENDING_PAYMENT" && build) {
+                    setPayPaid("0.00");
+                    setPayRemaining(totalSaleShown > 0 ? totalSaleShown.toFixed(2) : "0.00");
+                  }
+                  setOpStatus(next);
+                }}
+                disabled={actionLoading}
+                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              >
+                {OPERATIONAL_STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {opStatus === "RESERVED" ? (
+              <>
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Reserva cobrada
+                  <input
+                    value={resDeposit}
+                    onChange={(e) => setResDeposit(e.target.value)}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+                <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-3 py-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Restante</span>
+                  <span className="text-base font-bold tabular-nums text-slate-100">
+                    {derivedReservationRemaining === null ? "—" : money(derivedReservationRemaining)}
+                  </span>
+                </div>
+              </>
+            ) : null}
+            {opStatus === "PENDING_PAYMENT" ? (
+              <>
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Cobrado
+                  <input
+                    value={payPaid}
+                    onChange={(e) => setPayPaid(e.target.value)}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Pendiente
+                  <input
+                    value={payRemaining}
+                    onChange={(e) => setPayRemaining(e.target.value)}
+                    disabled={actionLoading}
+                    inputMode="decimal"
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                  />
+                </label>
+              </>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {build.status === "DRAFT" ? (
         <section className={SECTION_SHELL}>
-          <h2 className="text-lg font-semibold text-slate-100">Anadir extra (plantilla)</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Conceptos sin stock (Windows, instalacion, etc.). Precios por defecto; puedes ajustarlos en la tabla.
-          </p>
-          <div className="mt-3 flex max-w-xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-medium text-slate-400">
-              Plantilla
+          {mountDataSaved ? (
+            <p className="mb-3 text-xs font-medium text-emerald-300/90">Guardado.</p>
+          ) : null}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
+              Nombre del montaje
+              <input
+                value={mountForm.name}
+                onChange={(e) => setMountForm((m) => ({ ...m, name: e.target.value }))}
+                disabled={actionLoading}
+                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                placeholder="Ej: PC Oficina Garcia"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Cliente
+              <input
+                value={mountForm.customerName}
+                onChange={(e) => setMountForm((m) => ({ ...m, customerName: e.target.value }))}
+                disabled={actionLoading}
+                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                placeholder="Nombre y apellidos"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Telefono
+              <input
+                value={mountForm.customerPhone}
+                onChange={(e) => setMountForm((m) => ({ ...m, customerPhone: e.target.value }))}
+                disabled={actionLoading}
+                inputMode="tel"
+                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                placeholder="600 000 000"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
+              Email (opcional)
+              <input
+                type="email"
+                value={mountForm.customerEmail}
+                onChange={(e) => setMountForm((m) => ({ ...m, customerEmail: e.target.value }))}
+                disabled={actionLoading}
+                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                placeholder="cliente@correo.es"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
+              Notas
+              <textarea
+                value={mountForm.notes}
+                onChange={(e) => setMountForm((m) => ({ ...m, notes: e.target.value }))}
+                disabled={actionLoading}
+                rows={2}
+                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                placeholder="Preferencias, plazo…"
+              />
+            </label>
+          </div>
+        </section>
+      ) : null}
+
+      {build.status === "DRAFT" ? (
+        <section className={`${SECTION_SHELL} !py-3`}>
+          <div className="flex max-w-3xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Extra
               <select
                 value={extraTemplateId}
                 disabled={actionLoading}
                 onChange={(e) => setExtraTemplateId(e.target.value)}
-                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
               >
                 <option value="">Elegir…</option>
                 {extraTemplates.map((t) => (
@@ -528,15 +892,15 @@ export function BuildDetailPage() {
                 ))}
               </select>
             </label>
-            <label className="flex w-24 flex-col gap-1 text-xs font-medium text-slate-400">
-              Cantidad
+            <label className="flex w-20 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Uds.
               <input
                 type="number"
                 min={1}
                 value={extraQty}
                 disabled={actionLoading}
                 onChange={(e) => setExtraQty(Math.max(1, Number(e.target.value) || 1))}
-                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
               />
             </label>
             <button
@@ -547,17 +911,45 @@ export function BuildDetailPage() {
               }}
               className={SECONDARY_BUTTON_SM}
             >
-              Anadir extra
+              Añadir
             </button>
           </div>
         </section>
       ) : null}
 
       {build.status === "DRAFT" ? (
-        <PcConfiguratorForm parts={configuratorParts} disabled={actionLoading} onAddSelected={handleAddConfiguratorParts} />
+        <PcConfiguratorForm
+          parts={configuratorParts}
+          disabled={actionLoading}
+          onAddSelected={handleAddConfiguratorParts}
+          heading="Añadir piezas"
+          lead=""
+          compact
+        />
       ) : null}
 
+      <div className="space-y-2">
+        <h2 className="text-base font-semibold tracking-tight text-slate-100 sm:text-lg">Componentes</h2>
+        <BuildItemsTable
+          prominent
+          items={build.items}
+          status={build.status}
+          actionLoading={actionLoading}
+          onRemove={async (itemId) => {
+            await removeItem(itemId);
+          }}
+          onUpdateLineSale={
+            build.status === "DRAFT"
+              ? async (itemId, unitSalePrice) => {
+                  await updateBuildItemLine(itemId, { unitSalePrice });
+                }
+              : undefined
+          }
+        />
+      </div>
+
       <BuildExtraLinesTable
+        compactHeader
         lines={build.extraLines ?? []}
         status={build.status}
         actionLoading={actionLoading}
@@ -576,35 +968,31 @@ export function BuildDetailPage() {
         }
       />
 
-      <BuildItemsTable
-        items={build.items}
-        status={build.status}
-        actionLoading={actionLoading}
-        onRemove={async (itemId) => {
-          await removeItem(itemId);
-        }}
-        onUpdateLineSale={
-          build.status === "DRAFT"
-            ? async (itemId, unitSalePrice) => {
-                await updateBuildItemLine(itemId, { unitSalePrice });
-              }
-            : undefined
-        }
-      />
-
-      <section className={SECTION_SHELL}>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-100">Confirmar montaje</h2>
-            <p className="text-sm text-slate-300">
-              {pricingLocked
-                ? build.status === "PENDING_PICKUP"
-                  ? "Cobrado; pendiente de que el cliente recoja el equipo. Confirma la recogida cuando lo entregues."
-                  : "Montaje vendido. Para cambiar piezas, elimina primero la venta en la ficha de venta."
-                : "Valida stock y descuenta inventario. Despues quedara bloqueado para edicion."}
-            </p>
-          </div>
+      <section className="rounded-xl border border-slate-800/90 bg-slate-950/40 px-3 py-3 sm:px-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
+            {build.status === "DRAFT" ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void handleSaveMountData()}
+                className={SECONDARY_BUTTON_SM}
+              >
+                Guardar cambios
+              </button>
+            ) : null}
+            {isAssembledOperational(build.status) && build.status !== "SOLD" ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void handleSaveOperationalStatus()}
+                className={SECONDARY_BUTTON_SM}
+              >
+                Guardar estado
+              </button>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
             {isAssembledOperational(build.status) && !linkedSale ? (
               <button
                 type="button"
@@ -616,9 +1004,9 @@ export function BuildDetailPage() {
                   if (!ok) return;
                   void revertToDraft();
                 }}
-                className="rounded-lg border border-amber-500/50 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-amber-500/50 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
               >
-                {actionLoading ? "Procesando..." : "Volver a borrador"}
+                {actionLoading ? "…" : "Volver a borrador"}
               </button>
             ) : null}
             <button
@@ -628,9 +1016,7 @@ export function BuildDetailPage() {
                 actionLoading ||
                 ((build.items?.length ?? 0) === 0 && (build.extraLines?.length ?? 0) === 0)
               }
-              onClick={() => {
-                void confirm();
-              }}
+              onClick={() => void handleConfirmMontaje()}
               className={PRIMARY_ACTION_BUTTON}
             >
               {build.status === "SOLD" || build.status === "PENDING_PICKUP"
@@ -655,6 +1041,11 @@ export function BuildDetailPage() {
         offerPendingPickup
         disabled={actionLoading}
         formResetKey={sellFormKey}
+        defaultCustomer={{
+          customerName: build.customerName,
+          customerPhone: build.customerPhone,
+          customerEmail: build.customerEmail
+        }}
         onSuccess={async (sale) => {
           await reload();
           setSellModalOpen(false);

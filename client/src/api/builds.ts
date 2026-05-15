@@ -4,6 +4,7 @@ import type {
   AddBuildItemPayload,
   Build,
   BuildDetail,
+  ConfirmBuildPayload,
   CreateBuildPayload,
   UpdateBuildExtraLinePayload,
   UpdateBuildPayload,
@@ -90,9 +91,10 @@ export function deleteBuildExtraLine(buildId: string, lineId: string) {
   });
 }
 
-export function confirmBuild(buildId: string) {
+export function confirmBuild(buildId: string, payload?: ConfirmBuildPayload) {
   return http<BuildDetail>(`/builds/${buildId}/confirm`, {
-    method: "POST"
+    method: "POST",
+    body: payload ?? {}
   });
 }
 

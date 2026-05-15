@@ -168,7 +168,7 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected, catalogSale
     const busy = disabled || submitting;
     return (_jsxs("section", { className: compact
             ? "rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/40 sm:p-4"
-            : SECTION_SHELL, children: [_jsx("h2", { className: compact ? "mb-0.5 text-base font-semibold text-slate-100" : "mb-1 text-lg font-semibold text-slate-100", children: heading }), _jsx("p", { className: compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-3 text-sm text-slate-400", children: lead }), _jsx("div", { className: compact ? "space-y-2" : "space-y-3", children: CONFIGURATOR_SLOTS.map((slot) => {
+            : SECTION_SHELL, children: [_jsx("h2", { className: compact ? "mb-0.5 text-base font-semibold text-slate-100" : "mb-1 text-lg font-semibold text-slate-100", children: heading }), lead !== "" ? (_jsx("p", { className: compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-3 text-sm text-slate-400", children: lead })) : null, _jsx("div", { className: compact ? "space-y-2" : "space-y-3", children: CONFIGURATOR_SLOTS.map((slot) => {
                     const options = partsBySlot.get(slot.id) ?? [];
                     const selected = selectedPartBySlot.get(slot.id) ?? null;
                     const selectValue = selections[slot.id];

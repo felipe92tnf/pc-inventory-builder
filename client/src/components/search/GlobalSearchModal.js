@@ -8,6 +8,7 @@ import * as quotesApi from "../../api/quotes";
 import * as salesApi from "../../api/sales";
 import * as servicesApi from "../../api/services";
 import { SECTION_SHELL } from "../../theme/layoutDensity";
+import { buildStatusLabelEs } from "../../utils/buildStatusLabel";
 const DEBOUNCE_MS = 280;
 const CACHE_MS = 120000;
 const MAX_PER_GROUP = 8;
@@ -145,7 +146,7 @@ function rawHits(q, data) {
                 key: `b-${build.id}`,
                 category: "montaje",
                 title: build.name,
-                subtitle: build.status === "SOLD" ? "Vendido" : build.status === "CONFIRMED" ? "Ensamblado" : "Borrador",
+                subtitle: buildStatusLabelEs(build.status),
                 to: `/builds/${build.id}`
             });
         }

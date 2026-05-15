@@ -7,6 +7,8 @@ type BuildExtraLinesTableProps = {
   actionLoading: boolean;
   onRemove: (lineId: string) => Promise<void>;
   onUpdateLine?: (lineId: string, unitSalePrice: number, unitCost?: number) => Promise<void>;
+  /** Cabecera de sección más compacta (detalle montaje). */
+  compactHeader?: boolean;
 };
 
 function money(value: number | string): string {
@@ -26,7 +28,8 @@ export function BuildExtraLinesTable({
   status,
   actionLoading,
   onRemove,
-  onUpdateLine
+  onUpdateLine,
+  compactHeader = false
 }: BuildExtraLinesTableProps) {
   if (lines.length === 0) {
     return null;
@@ -35,10 +38,22 @@ export function BuildExtraLinesTable({
   const editable = status === "DRAFT" && onUpdateLine !== undefined;
 
   return (
-    <section className="mt-6 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
-      <div className="border-b border-slate-800 px-4 py-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Extras (sin stock)</h2>
-        <p className="mt-1 text-xs text-slate-500">SO, instalaciones, packs — no descuentan inventario.</p>
+    <section
+      className={`overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 ${compactHeader ? "mt-3" : "mt-6"}`}
+    >
+      <div className={`border-b border-slate-800 ${compactHeader ? "px-3 py-2" : "px-4 py-3"}`}>
+        <h2
+          className={
+            compactHeader
+              ? "text-sm font-semibold tracking-tight text-slate-200"
+              : "text-sm font-semibold uppercase tracking-wide text-slate-400"
+          }
+        >
+          Extras
+        </h2>
+        {!compactHeader ? (
+          <p className="mt-1 text-xs text-slate-500">SO, instalaciones, packs — no descuentan inventario.</p>
+        ) : null}
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm text-slate-200">
@@ -138,8 +153,11 @@ export function BuildExtraLinesTable({
                       <span className="text-slate-300">
                         {money(line.unitSalePrice)}
                         {saleCustom ? (
-                          <span className="ml-2 rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200/95">
-                            Personalizado
+                          <span
+                            className="ml-1.5 text-amber-300/90"
+                            title={`Distinto de plantilla (${tplSale.toFixed(2)} EUR)`}
+                          >
+                            *
                           </span>
                         ) : null}
                       </span>

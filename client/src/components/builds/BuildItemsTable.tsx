@@ -8,6 +8,8 @@ type BuildItemsTableProps = {
   onRemove: (itemId: string) => Promise<void>;
   /** Solo montaje en borrador: permite editar precio de venta unitario por linea (PATCH unitSalePrice). */
   onUpdateLineSale?: (itemId: string, unitSalePrice: number) => Promise<void>;
+  /** Tabla más destacada (detalle montaje). */
+  prominent?: boolean;
 };
 
 function money(value: number | string): string {
@@ -28,7 +30,8 @@ export function BuildItemsTable({
   status,
   actionLoading,
   onRemove,
-  onUpdateLineSale
+  onUpdateLineSale,
+  prominent = false
 }: BuildItemsTableProps) {
   if (items.length === 0) {
     return (
@@ -39,18 +42,23 @@ export function BuildItemsTable({
   }
 
   const editableSale = status === "DRAFT" && onUpdateLineSale !== undefined;
+  const th = prominent ? "px-3 py-3 text-sm font-semibold" : TABLE_CELL;
+  const tdBase = prominent ? "px-3 py-3 text-sm" : TABLE_CELL;
+  const partCell = prominent ? `${tdBase} text-base font-semibold text-slate-50` : `${tdBase} font-medium text-slate-100`;
+  const qtyCell = prominent ? `${tdBase} text-base tabular-nums text-slate-200` : `${tdBase} text-slate-300`;
+  const moneyCell = prominent ? `${tdBase} text-base tabular-nums text-slate-200` : `${tdBase} text-slate-300`;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm text-slate-200">
-          <thead className="bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400">
-            <tr>
-              <th className={TABLE_CELL}>Pieza</th>
-              <th className={TABLE_CELL}>Cantidad</th>
-              <th className={TABLE_CELL}>Coste unitario</th>
-              <th className={TABLE_CELL}>Venta unitaria</th>
-              <th className={`${TABLE_CELL} text-right`}>Acciones</th>
+        <table className="min-w-full text-left text-slate-200">
+          <thead className="bg-slate-950/70 text-slate-400">
+            <tr className={prominent ? "text-sm uppercase tracking-wide" : "text-xs uppercase tracking-wide"}>
+              <th className={th}>Pieza</th>
+              <th className={th}>Cantidad</th>
+              <th className={th}>Coste u.</th>
+              <th className={th}>Venta u.</th>
+              <th className={`${th} text-right`}>Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
@@ -61,6 +69,7 @@ export function BuildItemsTable({
                 editableSale={editableSale}
                 actionLoading={actionLoading}
                 status={status}
+                prominent={prominent}
                 onRemove={onRemove}
                 onUpdateLineSale={onUpdateLineSale}
               />
@@ -77,6 +86,7 @@ function BuildItemRow({
   editableSale,
   actionLoading,
   status,
+  prominent,
   onRemove,
   onUpdateLineSale
 }: {
@@ -84,19 +94,24 @@ function BuildItemRow({
   editableSale: boolean;
   actionLoading: boolean;
   status: BuildStatus;
+  prominent?: boolean;
   onRemove: (itemId: string) => Promise<void>;
   onUpdateLineSale?: (itemId: string, unitSalePrice: number) => Promise<void>;
 }) {
   const catalogSale = Number(item.part.salePrice);
   const lineSale = unitSaleForLine(item);
   const customized = differsFromCatalog(item);
+  const tdBase = prominent ? "px-3 py-3 text-sm" : TABLE_CELL;
+  const partCell = prominent ? `${tdBase} text-base font-semibold text-slate-50` : `${tdBase} font-medium text-slate-100`;
+  const qtyCell = prominent ? `${tdBase} text-base tabular-nums text-slate-200` : `${tdBase} text-slate-300`;
+  const moneyCell = prominent ? `${tdBase} text-base tabular-nums text-slate-200` : `${tdBase} text-slate-300`;
 
   return (
     <tr className="transition hover:bg-slate-800/50">
-      <td className={`${TABLE_CELL} font-medium text-slate-100`}>{item.part.name}</td>
-      <td className={`${TABLE_CELL} text-slate-300`}>{item.quantity}</td>
-      <td className={`${TABLE_CELL} text-slate-300`}>{money(item.unitCost)}</td>
-      <td className={TABLE_CELL}>
+      <td className={partCell}>{item.part.name}</td>
+      <td className={qtyCell}>{item.quantity}</td>
+      <td className={moneyCell}>{money(item.unitCost)}</td>
+      <td className={tdBase}>
         {editableSale && onUpdateLineSale ? (
           <div className="flex min-w-[12rem] flex-col gap-1 sm:min-w-[14rem]">
             <div className="flex flex-wrap items-center gap-2">
@@ -120,6 +135,7 @@ function BuildItemRow({
                   void onUpdateLineSale(item.id, rounded);
                 }}
                 className="w-full max-w-[9rem] rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                title={`Catálogo: ${catalogSale.toFixed(2)} EUR`}
               />
               <button
                 type="button"
@@ -129,23 +145,25 @@ function BuildItemRow({
                 }}
                 className="shrink-0 rounded-md border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-400 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Inventario
+                Catálogo
               </button>
             </div>
-            <span className="text-[11px] text-slate-500">Inventario: {catalogSale.toFixed(2)} EUR</span>
           </div>
         ) : (
           <span className="text-slate-300">
             {money(lineSale)}
             {customized ? (
-              <span className="ml-2 rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200/95">
-                Personalizado
+              <span
+                className="ml-1.5 text-amber-300/90"
+                title={`Precio distinto del catálogo (${catalogSale.toFixed(2)} EUR)`}
+              >
+                *
               </span>
             ) : null}
           </span>
         )}
       </td>
-      <td className={`${TABLE_CELL} text-right`}>
+      <td className={`${tdBase} text-right`}>
         <button
           type="button"
           onClick={() => {

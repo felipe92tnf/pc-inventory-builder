@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import * as buildsApi from "../api/builds";
 import { useBuilds } from "../hooks/useBuilds";
 import { useParts } from "../hooks/useParts";
 import type { Build } from "../types/build";
+import type { Part } from "../types/part";
 import * as salesApi from "../api/sales";
 import type { SaleListRow } from "../types/sale";
 import {
@@ -95,6 +96,7 @@ const OPERATIVE_BUCKET_KEYS = ["WIP", "CONFIRMED", "RESERVED", "PENDING_PAYMENT"
 
 export function BuildsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { builds, loading, deletingId, error, deleteBuild, reload } =
     useBuilds();
   const { parts: inventoryParts, loading: inventoryLoading, reload: reloadInventory } = useParts();
@@ -102,8 +104,6 @@ export function BuildsPage() {
   const [creatingQuick, setCreatingQuick] = useState(false);
   const [salesRows, setSalesRows] = useState<SaleListRow[]>([]);
   const [soldExpanded, setSoldExpanded] = useState(false);
-  /** Móvil: panel de PCs / montajes listos para vender, plegado por defecto. */
-  const [availablePcsPanelOpen, setAvailablePcsPanelOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [monthFilter, setMonthFilter] = useState<number | "ALL">("ALL");
@@ -116,6 +116,7 @@ export function BuildsPage() {
     () => new Date().getFullYear()
   );
   const [showEmptySections, setShowEmptySections] = useState(false);
+  const [listFlash, setListFlash] = useState<string | null>(null);
 
   const handleDelete = async (buildId: string, buildName: string) => {
     const confirmed = window.confirm(`Eliminar el montaje "${buildName}"?`);
@@ -138,6 +139,14 @@ export function BuildsPage() {
       setCreatingQuick(false);
     }
   };
+
+  useEffect(() => {
+    const msg = (location.state as { flash?: string } | null)?.flash;
+    if (!msg) return;
+    setListFlash(msg);
+    navigate(location.pathname, { replace: true, state: {} });
+    void reload();
+  }, [location.pathname, location.state, navigate, reload]);
 
   useEffect(() => {
     let active = true;
@@ -184,7 +193,15 @@ export function BuildsPage() {
         const sale = salesByBuildId.get(build.id);
         const dateRef = bucket === "SOLD" ? sale?.soldAt ?? build.updatedAt : build.updatedAt;
         const d = new Date(dateRef);
-        const matchesQuery = !q || build.name.toLowerCase().includes(q);
+        const hay = [
+          build.name,
+          build.customerName ?? "",
+          build.customerPhone ?? "",
+          build.customerEmail ?? ""
+        ]
+          .join(" ")
+          .toLowerCase();
+        const matchesQuery = !q || hay.includes(q);
         const matchesStatus = statusFilter === "ALL" || bucket === statusFilter;
         const matchesMonth = monthFilter === "ALL" || d.getMonth() + 1 === monthFilter;
         const matchesYear = yearFilter === "ALL" || d.getFullYear() === yearFilter;
@@ -237,21 +254,46 @@ export function BuildsPage() {
     () => inventoryParts.filter((p) => p.inventoryKind === "PREBUILT_PC" && p.stock > 0),
     [inventoryParts]
   );
-  const availableToSellCount = prebuiltWithStock.length + bucketBuilds.CONFIRMED.length;
 
-  const disponiblesSectionVisible =
-    showEmptySections || inventoryLoading || prebuiltWithStock.length > 0;
+  const prebuiltReadyFiltered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return prebuiltWithStock.filter((p) => {
+      const hay = p.name.toLowerCase();
+      const matchesQuery = !q || hay.includes(q);
+      const d = new Date(p.updatedAt);
+      const matchesMonth = monthFilter === "ALL" || d.getMonth() + 1 === monthFilter;
+      const matchesYear = yearFilter === "ALL" || d.getFullYear() === yearFilter;
+      const matchesStatus = statusFilter === "ALL" || statusFilter === "CONFIRMED";
+      return matchesQuery && matchesMonth && matchesYear && matchesStatus;
+    });
+  }, [prebuiltWithStock, query, monthFilter, yearFilter, statusFilter]);
+
   const vendidosSectionVisible = showEmptySections || soldBuildsFiltered.length > 0;
-  const anyOperativeBucketHasRows = OPERATIVE_BUCKET_KEYS.some((k) => bucketBuilds[k].length > 0);
+  const confirmedSectionHasRows =
+    bucketBuilds.CONFIRMED.length > 0 || prebuiltReadyFiltered.length > 0 || inventoryLoading;
+  const anyOperativeBucketHasRows = OPERATIVE_BUCKET_KEYS.some((k) =>
+    k === "CONFIRMED" ? confirmedSectionHasRows : bucketBuilds[k].length > 0
+  );
   const showNoListingsHint =
     !loading &&
     !showEmptySections &&
-    !disponiblesSectionVisible &&
     !vendidosSectionVisible &&
     !anyOperativeBucketHasRows;
 
   return (
     <div className={`${PAGE_OUTER_7XL} max-md:pb-32`}>
+      {listFlash ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
+          <span>{listFlash}</span>
+          <button
+            type="button"
+            onClick={() => setListFlash(null)}
+            className="rounded-lg border border-emerald-600/50 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/40"
+          >
+            Cerrar
+          </button>
+        </div>
+      ) : null}
       <section className={`${PAGE_HERO} flex flex-col gap-3 md:flex-row md:items-start md:justify-between`}>
         <h1 className="text-3xl font-bold tracking-tight">Montajes de PC</h1>
         <button
@@ -360,93 +402,6 @@ export function BuildsPage() {
           </label>
         </div>
 
-      {disponiblesSectionVisible ? (
-      <section className={`${LIST_PAGE_ACCORDION_SHELL} backdrop-blur`}>
-        <button
-          type="button"
-          className={`${LIST_PAGE_ACCORDION_TRIGGER} md:hidden`}
-          onClick={() => setAvailablePcsPanelOpen((open) => !open)}
-          aria-expanded={availablePcsPanelOpen}
-          aria-controls="builds-available-pcs-panel"
-        >
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
-            <div className="min-w-0">
-              <span className="block text-base font-semibold text-slate-100">Disponibles para vender</span>
-              <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                {inventoryLoading ? "Cargando inventario…" : "Inventario y montajes listos para registrar venta"}
-              </span>
-            </div>
-            <span className={`${LIST_PAGE_COUNT_BADGE} ${bucketTone("CONFIRMED")}`}>{availableToSellCount}</span>
-          </div>
-          <svg
-            className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${availablePcsPanelOpen ? "rotate-180" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            stroke="currentColor"
-            aria-hidden
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        <div
-          id="builds-available-pcs-panel"
-          className={availablePcsPanelOpen ? "" : "max-md:hidden"}
-        >
-          <div className="p-4 md:p-5">
-            <div className="mb-2 hidden items-center gap-2 md:flex">
-              <h3 className="text-lg font-semibold text-slate-100">Disponibles para vender</h3>
-              <span className={`${LIST_PAGE_COUNT_BADGE} ${bucketTone("CONFIRMED")}`}>{availableToSellCount}</span>
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-2">
-              {(inventoryLoading ? [] : prebuiltWithStock).map((part) => {
-                const sale = Number(part.salePrice);
-                return (
-                  <article key={`inv-${part.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5 md:p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-100">{part.name}</p>
-                        <p className="mt-1 text-sm font-medium text-violet-300">Stock {part.stock}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreparingPartId(part.id);
-                          void buildsApi
-                            .createBuildFromPrebuiltPart(part.id)
-                            .then(async (detail) => {
-                              await Promise.all([reload(), reloadInventory()]);
-                              navigate(`/builds/${detail.id}#registrar-venta`);
-                            })
-                            .catch((err) =>
-                              window.alert(err instanceof Error ? err.message : "No se pudo preparar la venta del PC.")
-                            )
-                            .finally(() => setPreparingPartId(null));
-                        }}
-                        disabled={preparingPartId === part.id}
-                        className={PRIMARY_ACTION_BUTTON_COMPACT}
-                      >
-                        {preparingPartId === part.id ? "Preparando..." : "Registrar venta"}
-                      </button>
-                    </div>
-                    <p className="mt-3 text-lg font-semibold text-emerald-300">{money(sale)}</p>
-                  </article>
-                );
-              })}
-              {!inventoryLoading && prebuiltWithStock.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  {bucketBuilds.CONFIRMED.length > 0
-                    ? "Sin stock de PCs de inventario. Los montajes listos aparecen en la seccion «Listo para la venta» debajo."
-                    : "No hay PCs de inventario en stock para vender ahora mismo."}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </section>
-      ) : null}
-
       {loading ? (
         <section className={SECTION_SHELL}>
           <p className="text-sm text-slate-300">Cargando montajes...</p>
@@ -455,18 +410,47 @@ export function BuildsPage() {
         <>
           {OPERATIVE_BUCKET_KEYS.map((bucketKey) => {
             const rows = bucketBuilds[bucketKey];
-            if (rows.length === 0 && !showEmptySections) return null;
-            const defaultOpen = rows.length > 0;
+            const isConfirmed = bucketKey === "CONFIRMED";
+            const inv = isConfirmed ? prebuiltReadyFiltered : [];
+            const hasRows = isConfirmed
+              ? rows.length > 0 || inv.length > 0 || inventoryLoading
+              : rows.length > 0;
+            if (!hasRows && !showEmptySections) return null;
+            const defaultOpen = isConfirmed ? rows.length > 0 || inv.length > 0 : rows.length > 0;
             return (
               <BuildSection
                 key={bucketKey}
                 title={bucketTitle(bucketKey)}
                 tone={bucketTone(bucketKey)}
                 builds={rows}
-                deletingId={deletingId}
-                defaultOpen={defaultOpen}
+                listCount={isConfirmed ? rows.length + inv.length : rows.length}
+                inventoryPrebuilts={isConfirmed ? inv : undefined}
+                inventoryLoading={isConfirmed && inventoryLoading}
+                sortOrder={sortOrder}
                 salesByBuildId={salesByBuildId}
+                deletingId={deletingId}
+                preparingPartId={preparingPartId}
+                defaultOpen={defaultOpen}
                 onDelete={(build) => void handleDelete(build.id, build.name)}
+                onRegisterInventoryPrebuilt={
+                  isConfirmed
+                    ? (part) => {
+                        setPreparingPartId(part.id);
+                        void buildsApi
+                          .createBuildFromPrebuiltPart(part.id)
+                          .then(async (detail) => {
+                            await Promise.all([reload(), reloadInventory()]);
+                            navigate(`/builds/${detail.id}#registrar-venta`);
+                          })
+                          .catch((err) =>
+                            window.alert(
+                              err instanceof Error ? err.message : "No se pudo preparar la venta del PC."
+                            )
+                          )
+                          .finally(() => setPreparingPartId(null));
+                      }
+                    : undefined
+                }
               />
             );
           })}
@@ -521,7 +505,9 @@ export function BuildsPage() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-medium text-slate-100">{build.name}</p>
-                            <p className="mt-1 text-sm text-slate-400">{sale?.customerName ?? "—"}</p>
+                            <p className="mt-1 text-sm text-slate-400">
+                              {sale?.customerName ?? build.customerName ?? "—"}
+                            </p>
                           </div>
                           <p className="text-lg font-semibold text-emerald-300">
                             {money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}
@@ -569,30 +555,93 @@ export function BuildsPage() {
   );
 }
 
+function isInventoryPrebuiltBuild(build: Build): boolean {
+  return build.items?.length === 1 && build.items[0]?.part?.inventoryKind === "PREBUILT_PC";
+}
+
+function partLineProfit(part: Part): number {
+  return Math.round((Number(part.salePrice) - Number(part.costPrice)) * 100) / 100;
+}
+
 function BuildSection({
   title,
   tone,
   builds,
+  listCount,
+  inventoryPrebuilts,
+  inventoryLoading,
+  sortOrder,
   deletingId,
   defaultOpen,
   salesByBuildId,
-  onDelete
+  preparingPartId,
+  onDelete,
+  onRegisterInventoryPrebuilt
 }: {
   title: string;
   tone: string;
   builds: Build[];
+  listCount?: number;
+  inventoryPrebuilts?: Part[];
+  inventoryLoading?: boolean;
+  sortOrder: SortOrder;
   deletingId: string | null;
   defaultOpen: boolean;
   salesByBuildId: Map<string, SaleListRow>;
+  preparingPartId: string | null;
   onDelete: (build: Build) => void;
+  onRegisterInventoryPrebuilt?: (part: Part) => void;
 }) {
+  const merged = useMemo(() => {
+    type Row =
+      | { kind: "build"; build: Build; t: number }
+      | { kind: "prebuilt"; part: Part; t: number };
+    const out: Row[] = builds.map((b) => ({
+      kind: "build" as const,
+      build: b,
+      t: new Date(b.updatedAt).getTime()
+    }));
+    if (inventoryPrebuilts?.length) {
+      for (const part of inventoryPrebuilts) {
+        out.push({ kind: "prebuilt", part, t: new Date(part.updatedAt).getTime() });
+      }
+    }
+    out.sort((a, b) => {
+      if (sortOrder === "PROFIT_DESC") {
+        const pa =
+          a.kind === "build"
+            ? Number(salesByBuildId.get(a.build.id)?.profit ?? a.build.profit ?? 0)
+            : partLineProfit(a.part);
+        const pb =
+          b.kind === "build"
+            ? Number(salesByBuildId.get(b.build.id)?.profit ?? b.build.profit ?? 0)
+            : partLineProfit(b.part);
+        if (pb !== pa) return pb - pa;
+      }
+      if (sortOrder === "PRICE_DESC") {
+        const pa = a.kind === "build" ? Number(a.build.totalSale ?? 0) : Number(a.part.salePrice);
+        const pb = b.kind === "build" ? Number(b.build.totalSale ?? 0) : Number(b.part.salePrice);
+        if (pb !== pa) return pb - pa;
+      }
+      return b.t - a.t;
+    });
+    return out;
+  }, [builds, inventoryPrebuilts, sortOrder, salesByBuildId]);
+
+  const showStockCol = inventoryPrebuilts !== undefined;
+  const count = listCount ?? builds.length;
+  const badgePc =
+    "shrink-0 rounded-md border border-violet-500/35 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200/95";
+  const badgeMontaje =
+    "shrink-0 rounded-md border border-cyan-500/35 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200/95";
+
   return (
     <section className={LIST_PAGE_ACCORDION_SHELL}>
       <details className="group" open={defaultOpen}>
         <summary className={LIST_PAGE_ACCORDION_TRIGGER}>
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
             <p className="text-lg font-semibold text-slate-100">{title}</p>
-            <span className={`${LIST_PAGE_COUNT_BADGE} ${tone}`}>{builds.length}</span>
+            <span className={`${LIST_PAGE_COUNT_BADGE} ${tone}`}>{count}</span>
           </div>
           <svg
             className="h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180"
@@ -606,7 +655,9 @@ function BuildSection({
           </svg>
         </summary>
         <div className={LIST_PAGE_ACCORDION_BODY}>
-          {builds.length === 0 ? (
+          {inventoryLoading && merged.length === 0 ? (
+            <p className="text-sm text-slate-500">Cargando inventario…</p>
+          ) : merged.length === 0 ? (
             <p className="text-sm text-slate-500">Sin montajes en esta sección.</p>
           ) : (
             <>
@@ -617,26 +668,95 @@ function BuildSection({
                       <th className={TABLE_CELL}>Nombre</th>
                       <th className={TABLE_CELL}>Fecha</th>
                       <th className={TABLE_CELL}>Cliente</th>
+                      {showStockCol ? <th className={`${TABLE_CELL} text-right`}>Stock</th> : null}
                       <th className={`${TABLE_CELL} text-right`}>Venta</th>
                       <th className={`${TABLE_CELL} text-right`}>Beneficio</th>
                       <th className={`${TABLE_CELL} text-right`}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {builds.map((build) => {
+                    {merged.map((row) => {
+                      if (row.kind === "prebuilt") {
+                        const part = row.part;
+                        return (
+                          <tr key={`pre-${part.id}`} className="hover:bg-slate-800/30">
+                            <td className={TABLE_CELL}>
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span className="min-w-0 truncate font-medium text-slate-100">{part.name}</span>
+                                <span className={badgePc}>PC completo</span>
+                              </div>
+                            </td>
+                            <td className={`${TABLE_CELL} text-slate-400`}>{toDateLabel(part.updatedAt)}</td>
+                            <td className={`${TABLE_CELL} text-slate-300`}>—</td>
+                            {showStockCol ? (
+                              <td className={`${TABLE_CELL} text-right text-violet-300`}>{part.stock}</td>
+                            ) : null}
+                            <td className={`${TABLE_CELL} text-right text-emerald-300`}>
+                              {money(Number(part.salePrice))}
+                            </td>
+                            <td className={`${TABLE_CELL} text-right text-cyan-300`}>
+                              {money(partLineProfit(part))}
+                            </td>
+                            <td className={TABLE_CELL}>
+                              <div className="flex justify-end gap-2">
+                                <Link to="/inventory" className={SECONDARY_GHOST_SM}>
+                                  Ver detalle
+                                </Link>
+                                {onRegisterInventoryPrebuilt ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onRegisterInventoryPrebuilt(part)}
+                                    disabled={preparingPartId === part.id}
+                                    className={PRIMARY_ACTION_BUTTON_COMPACT}
+                                  >
+                                    {preparingPartId === part.id ? "Preparando…" : "Vender PC"}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const build = row.build;
                       const sale = salesByBuildId.get(build.id);
+                      const fromInv = isInventoryPrebuiltBuild(build);
                       return (
                         <tr key={build.id} className="hover:bg-slate-800/30">
-                          <td className={`${TABLE_CELL} font-medium text-slate-100`}>{build.name}</td>
-                          <td className={`${TABLE_CELL} text-slate-400`}>{toDateLabel(sale?.soldAt ?? build.updatedAt)}</td>
-                          <td className={`${TABLE_CELL} text-slate-300`}>{sale?.customerName ?? "—"}</td>
-                          <td className={`${TABLE_CELL} text-right text-emerald-300`}>{money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}</td>
-                          <td className={`${TABLE_CELL} text-right text-cyan-300`}>{money(Number(sale?.profit ?? build.profit ?? 0))}</td>
+                          <td className={TABLE_CELL}>
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="min-w-0 truncate font-medium text-slate-100">{build.name}</span>
+                              <span className={fromInv ? badgePc : badgeMontaje}>
+                                {fromInv ? "PC completo" : "Montaje propio"}
+                              </span>
+                            </div>
+                          </td>
+                          <td className={`${TABLE_CELL} text-slate-400`}>
+                            {toDateLabel(sale?.soldAt ?? build.updatedAt)}
+                          </td>
+                          <td className={`${TABLE_CELL} text-slate-300`}>
+                            {sale?.customerName ?? build.customerName ?? "—"}
+                          </td>
+                          {showStockCol ? (
+                            <td className={`${TABLE_CELL} text-right text-slate-500`}>—</td>
+                          ) : null}
+                          <td className={`${TABLE_CELL} text-right text-emerald-300`}>
+                            {money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}
+                          </td>
+                          <td className={`${TABLE_CELL} text-right text-cyan-300`}>
+                            {money(Number(sale?.profit ?? build.profit ?? 0))}
+                          </td>
                           <td className={TABLE_CELL}>
                             <div className="flex justify-end gap-2">
-                              <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
+                              <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>
+                                Ver detalle
+                              </Link>
                               {canLinkRegisterSale(build, sale) ? (
-                                <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>Vender PC</Link>
+                                <Link
+                                  to={`/builds/${build.id}#registrar-venta`}
+                                  className={PRIMARY_ACTION_BUTTON_COMPACT}
+                                >
+                                  Vender PC
+                                </Link>
                               ) : null}
                               <button
                                 type="button"
@@ -659,19 +779,71 @@ function BuildSection({
                 </table>
               </div>
               <div className="space-y-2 md:hidden">
-                {builds.map((build) => {
+                {merged.map((row) => {
+                  if (row.kind === "prebuilt") {
+                    const part = row.part;
+                    return (
+                      <article key={`pre-m-${part.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-slate-100">{part.name}</p>
+                              <span className={badgePc}>PC completo</span>
+                            </div>
+                            <p className="mt-1 text-sm text-violet-300">Stock {part.stock}</p>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">{toDateLabel(part.updatedAt)}</p>
+                        <p className="mt-2 text-base font-semibold text-emerald-300">
+                          {money(Number(part.salePrice))}
+                        </p>
+                        <p className="mt-1 text-sm text-cyan-300">Beneficio {money(partLineProfit(part))}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Link to="/inventory" className={SECONDARY_GHOST_SM}>
+                            Ver detalle
+                          </Link>
+                          {onRegisterInventoryPrebuilt ? (
+                            <button
+                              type="button"
+                              onClick={() => onRegisterInventoryPrebuilt(part)}
+                              disabled={preparingPartId === part.id}
+                              className={PRIMARY_ACTION_BUTTON_COMPACT}
+                            >
+                              {preparingPartId === part.id ? "Preparando…" : "Vender PC"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  }
+                  const build = row.build;
                   const sale = salesByBuildId.get(build.id);
+                  const fromInv = isInventoryPrebuiltBuild(build);
                   return (
-                      <article key={build.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5">
-                      <p className="font-semibold text-slate-100">{build.name}</p>
-                      <p className="mt-1 text-sm text-slate-400">{sale?.customerName ?? "—"}</p>
+                    <article key={build.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-slate-100">{build.name}</p>
+                        <span className={fromInv ? badgePc : badgeMontaje}>
+                          {fromInv ? "PC completo" : "Montaje propio"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-400">
+                        {sale?.customerName ?? build.customerName ?? "—"}
+                      </p>
                       <p className="mt-3 text-base font-semibold text-emerald-300">
                         {money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}
                       </p>
+                      <p className="mt-1 text-sm text-cyan-300">
+                        Beneficio {money(Number(sale?.profit ?? build.profit ?? 0))}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
+                        <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>
+                          Ver detalle
+                        </Link>
                         {canLinkRegisterSale(build, sale) ? (
-                          <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>Vender PC</Link>
+                          <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>
+                            Vender PC
+                          </Link>
                         ) : null}
                         <button
                           type="button"

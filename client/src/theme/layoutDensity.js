@@ -12,6 +12,8 @@ export const PAGE_OUTER_7XL_SALES = "mx-auto w-full max-w-7xl space-y-5 px-2 pb-
 export const SECTION_SHELL = "rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5";
 /** Cabecera de página con gradiente (título + acciones). */
 export const PAGE_HERO = "rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-5 shadow-[0_20px_50px_-24px_rgba(79,70,229,0.75)]";
+/** Cabecera compacta (detalle montaje: título + acciones en menos altura). */
+export const PAGE_HEADER_COMPACT = "rounded-xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 px-3 py-3 shadow-md shadow-indigo-950/30 sm:px-4 sm:py-3.5";
 /** Celdas de tabla densas (th/td). */
 export const TABLE_CELL = "px-3 py-2";
 /** Cabecera de `<details>` (listado colapsable). */

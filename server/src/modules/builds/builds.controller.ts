@@ -5,8 +5,10 @@ import { serializeBuildDetail } from "./builds.serializer.js";
 
 function mapValidationOrBuildError(error: unknown, res: Response): boolean {
   if (error instanceof ZodError) {
+    const first = error.issues[0];
+    const message = first?.message && first.message !== "Required" ? first.message : "Datos invalidos";
     res.status(400).json({
-      message: "Datos invalidos",
+      message,
       issues: error.flatten()
     });
     return true;
@@ -118,7 +120,7 @@ function mapBuildError(error: unknown, res: Response) {
   }
 
   if (error.message === "BUILD_EMPTY") {
-    res.status(400).json({ message: "Build has no items" });
+    res.status(400).json({ message: "Anade al menos una pieza o un extra antes de confirmar el montaje." });
     return true;
   }
 
@@ -139,7 +141,7 @@ function mapBuildError(error: unknown, res: Response) {
 
   if (error.message.startsWith("INSUFFICIENT_STOCK:")) {
     const partName = error.message.split(":")[1];
-    res.status(409).json({ message: `Insufficient stock for part: ${partName}` });
+    res.status(409).json({ message: `Stock insuficiente para la pieza: ${partName}` });
     return true;
   }
 
@@ -317,14 +319,14 @@ export async function deleteBuildExtraLineHandler(req: Request, res: Response) {
 export async function confirmBuildHandler(req: Request, res: Response) {
   try {
     const buildId = String(req.params.id);
-    const data = await buildsService.confirmBuild(buildId);
+    const data = await buildsService.confirmBuild(buildId, req.body);
     if (!data) {
       res.status(404).json({ message: "Build not found" });
       return;
     }
     res.json(serializeBuildDetail(data));
   } catch (error) {
-    if (!mapBuildError(error, res)) {
+    if (!mapValidationOrBuildError(error, res)) {
       throw error;
     }
   }

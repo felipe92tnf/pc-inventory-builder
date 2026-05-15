@@ -43,3 +43,20 @@ export function completeService(id) {
         method: "POST"
     });
 }
+export function addServiceExtraLine(serviceId, payload) {
+    return http(`/services/${serviceId}/extra-lines`, {
+        method: "POST",
+        body: payload
+    });
+}
+export function patchServiceExtraLine(serviceId, lineId, payload) {
+    return http(`/services/${serviceId}/extra-lines/${lineId}`, {
+        method: "PATCH",
+        body: payload
+    });
+}
+export function deleteServiceExtraLine(serviceId, lineId) {
+    return http(`/services/${serviceId}/extra-lines/${lineId}`, {
+        method: "DELETE"
+    });
+}

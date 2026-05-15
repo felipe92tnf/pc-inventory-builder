@@ -7,9 +7,31 @@ const optionalUnitSalePrice = z.preprocess(
   z.union([z.null(), z.coerce.number().finite().nonnegative()]).optional()
 );
 
+const optionalCustomerNullable = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((val) => {
+    if (val === undefined) return undefined;
+    if (val === null) return null;
+    const t = val.trim();
+    return t.length ? t : null;
+  })
+  .refine((v) => v === undefined || v === null || v.length <= 200, { message: "Maximo 200 caracteres" });
+
+const optionalCustomerEmailNullable = optionalCustomerNullable.superRefine((val, ctx) => {
+  if (val === undefined || val === null) return;
+  const parsed = z.string().email().safeParse(val);
+  if (!parsed.success) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Email no valido" });
+  }
+});
+
 export const createBuildSchema = z.object({
   name: z.string().min(1),
-  notes: z.string().optional().nullable()
+  notes: z.string().optional().nullable(),
+  customerName: optionalCustomerNullable,
+  customerPhone: optionalCustomerNullable,
+  customerEmail: optionalCustomerEmailNullable
 });
 
 export const updateBuildSchema = createBuildSchema.partial().extend({
@@ -56,4 +78,63 @@ export const updateBuildExtraLineSchema = z
   })
   .refine((d) => d.quantity !== undefined || d.unitCost !== undefined || d.unitSalePrice !== undefined, {
     message: "Indica cantidad y/o precios"
+  });
+
+const CONFIRM_INITIAL_STATUSES = new Set<BuildStatus>([
+  BuildStatus.CONFIRMED,
+  BuildStatus.RESERVED,
+  BuildStatus.PENDING_PAYMENT
+]);
+
+/** Opciones al confirmar montaje (descuento de stock + estado operativo inicial). */
+export const confirmBuildSchema = z
+  .object({
+    initialStatus: z.nativeEnum(BuildStatus).optional(),
+    reservationDeposit: z.coerce.number().finite().nonnegative().optional(),
+    reservationRemaining: z.coerce.number().finite().nonnegative().optional(),
+    pendingPaymentPaid: z.coerce.number().finite().nonnegative().optional(),
+    pendingPaymentRemaining: z.coerce.number().finite().nonnegative().optional()
+  })
+  .superRefine((data, ctx) => {
+    const st = data.initialStatus ?? BuildStatus.CONFIRMED;
+    if (data.initialStatus !== undefined && !CONFIRM_INITIAL_STATUSES.has(st)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Solo se admite Listo para la venta, Reservado o Pendiente de pago como estado inicial.",
+        path: ["initialStatus"]
+      });
+      return;
+    }
+    if (st === BuildStatus.RESERVED) {
+      if (data.reservationDeposit === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Indica la reserva ya cobrada (EUR).",
+          path: ["reservationDeposit"]
+        });
+      }
+      if (data.reservationRemaining === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Indica el importe restante (EUR).",
+          path: ["reservationRemaining"]
+        });
+      }
+    }
+    if (st === BuildStatus.PENDING_PAYMENT) {
+      if (data.pendingPaymentPaid === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Indica el importe ya cobrado (EUR).",
+          path: ["pendingPaymentPaid"]
+        });
+      }
+      if (data.pendingPaymentRemaining === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Indica el importe pendiente (EUR).",
+          path: ["pendingPaymentRemaining"]
+        });
+      }
+    }
   });

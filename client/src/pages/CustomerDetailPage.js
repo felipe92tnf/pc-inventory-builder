@@ -9,7 +9,8 @@ const QUOTE_STATUS_LABELS = {
     SENT: "Enviado",
     ACCEPTED: "Aceptado",
     REJECTED: "Rechazado",
-    EXPIRED: "Caducado"
+    EXPIRED: "Caducado",
+    PENDING_PAYMENT: "Pendiente de pago"
 };
 const SERVICE_LABELS = {
     SPARE_PART_SALE: "Venta pieza suelta",

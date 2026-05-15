@@ -5,6 +5,7 @@ import type {
   AddBuildExtraLinePayload,
   AddBuildItemPayload,
   BuildDetail,
+  ConfirmBuildPayload,
   UpdateBuildExtraLinePayload,
   UpdateBuildPayload,
   UpdateBuildItemPayload
@@ -23,7 +24,7 @@ type UseBuildDetailReturn = {
   addExtraLine: (payload: AddBuildExtraLinePayload) => Promise<void>;
   updateExtraLine: (lineId: string, payload: UpdateBuildExtraLinePayload) => Promise<void>;
   removeExtraLine: (lineId: string) => Promise<void>;
-  confirm: () => Promise<void>;
+  confirm: (payload?: ConfirmBuildPayload) => Promise<void>;
   revertToDraft: () => Promise<void>;
   updateBuildFields: (payload: UpdateBuildPayload) => Promise<void>;
   reload: () => Promise<void>;
@@ -158,17 +159,18 @@ export function useBuildDetail(buildId: string): UseBuildDetailReturn {
     [buildId]
   );
 
-  const confirm = useCallback(async () => {
+  const confirm = useCallback(async (payload?: ConfirmBuildPayload) => {
     setActionLoading(true);
     setError(null);
     try {
-      const updated = await buildsApi.confirmBuild(buildId);
+      const updated = await buildsApi.confirmBuild(buildId, payload);
       setBuild(updated);
       const latestParts = await partsApi.listParts();
       setParts(latestParts);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo confirmar el montaje.");
-      throw err;
+      const msg = err instanceof Error ? err.message : "No se pudo confirmar el montaje.";
+      setError(msg);
+      throw err instanceof Error ? err : new Error(msg);
     } finally {
       setActionLoading(false);
     }

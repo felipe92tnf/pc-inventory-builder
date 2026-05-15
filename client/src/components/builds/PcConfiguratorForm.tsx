@@ -252,7 +252,9 @@ export function PcConfiguratorForm({
       <h2 className={compact ? "mb-0.5 text-base font-semibold text-slate-100" : "mb-1 text-lg font-semibold text-slate-100"}>
         {heading}
       </h2>
-      <p className={compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-3 text-sm text-slate-400"}>{lead}</p>
+      {lead !== "" ? (
+        <p className={compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-3 text-sm text-slate-400"}>{lead}</p>
+      ) : null}
 
       <div className={compact ? "space-y-2" : "space-y-3"}>
         {CONFIGURATOR_SLOTS.map((slot) => {

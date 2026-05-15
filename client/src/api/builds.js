@@ -46,9 +46,27 @@ export function deleteBuildItem(buildId, itemId) {
         method: "DELETE"
     });
 }
-export function confirmBuild(buildId) {
+export function addBuildExtraLine(buildId, payload) {
+    return http(`/builds/${buildId}/extra-lines`, {
+        method: "POST",
+        body: payload
+    });
+}
+export function updateBuildExtraLine(buildId, lineId, payload) {
+    return http(`/builds/${buildId}/extra-lines/${lineId}`, {
+        method: "PATCH",
+        body: payload
+    });
+}
+export function deleteBuildExtraLine(buildId, lineId) {
+    return http(`/builds/${buildId}/extra-lines/${lineId}`, {
+        method: "DELETE"
+    });
+}
+export function confirmBuild(buildId, payload) {
     return http(`/builds/${buildId}/confirm`, {
-        method: "POST"
+        method: "POST",
+        body: payload ?? {}
     });
 }
 export function revertBuildToDraft(buildId) {

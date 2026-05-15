@@ -227,6 +227,10 @@ model ServiceExtraLine {
 model Build {
   id                 String          @id @default(cuid())
   name               String
+  /// Cliente (ficha del montaje; la venta puede ampliar o coincidir al registrar cobro).
+  customerName       String?
+  customerPhone      String?
+  customerEmail      String?
   notes              String?
   status             BuildStatus     @default(DRAFT)
   confirmedAt        DateTime?

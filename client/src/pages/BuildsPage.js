@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import * as buildsApi from "../api/builds";
 import { useBuilds } from "../hooks/useBuilds";
 import { useParts } from "../hooks/useParts";
@@ -33,40 +33,57 @@ const SPANISH_MONTH_NAMES = [
 function buildBucket(build) {
     if (build.status === "SOLD")
         return "SOLD";
+    if (build.status === "PENDING_PICKUP")
+        return "PENDING_PICKUP";
+    if (build.status === "PENDING_PAYMENT")
+        return "PENDING_PAYMENT";
+    if (build.status === "RESERVED")
+        return "RESERVED";
     if (build.status === "CONFIRMED")
-        return "READY";
-    if ((build.items?.length ?? 0) > 0)
-        return "PENDING";
-    return "DRAFTS";
+        return "CONFIRMED";
+    return "WIP";
 }
 function bucketTitle(bucket) {
-    if (bucket === "DRAFTS")
-        return "Borradores";
-    if (bucket === "PENDING")
-        return "En montaje / pendientes";
-    if (bucket === "READY")
-        return "Listos para vender";
+    if (bucket === "WIP")
+        return "Montajes en curso";
+    if (bucket === "CONFIRMED")
+        return "Listo para la venta";
+    if (bucket === "RESERVED")
+        return "Reservado";
+    if (bucket === "PENDING_PAYMENT")
+        return "Pendiente de pago";
+    if (bucket === "PENDING_PICKUP")
+        return "Pendiente de recogida";
     return "Vendidos";
+}
+function canLinkRegisterSale(build, sale) {
+    if (!["CONFIRMED", "PENDING_PAYMENT", "RESERVED"].includes(build.status))
+        return false;
+    return !sale;
 }
 function bucketTone(bucket) {
     if (bucket === "SOLD")
         return "border-cyan-500/30 bg-cyan-500/10 text-cyan-200";
-    if (bucket === "READY")
+    if (bucket === "CONFIRMED")
         return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-    if (bucket === "PENDING")
+    if (bucket === "RESERVED")
+        return "border-violet-500/30 bg-violet-500/10 text-violet-200";
+    if (bucket === "PENDING_PAYMENT")
         return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+    if (bucket === "PENDING_PICKUP")
+        return "border-sky-500/30 bg-sky-500/10 text-sky-200";
     return "border-indigo-500/30 bg-indigo-500/10 text-indigo-200";
 }
+const OPERATIVE_BUCKET_KEYS = ["WIP", "CONFIRMED", "RESERVED", "PENDING_PAYMENT", "PENDING_PICKUP"];
 export function BuildsPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { builds, loading, deletingId, error, deleteBuild, reload } = useBuilds();
     const { parts: inventoryParts, loading: inventoryLoading, reload: reloadInventory } = useParts();
     const [preparingPartId, setPreparingPartId] = useState(null);
     const [creatingQuick, setCreatingQuick] = useState(false);
     const [salesRows, setSalesRows] = useState([]);
     const [soldExpanded, setSoldExpanded] = useState(false);
-    /** Móvil: panel de PCs / montajes listos para vender, plegado por defecto. */
-    const [availablePcsPanelOpen, setAvailablePcsPanelOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("ALL");
     const [monthFilter, setMonthFilter] = useState("ALL");
@@ -74,6 +91,8 @@ export function BuildsPage() {
     const [sortOrder, setSortOrder] = useState("RECENT");
     const [soldMonthFilter, setSoldMonthFilter] = useState(() => new Date().getMonth() + 1);
     const [soldYearFilter, setSoldYearFilter] = useState(() => new Date().getFullYear());
+    const [showEmptySections, setShowEmptySections] = useState(false);
+    const [listFlash, setListFlash] = useState(null);
     const handleDelete = async (buildId, buildName) => {
         const confirmed = window.confirm(`Eliminar el montaje "${buildName}"?`);
         if (!confirmed)
@@ -97,6 +116,14 @@ export function BuildsPage() {
             setCreatingQuick(false);
         }
     };
+    useEffect(() => {
+        const msg = location.state?.flash;
+        if (!msg)
+            return;
+        setListFlash(msg);
+        navigate(location.pathname, { replace: true, state: {} });
+        void reload();
+    }, [location.pathname, location.state, navigate, reload]);
     useEffect(() => {
         let active = true;
         void salesApi
@@ -141,7 +168,15 @@ export function BuildsPage() {
             const sale = salesByBuildId.get(build.id);
             const dateRef = bucket === "SOLD" ? sale?.soldAt ?? build.updatedAt : build.updatedAt;
             const d = new Date(dateRef);
-            const matchesQuery = !q || build.name.toLowerCase().includes(q);
+            const hay = [
+                build.name,
+                build.customerName ?? "",
+                build.customerPhone ?? "",
+                build.customerEmail ?? ""
+            ]
+                .join(" ")
+                .toLowerCase();
+            const matchesQuery = !q || hay.includes(q);
             const matchesStatus = statusFilter === "ALL" || bucket === statusFilter;
             const matchesMonth = monthFilter === "ALL" || d.getMonth() + 1 === monthFilter;
             const matchesYear = yearFilter === "ALL" || d.getFullYear() === yearFilter;
@@ -162,7 +197,14 @@ export function BuildsPage() {
         });
     }, [builds, salesByBuildId, query, statusFilter, monthFilter, yearFilter, sortOrder]);
     const bucketBuilds = useMemo(() => {
-        const map = { DRAFTS: [], PENDING: [], READY: [], SOLD: [] };
+        const map = {
+            WIP: [],
+            CONFIRMED: [],
+            RESERVED: [],
+            PENDING_PAYMENT: [],
+            PENDING_PICKUP: [],
+            SOLD: []
+        };
         for (const build of globallyFilteredBuilds) {
             map[buildBucket(build)].push(build);
         }
@@ -180,41 +222,123 @@ export function BuildsPage() {
     }, [bucketBuilds.SOLD, salesByBuildId, soldMonthFilter, soldYearFilter]);
     const soldVisible = soldExpanded ? soldBuildsFiltered : soldBuildsFiltered.slice(0, 5);
     const prebuiltWithStock = useMemo(() => inventoryParts.filter((p) => p.inventoryKind === "PREBUILT_PC" && p.stock > 0), [inventoryParts]);
-    const availableToSellCount = prebuiltWithStock.length + bucketBuilds.READY.length;
-    return (_jsxs("div", { className: `${PAGE_OUTER_7XL} max-md:pb-32`, children: [_jsxs("section", { className: `${PAGE_HERO} flex flex-col gap-3 md:flex-row md:items-start md:justify-between`, children: [_jsx("h1", { className: "text-3xl font-bold tracking-tight", children: "Montajes de PC" }), _jsx("button", { type: "button", onClick: () => {
+    const prebuiltReadyFiltered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return prebuiltWithStock.filter((p) => {
+            const hay = p.name.toLowerCase();
+            const matchesQuery = !q || hay.includes(q);
+            const d = new Date(p.updatedAt);
+            const matchesMonth = monthFilter === "ALL" || d.getMonth() + 1 === monthFilter;
+            const matchesYear = yearFilter === "ALL" || d.getFullYear() === yearFilter;
+            const matchesStatus = statusFilter === "ALL" || statusFilter === "CONFIRMED";
+            return matchesQuery && matchesMonth && matchesYear && matchesStatus;
+        });
+    }, [prebuiltWithStock, query, monthFilter, yearFilter, statusFilter]);
+    const vendidosSectionVisible = showEmptySections || soldBuildsFiltered.length > 0;
+    const confirmedSectionHasRows = bucketBuilds.CONFIRMED.length > 0 || prebuiltReadyFiltered.length > 0 || inventoryLoading;
+    const anyOperativeBucketHasRows = OPERATIVE_BUCKET_KEYS.some((k) => k === "CONFIRMED" ? confirmedSectionHasRows : bucketBuilds[k].length > 0);
+    const showNoListingsHint = !loading &&
+        !showEmptySections &&
+        !vendidosSectionVisible &&
+        !anyOperativeBucketHasRows;
+    return (_jsxs("div", { className: `${PAGE_OUTER_7XL} max-md:pb-32`, children: [listFlash ? (_jsxs("div", { className: "mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100", children: [_jsx("span", { children: listFlash }), _jsx("button", { type: "button", onClick: () => setListFlash(null), className: "rounded-lg border border-emerald-600/50 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/40", children: "Cerrar" })] })) : null, _jsxs("section", { className: `${PAGE_HERO} flex flex-col gap-3 md:flex-row md:items-start md:justify-between`, children: [_jsx("h1", { className: "text-3xl font-bold tracking-tight", children: "Montajes de PC" }), _jsx("button", { type: "button", onClick: () => {
                             void handleQuickCreate();
                         }, disabled: creatingQuick, className: PRIMARY_ACTION_BUTTON_HEADER, children: creatingQuick ? "Creando..." : "Crear montaje" })] }), error ? (_jsxs("div", { className: "flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between", children: [_jsx("span", { children: error }), _jsx("button", { type: "button", onClick: () => {
                             void reload();
-                        }, className: "rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70", children: "Reintentar" })] })) : null, _jsx("section", { className: LIST_PAGE_FILTER_SECTION, children: _jsxs("details", { className: "group", children: [_jsxs("summary", { className: LIST_PAGE_ACCORDION_TRIGGER, children: [_jsx("span", { className: "text-base font-semibold text-slate-100", children: "Filtros" }), _jsx("svg", { className: "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180", fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) })] }), _jsx("div", { className: "border-t border-slate-800 px-3.5 pb-4 pt-3 md:px-4", children: _jsxs("div", { className: "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5", children: [_jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300 xl:col-span-2", children: ["Buscar por nombre", _jsx("input", { value: query, onChange: (e) => setQuery(e.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 outline-none focus:border-indigo-400", placeholder: "Ej: Gaming, Oficina..." })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Estado", _jsxs("select", { value: statusFilter, onChange: (e) => setStatusFilter(e.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), _jsx("option", { value: "DRAFTS", children: "Borradores" }), _jsx("option", { value: "PENDING", children: "Pendientes" }), _jsx("option", { value: "READY", children: "Listos para vender" }), _jsx("option", { value: "SOLD", children: "Vendidos" })] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Mes", _jsxs("select", { value: monthFilter, onChange: (e) => setMonthFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), Array.from({ length: 12 }, (_, i) => i + 1).map((m) => _jsx("option", { value: m, children: m }, m))] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["A\u00F1o", _jsxs("select", { value: yearFilter, onChange: (e) => setYearFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), years.map((y) => _jsx("option", { value: y, children: y }, y))] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Orden", _jsxs("select", { value: sortOrder, onChange: (e) => setSortOrder(e.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "RECENT", children: "Recientes" }), _jsx("option", { value: "PROFIT_DESC", children: "Mayor beneficio" }), _jsx("option", { value: "PRICE_DESC", children: "Mayor precio" })] })] })] }) })] }) }), _jsxs("div", { className: LIST_PAGE_LISTING_REGION, children: [_jsx("h2", { className: LIST_PAGE_LISTING_TITLE, children: "Listado de montajes" }), _jsxs("section", { className: `${LIST_PAGE_ACCORDION_SHELL} backdrop-blur`, children: [_jsxs("button", { type: "button", className: `${LIST_PAGE_ACCORDION_TRIGGER} md:hidden`, onClick: () => setAvailablePcsPanelOpen((open) => !open), "aria-expanded": availablePcsPanelOpen, "aria-controls": "builds-available-pcs-panel", children: [_jsxs("div", { className: "flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3", children: [_jsxs("div", { className: "min-w-0", children: [_jsx("span", { className: "block text-base font-semibold text-slate-100", children: "Disponibles para vender" }), _jsx("span", { className: "mt-0.5 block text-xs font-normal text-slate-500", children: inventoryLoading ? "Cargando inventario…" : "Inventario y listos para venta" })] }), _jsx("span", { className: `${LIST_PAGE_COUNT_BADGE} ${bucketTone("READY")}`, children: availableToSellCount })] }), _jsx("svg", { className: `h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${availablePcsPanelOpen ? "rotate-180" : ""}`, fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) })] }), _jsx("div", { id: "builds-available-pcs-panel", className: availablePcsPanelOpen ? "" : "max-md:hidden", children: _jsxs("div", { className: "p-4 md:p-5", children: [_jsxs("div", { className: "mb-2 hidden items-center gap-2 md:flex", children: [_jsx("h3", { className: "text-lg font-semibold text-slate-100", children: "Disponibles para vender" }), _jsx("span", { className: `${LIST_PAGE_COUNT_BADGE} ${bucketTone("READY")}`, children: availableToSellCount })] }), _jsxs("div", { className: "mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-2", children: [(inventoryLoading ? [] : prebuiltWithStock).map((part) => {
-                                                    const sale = Number(part.salePrice);
-                                                    return (_jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-950/40 p-3.5 md:p-4", children: [_jsxs("div", { className: "flex items-start justify-between gap-2", children: [_jsxs("div", { className: "min-w-0", children: [_jsx("p", { className: "truncate font-semibold text-slate-100", children: part.name }), _jsxs("p", { className: "mt-1 text-sm font-medium text-violet-300", children: ["Stock ", part.stock] })] }), _jsx("button", { type: "button", onClick: () => {
-                                                                            setPreparingPartId(part.id);
-                                                                            void buildsApi
-                                                                                .createBuildFromPrebuiltPart(part.id)
-                                                                                .then(async (detail) => {
-                                                                                await Promise.all([reload(), reloadInventory()]);
-                                                                                navigate(`/builds/${detail.id}#registrar-venta`);
-                                                                            })
-                                                                                .catch((err) => window.alert(err instanceof Error ? err.message : "No se pudo preparar la venta del PC."))
-                                                                                .finally(() => setPreparingPartId(null));
-                                                                        }, disabled: preparingPartId === part.id, className: PRIMARY_ACTION_BUTTON_COMPACT, children: preparingPartId === part.id ? "Preparando..." : "Registrar venta" })] }), _jsx("p", { className: "mt-3 text-lg font-semibold text-emerald-300", children: money(sale) })] }, `inv-${part.id}`));
-                                                }), bucketBuilds.READY.map((build) => (_jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-950/40 p-3.5 md:p-4", children: [_jsxs("div", { className: "flex items-start justify-between gap-2", children: [_jsx("div", { className: "min-w-0", children: _jsx("p", { className: "truncate font-semibold text-slate-100", children: build.name }) }), _jsxs("div", { className: "flex flex-wrap gap-2", children: [_jsx(Link, { to: `/builds/${build.id}#registrar-venta`, className: PRIMARY_ACTION_BUTTON_COMPACT, children: "Registrar venta" }), _jsx(Link, { to: `/builds/${build.id}`, className: SECONDARY_GHOST_SM, children: "Ver detalle" })] })] }), _jsx("p", { className: "mt-3 text-lg font-semibold text-emerald-300", children: money(Number(build.totalSale ?? 0)) })] }, `ready-${build.id}`))), !inventoryLoading && prebuiltWithStock.length === 0 && bucketBuilds.READY.length === 0 ? (_jsx("p", { className: "text-sm text-slate-500", children: "No hay equipos disponibles para vender ahora mismo." })) : null] })] }) })] }), loading ? (_jsx("section", { className: SECTION_SHELL, children: _jsx("p", { className: "text-sm text-slate-300", children: "Cargando montajes..." }) })) : (_jsxs(_Fragment, { children: [["PENDING", "DRAFTS"].map((bucketKey) => {
+                        }, className: "rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70", children: "Reintentar" })] })) : null, _jsx("section", { className: LIST_PAGE_FILTER_SECTION, children: _jsxs("details", { className: "group", children: [_jsxs("summary", { className: LIST_PAGE_ACCORDION_TRIGGER, children: [_jsx("span", { className: "text-base font-semibold text-slate-100", children: "Filtros" }), _jsx("svg", { className: "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180", fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) })] }), _jsx("div", { className: "border-t border-slate-800 px-3.5 pb-4 pt-3 md:px-4", children: _jsxs("div", { className: "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5", children: [_jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300 xl:col-span-2", children: ["Buscar por nombre", _jsx("input", { value: query, onChange: (e) => setQuery(e.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 outline-none focus:border-indigo-400", placeholder: "Ej: Gaming, Oficina..." })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Estado", _jsxs("select", { value: statusFilter, onChange: (e) => setStatusFilter(e.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), _jsx("option", { value: "WIP", children: "Montajes en curso" }), _jsx("option", { value: "CONFIRMED", children: "Listo para la venta" }), _jsx("option", { value: "RESERVED", children: "Reservado" }), _jsx("option", { value: "PENDING_PAYMENT", children: "Pendiente de pago" }), _jsx("option", { value: "PENDING_PICKUP", children: "Pendiente de recogida" }), _jsx("option", { value: "SOLD", children: "Vendidos" })] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Mes", _jsxs("select", { value: monthFilter, onChange: (e) => setMonthFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), Array.from({ length: 12 }, (_, i) => i + 1).map((m) => _jsx("option", { value: m, children: m }, m))] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["A\u00F1o", _jsxs("select", { value: yearFilter, onChange: (e) => setYearFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), years.map((y) => _jsx("option", { value: y, children: y }, y))] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Orden", _jsxs("select", { value: sortOrder, onChange: (e) => setSortOrder(e.target.value), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "RECENT", children: "Recientes" }), _jsx("option", { value: "PROFIT_DESC", children: "Mayor beneficio" }), _jsx("option", { value: "PRICE_DESC", children: "Mayor precio" })] })] })] }) })] }) }), _jsxs("div", { className: LIST_PAGE_LISTING_REGION, children: [_jsxs("div", { className: "mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", children: [_jsx("h2", { className: LIST_PAGE_LISTING_TITLE, children: "Listado de montajes" }), _jsxs("label", { className: "flex cursor-pointer items-center gap-2 text-sm text-slate-400 select-none", children: [_jsx("input", { type: "checkbox", checked: showEmptySections, onChange: (e) => setShowEmptySections(e.target.checked), className: "h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-400/40" }), "Mostrar secciones vac\u00EDas"] })] }), loading ? (_jsx("section", { className: SECTION_SHELL, children: _jsx("p", { className: "text-sm text-slate-300", children: "Cargando montajes..." }) })) : (_jsxs(_Fragment, { children: [OPERATIVE_BUCKET_KEYS.map((bucketKey) => {
                                 const rows = bucketBuilds[bucketKey];
-                                const defaultOpen = rows.length > 0;
-                                return (_jsx(BuildSection, { title: bucketTitle(bucketKey), tone: bucketTone(bucketKey), builds: rows, deletingId: deletingId, defaultOpen: defaultOpen, salesByBuildId: salesByBuildId, onDelete: (build) => void handleDelete(build.id, build.name) }, bucketKey));
-                            }), _jsx("section", { className: LIST_PAGE_ACCORDION_SHELL, children: _jsxs("details", { className: "group", open: false, children: [_jsxs("summary", { className: LIST_PAGE_ACCORDION_TRIGGER, children: [_jsxs("div", { className: "flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3", children: [_jsx("p", { className: "text-lg font-semibold text-slate-100", children: "Vendidos" }), _jsx("span", { className: `${LIST_PAGE_COUNT_BADGE} ${bucketTone("SOLD")}`, children: soldBuildsFiltered.length })] }), _jsx("svg", { className: "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180", fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) })] }), _jsxs("div", { className: "border-t border-slate-800 px-4 pb-3 pt-2.5", children: [_jsxs("div", { className: "mb-2.5 grid grid-cols-1 gap-2.5 md:grid-cols-4", children: [_jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Ventas por mes", _jsxs("select", { value: soldMonthFilter, onChange: (e) => setSoldMonthFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (_jsx("option", { value: m, children: SPANISH_MONTH_NAMES[m - 1] }, m)))] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["A\u00F1o vendidos", _jsxs("select", { value: soldYearFilter, onChange: (e) => setSoldYearFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), years.map((y) => _jsx("option", { value: y, children: y }, y))] })] })] }), _jsx("div", { className: "space-y-2", children: soldVisible.map((build) => {
+                                const isConfirmed = bucketKey === "CONFIRMED";
+                                const inv = isConfirmed ? prebuiltReadyFiltered : [];
+                                const hasRows = isConfirmed
+                                    ? rows.length > 0 || inv.length > 0 || inventoryLoading
+                                    : rows.length > 0;
+                                if (!hasRows && !showEmptySections)
+                                    return null;
+                                const defaultOpen = isConfirmed ? rows.length > 0 || inv.length > 0 : rows.length > 0;
+                                return (_jsx(BuildSection, { title: bucketTitle(bucketKey), tone: bucketTone(bucketKey), builds: rows, listCount: isConfirmed ? rows.length + inv.length : rows.length, inventoryPrebuilts: isConfirmed ? inv : undefined, inventoryLoading: isConfirmed && inventoryLoading, sortOrder: sortOrder, salesByBuildId: salesByBuildId, deletingId: deletingId, preparingPartId: preparingPartId, defaultOpen: defaultOpen, onDelete: (build) => void handleDelete(build.id, build.name), onRegisterInventoryPrebuilt: isConfirmed
+                                        ? (part) => {
+                                            setPreparingPartId(part.id);
+                                            void buildsApi
+                                                .createBuildFromPrebuiltPart(part.id)
+                                                .then(async (detail) => {
+                                                await Promise.all([reload(), reloadInventory()]);
+                                                navigate(`/builds/${detail.id}#registrar-venta`);
+                                            })
+                                                .catch((err) => window.alert(err instanceof Error ? err.message : "No se pudo preparar la venta del PC."))
+                                                .finally(() => setPreparingPartId(null));
+                                        }
+                                        : undefined }, bucketKey));
+                            }), vendidosSectionVisible ? (_jsx("section", { className: LIST_PAGE_ACCORDION_SHELL, children: _jsxs("details", { className: "group", open: false, children: [_jsxs("summary", { className: LIST_PAGE_ACCORDION_TRIGGER, children: [_jsxs("div", { className: "flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3", children: [_jsx("p", { className: "text-lg font-semibold text-slate-100", children: "Vendidos" }), _jsx("span", { className: `${LIST_PAGE_COUNT_BADGE} ${bucketTone("SOLD")}`, children: soldBuildsFiltered.length })] }), _jsx("svg", { className: "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180", fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) })] }), _jsxs("div", { className: "border-t border-slate-800 px-4 pb-3 pt-2.5", children: [_jsxs("div", { className: "mb-2.5 grid grid-cols-1 gap-2.5 md:grid-cols-4", children: [_jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["Ventas por mes", _jsxs("select", { value: soldMonthFilter, onChange: (e) => setSoldMonthFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (_jsx("option", { value: m, children: SPANISH_MONTH_NAMES[m - 1] }, m)))] })] }), _jsxs("label", { className: "flex flex-col gap-1 text-sm text-slate-300", children: ["A\u00F1o vendidos", _jsxs("select", { value: soldYearFilter, onChange: (e) => setSoldYearFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value)), className: "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2", children: [_jsx("option", { value: "ALL", children: "Todos" }), years.map((y) => _jsx("option", { value: y, children: y }, y))] })] })] }), _jsx("div", { className: "space-y-2", children: soldVisible.map((build) => {
                                                         const sale = salesByBuildId.get(build.id);
-                                                        return (_jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-950/40 px-3.5 py-2.5", children: [_jsxs("div", { className: "flex flex-wrap items-center justify-between gap-2", children: [_jsxs("div", { className: "min-w-0", children: [_jsx("p", { className: "truncate font-medium text-slate-100", children: build.name }), _jsx("p", { className: "mt-1 text-sm text-slate-400", children: sale?.customerName ?? "—" })] }), _jsx("p", { className: "text-lg font-semibold text-emerald-300", children: money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0)) })] }), _jsx("div", { className: "mt-2 flex flex-wrap gap-2", children: _jsx(Link, { to: `/builds/${build.id}`, className: SECONDARY_GHOST_SM, children: "Ver detalle" }) })] }, build.id));
-                                                    }) }), soldBuildsFiltered.length > 5 ? (_jsx("button", { type: "button", onClick: () => setSoldExpanded((v) => !v), className: "mt-3 rounded-lg border border-slate-600 bg-slate-900/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800", children: soldExpanded ? "Ver menos" : "Ver todos" })) : null] })] }) })] }))] }), _jsx("div", { className: STICKY_PRIMARY_MOBILE_DOCK, children: _jsx("button", { type: "button", onClick: () => {
+                                                        return (_jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-950/40 px-3.5 py-2.5", children: [_jsxs("div", { className: "flex flex-wrap items-center justify-between gap-2", children: [_jsxs("div", { className: "min-w-0", children: [_jsx("p", { className: "truncate font-medium text-slate-100", children: build.name }), _jsx("p", { className: "mt-1 text-sm text-slate-400", children: sale?.customerName ?? build.customerName ?? "—" })] }), _jsx("p", { className: "text-lg font-semibold text-emerald-300", children: money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0)) })] }), _jsx("div", { className: "mt-2 flex flex-wrap gap-2", children: _jsx(Link, { to: `/builds/${build.id}`, className: SECONDARY_GHOST_SM, children: "Ver detalle" }) })] }, build.id));
+                                                    }) }), soldBuildsFiltered.length > 5 ? (_jsx("button", { type: "button", onClick: () => setSoldExpanded((v) => !v), className: "mt-3 rounded-lg border border-slate-600 bg-slate-900/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800", children: soldExpanded ? "Ver menos" : "Ver todos" })) : null] })] }) })) : null, showNoListingsHint ? (_jsx("p", { className: "text-sm text-slate-500", children: "Ninguna secci\u00F3n tiene contenido con los filtros actuales. Activa \u00ABMostrar secciones vac\u00EDas\u00BB para ver todas las categor\u00EDas." })) : null] }))] }), _jsx("div", { className: STICKY_PRIMARY_MOBILE_DOCK, children: _jsx("button", { type: "button", onClick: () => {
                         void handleQuickCreate();
                     }, disabled: creatingQuick, className: PRIMARY_ACTION_BUTTON, children: creatingQuick ? "Creando..." : "Crear montaje" }) })] }));
 }
-function BuildSection({ title, tone, builds, deletingId, defaultOpen, salesByBuildId, onDelete }) {
-    return (_jsx("section", { className: LIST_PAGE_ACCORDION_SHELL, children: _jsxs("details", { className: "group", open: defaultOpen, children: [_jsxs("summary", { className: LIST_PAGE_ACCORDION_TRIGGER, children: [_jsxs("div", { className: "flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3", children: [_jsx("p", { className: "text-lg font-semibold text-slate-100", children: title }), _jsx("span", { className: `${LIST_PAGE_COUNT_BADGE} ${tone}`, children: builds.length })] }), _jsx("svg", { className: "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180", fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) })] }), _jsx("div", { className: LIST_PAGE_ACCORDION_BODY, children: builds.length === 0 ? (_jsx("p", { className: "text-sm text-slate-500", children: "Sin montajes en esta secci\u00F3n." })) : (_jsxs(_Fragment, { children: [_jsx("div", { className: "hidden overflow-x-auto rounded-xl border border-slate-800 md:block", children: _jsxs("table", { className: "min-w-full text-left text-sm text-slate-200", children: [_jsx("thead", { className: "bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400", children: _jsxs("tr", { children: [_jsx("th", { className: TABLE_CELL, children: "Nombre" }), _jsx("th", { className: TABLE_CELL, children: "Fecha" }), _jsx("th", { className: TABLE_CELL, children: "Cliente" }), _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Venta" }), _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Beneficio" }), _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Acciones" })] }) }), _jsx("tbody", { className: "divide-y divide-slate-800", children: builds.map((build) => {
+function isInventoryPrebuiltBuild(build) {
+    return build.items?.length === 1 && build.items[0]?.part?.inventoryKind === "PREBUILT_PC";
+}
+function partLineProfit(part) {
+    return Math.round((Number(part.salePrice) - Number(part.costPrice)) * 100) / 100;
+}
+function BuildSection({ title, tone, builds, listCount, inventoryPrebuilts, inventoryLoading, sortOrder, deletingId, defaultOpen, salesByBuildId, preparingPartId, onDelete, onRegisterInventoryPrebuilt }) {
+    const merged = useMemo(() => {
+        const out = builds.map((b) => ({
+            kind: "build",
+            build: b,
+            t: new Date(b.updatedAt).getTime()
+        }));
+        if (inventoryPrebuilts?.length) {
+            for (const part of inventoryPrebuilts) {
+                out.push({ kind: "prebuilt", part, t: new Date(part.updatedAt).getTime() });
+            }
+        }
+        out.sort((a, b) => {
+            if (sortOrder === "PROFIT_DESC") {
+                const pa = a.kind === "build"
+                    ? Number(salesByBuildId.get(a.build.id)?.profit ?? a.build.profit ?? 0)
+                    : partLineProfit(a.part);
+                const pb = b.kind === "build"
+                    ? Number(salesByBuildId.get(b.build.id)?.profit ?? b.build.profit ?? 0)
+                    : partLineProfit(b.part);
+                if (pb !== pa)
+                    return pb - pa;
+            }
+            if (sortOrder === "PRICE_DESC") {
+                const pa = a.kind === "build" ? Number(a.build.totalSale ?? 0) : Number(a.part.salePrice);
+                const pb = b.kind === "build" ? Number(b.build.totalSale ?? 0) : Number(b.part.salePrice);
+                if (pb !== pa)
+                    return pb - pa;
+            }
+            return b.t - a.t;
+        });
+        return out;
+    }, [builds, inventoryPrebuilts, sortOrder, salesByBuildId]);
+    const showStockCol = inventoryPrebuilts !== undefined;
+    const count = listCount ?? builds.length;
+    const badgePc = "shrink-0 rounded-md border border-violet-500/35 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200/95";
+    const badgeMontaje = "shrink-0 rounded-md border border-cyan-500/35 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200/95";
+    return (_jsx("section", { className: LIST_PAGE_ACCORDION_SHELL, children: _jsxs("details", { className: "group", open: defaultOpen, children: [_jsxs("summary", { className: LIST_PAGE_ACCORDION_TRIGGER, children: [_jsxs("div", { className: "flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3", children: [_jsx("p", { className: "text-lg font-semibold text-slate-100", children: title }), _jsx("span", { className: `${LIST_PAGE_COUNT_BADGE} ${tone}`, children: count })] }), _jsx("svg", { className: "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180", fill: "none", viewBox: "0 0 24 24", strokeWidth: 2, stroke: "currentColor", "aria-hidden": true, children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19 9l-7 7-7-7" }) })] }), _jsx("div", { className: LIST_PAGE_ACCORDION_BODY, children: inventoryLoading && merged.length === 0 ? (_jsx("p", { className: "text-sm text-slate-500", children: "Cargando inventario\u2026" })) : merged.length === 0 ? (_jsx("p", { className: "text-sm text-slate-500", children: "Sin montajes en esta secci\u00F3n." })) : (_jsxs(_Fragment, { children: [_jsx("div", { className: "hidden overflow-x-auto rounded-xl border border-slate-800 md:block", children: _jsxs("table", { className: "min-w-full text-left text-sm text-slate-200", children: [_jsx("thead", { className: "bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400", children: _jsxs("tr", { children: [_jsx("th", { className: TABLE_CELL, children: "Nombre" }), _jsx("th", { className: TABLE_CELL, children: "Fecha" }), _jsx("th", { className: TABLE_CELL, children: "Cliente" }), showStockCol ? _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Stock" }) : null, _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Venta" }), _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Beneficio" }), _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Acciones" })] }) }), _jsx("tbody", { className: "divide-y divide-slate-800", children: merged.map((row) => {
+                                                if (row.kind === "prebuilt") {
+                                                    const part = row.part;
+                                                    return (_jsxs("tr", { className: "hover:bg-slate-800/30", children: [_jsx("td", { className: TABLE_CELL, children: _jsxs("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [_jsx("span", { className: "min-w-0 truncate font-medium text-slate-100", children: part.name }), _jsx("span", { className: badgePc, children: "PC completo" })] }) }), _jsx("td", { className: `${TABLE_CELL} text-slate-400`, children: toDateLabel(part.updatedAt) }), _jsx("td", { className: `${TABLE_CELL} text-slate-300`, children: "\u2014" }), showStockCol ? (_jsx("td", { className: `${TABLE_CELL} text-right text-violet-300`, children: part.stock })) : null, _jsx("td", { className: `${TABLE_CELL} text-right text-emerald-300`, children: money(Number(part.salePrice)) }), _jsx("td", { className: `${TABLE_CELL} text-right text-cyan-300`, children: money(partLineProfit(part)) }), _jsx("td", { className: TABLE_CELL, children: _jsxs("div", { className: "flex justify-end gap-2", children: [_jsx(Link, { to: "/inventory", className: SECONDARY_GHOST_SM, children: "Ver detalle" }), onRegisterInventoryPrebuilt ? (_jsx("button", { type: "button", onClick: () => onRegisterInventoryPrebuilt(part), disabled: preparingPartId === part.id, className: PRIMARY_ACTION_BUTTON_COMPACT, children: preparingPartId === part.id ? "Preparando…" : "Vender PC" })) : null] }) })] }, `pre-${part.id}`));
+                                                }
+                                                const build = row.build;
                                                 const sale = salesByBuildId.get(build.id);
-                                                return (_jsxs("tr", { className: "hover:bg-slate-800/30", children: [_jsx("td", { className: `${TABLE_CELL} font-medium text-slate-100`, children: build.name }), _jsx("td", { className: `${TABLE_CELL} text-slate-400`, children: toDateLabel(sale?.soldAt ?? build.updatedAt) }), _jsx("td", { className: `${TABLE_CELL} text-slate-300`, children: sale?.customerName ?? "—" }), _jsx("td", { className: `${TABLE_CELL} text-right text-emerald-300`, children: money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0)) }), _jsx("td", { className: `${TABLE_CELL} text-right text-cyan-300`, children: money(Number(sale?.profit ?? build.profit ?? 0)) }), _jsx("td", { className: TABLE_CELL, children: _jsxs("div", { className: "flex justify-end gap-2", children: [_jsx(Link, { to: `/builds/${build.id}`, className: SECONDARY_GHOST_SM, children: "Ver detalle" }), build.status === "CONFIRMED" ? (_jsx(Link, { to: `/builds/${build.id}#registrar-venta`, className: PRIMARY_ACTION_BUTTON_COMPACT, children: "Vender PC" })) : null, _jsx("button", { type: "button", onClick: () => onDelete(build), disabled: deletingId === build.id || build.status === "SOLD", className: DESTRUCTIVE_BUTTON_SM, children: "Eliminar" })] }) })] }, build.id));
-                                            }) })] }) }), _jsx("div", { className: "space-y-2 md:hidden", children: builds.map((build) => {
+                                                const fromInv = isInventoryPrebuiltBuild(build);
+                                                return (_jsxs("tr", { className: "hover:bg-slate-800/30", children: [_jsx("td", { className: TABLE_CELL, children: _jsxs("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [_jsx("span", { className: "min-w-0 truncate font-medium text-slate-100", children: build.name }), _jsx("span", { className: fromInv ? badgePc : badgeMontaje, children: fromInv ? "PC completo" : "Montaje propio" })] }) }), _jsx("td", { className: `${TABLE_CELL} text-slate-400`, children: toDateLabel(sale?.soldAt ?? build.updatedAt) }), _jsx("td", { className: `${TABLE_CELL} text-slate-300`, children: sale?.customerName ?? build.customerName ?? "—" }), showStockCol ? (_jsx("td", { className: `${TABLE_CELL} text-right text-slate-500`, children: "\u2014" })) : null, _jsx("td", { className: `${TABLE_CELL} text-right text-emerald-300`, children: money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0)) }), _jsx("td", { className: `${TABLE_CELL} text-right text-cyan-300`, children: money(Number(sale?.profit ?? build.profit ?? 0)) }), _jsx("td", { className: TABLE_CELL, children: _jsxs("div", { className: "flex justify-end gap-2", children: [_jsx(Link, { to: `/builds/${build.id}`, className: SECONDARY_GHOST_SM, children: "Ver detalle" }), canLinkRegisterSale(build, sale) ? (_jsx(Link, { to: `/builds/${build.id}#registrar-venta`, className: PRIMARY_ACTION_BUTTON_COMPACT, children: "Vender PC" })) : null, _jsx("button", { type: "button", onClick: () => onDelete(build), disabled: deletingId === build.id ||
+                                                                            build.status === "SOLD" ||
+                                                                            build.status === "PENDING_PICKUP", className: DESTRUCTIVE_BUTTON_SM, children: "Eliminar" })] }) })] }, build.id));
+                                            }) })] }) }), _jsx("div", { className: "space-y-2 md:hidden", children: merged.map((row) => {
+                                    if (row.kind === "prebuilt") {
+                                        const part = row.part;
+                                        return (_jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-950/40 p-3.5", children: [_jsx("div", { className: "flex flex-wrap items-start justify-between gap-2", children: _jsxs("div", { className: "min-w-0", children: [_jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [_jsx("p", { className: "font-semibold text-slate-100", children: part.name }), _jsx("span", { className: badgePc, children: "PC completo" })] }), _jsxs("p", { className: "mt-1 text-sm text-violet-300", children: ["Stock ", part.stock] })] }) }), _jsx("p", { className: "mt-2 text-xs text-slate-500", children: toDateLabel(part.updatedAt) }), _jsx("p", { className: "mt-2 text-base font-semibold text-emerald-300", children: money(Number(part.salePrice)) }), _jsxs("p", { className: "mt-1 text-sm text-cyan-300", children: ["Beneficio ", money(partLineProfit(part))] }), _jsxs("div", { className: "mt-2 flex flex-wrap gap-2", children: [_jsx(Link, { to: "/inventory", className: SECONDARY_GHOST_SM, children: "Ver detalle" }), onRegisterInventoryPrebuilt ? (_jsx("button", { type: "button", onClick: () => onRegisterInventoryPrebuilt(part), disabled: preparingPartId === part.id, className: PRIMARY_ACTION_BUTTON_COMPACT, children: preparingPartId === part.id ? "Preparando…" : "Vender PC" })) : null] })] }, `pre-m-${part.id}`));
+                                    }
+                                    const build = row.build;
                                     const sale = salesByBuildId.get(build.id);
-                                    return (_jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-950/40 p-3.5", children: [_jsx("p", { className: "font-semibold text-slate-100", children: build.name }), _jsx("p", { className: "mt-1 text-sm text-slate-400", children: sale?.customerName ?? "—" }), _jsx("p", { className: "mt-3 text-base font-semibold text-emerald-300", children: money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0)) }), _jsxs("div", { className: "mt-2 flex flex-wrap gap-2", children: [_jsx(Link, { to: `/builds/${build.id}`, className: SECONDARY_GHOST_SM, children: "Ver detalle" }), build.status === "CONFIRMED" ? (_jsx(Link, { to: `/builds/${build.id}#registrar-venta`, className: PRIMARY_ACTION_BUTTON_COMPACT, children: "Vender PC" })) : null, _jsx("button", { type: "button", onClick: () => onDelete(build), disabled: deletingId === build.id || build.status === "SOLD", className: DESTRUCTIVE_BUTTON_SM, children: "Eliminar" })] })] }, build.id));
+                                    const fromInv = isInventoryPrebuiltBuild(build);
+                                    return (_jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-950/40 p-3.5", children: [_jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [_jsx("p", { className: "font-semibold text-slate-100", children: build.name }), _jsx("span", { className: fromInv ? badgePc : badgeMontaje, children: fromInv ? "PC completo" : "Montaje propio" })] }), _jsx("p", { className: "mt-1 text-sm text-slate-400", children: sale?.customerName ?? build.customerName ?? "—" }), _jsx("p", { className: "mt-3 text-base font-semibold text-emerald-300", children: money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0)) }), _jsxs("p", { className: "mt-1 text-sm text-cyan-300", children: ["Beneficio ", money(Number(sale?.profit ?? build.profit ?? 0))] }), _jsxs("div", { className: "mt-2 flex flex-wrap gap-2", children: [_jsx(Link, { to: `/builds/${build.id}`, className: SECONDARY_GHOST_SM, children: "Ver detalle" }), canLinkRegisterSale(build, sale) ? (_jsx(Link, { to: `/builds/${build.id}#registrar-venta`, className: PRIMARY_ACTION_BUTTON_COMPACT, children: "Vender PC" })) : null, _jsx("button", { type: "button", onClick: () => onDelete(build), disabled: deletingId === build.id ||
+                                                            build.status === "SOLD" ||
+                                                            build.status === "PENDING_PICKUP", className: DESTRUCTIVE_BUTTON_SM, children: "Eliminar" })] })] }, build.id));
                                 }) })] })) })] }) }));
 }

@@ -71,18 +71,65 @@ export function useBuildDetail(buildId) {
             setActionLoading(false);
         }
     }, [buildId]);
-    const confirm = useCallback(async () => {
+    const addExtraLine = useCallback(async (payload) => {
         setActionLoading(true);
         setError(null);
         try {
-            const updated = await buildsApi.confirmBuild(buildId);
+            const updated = await buildsApi.addBuildExtraLine(buildId, payload);
+            setBuild(updated);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo anadir el extra.");
+            throw err;
+        }
+        finally {
+            setActionLoading(false);
+        }
+    }, [buildId]);
+    const updateExtraLine = useCallback(async (lineId, payload) => {
+        setActionLoading(true);
+        setError(null);
+        try {
+            const updated = await buildsApi.updateBuildExtraLine(buildId, lineId, payload);
+            setBuild(updated);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo actualizar el extra.");
+            throw err;
+        }
+        finally {
+            setActionLoading(false);
+        }
+    }, [buildId]);
+    const removeExtraLine = useCallback(async (lineId) => {
+        setActionLoading(true);
+        setError(null);
+        try {
+            await buildsApi.deleteBuildExtraLine(buildId, lineId);
+            const updated = await buildsApi.getBuild(buildId);
+            setBuild(updated);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo quitar el extra.");
+            throw err;
+        }
+        finally {
+            setActionLoading(false);
+        }
+    }, [buildId]);
+    const confirm = useCallback(async (payload) => {
+        setActionLoading(true);
+        setError(null);
+        try {
+            const updated = await buildsApi.confirmBuild(buildId, payload);
             setBuild(updated);
             const latestParts = await partsApi.listParts();
             setParts(latestParts);
         }
         catch (err) {
-            setError(err instanceof Error ? err.message : "No se pudo confirmar el montaje.");
-            throw err;
+            const msg = err instanceof Error ? err.message : "No se pudo confirmar el montaje.";
+            setError(msg);
+            throw err instanceof Error ? err : new Error(msg);
         }
         finally {
             setActionLoading(false);
@@ -129,6 +176,9 @@ export function useBuildDetail(buildId) {
         addItem,
         updateBuildItemLine,
         removeItem,
+        addExtraLine,
+        updateExtraLine,
+        removeExtraLine,
         confirm,
         revertToDraft,
         updateBuildFields,

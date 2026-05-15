@@ -12,6 +12,12 @@ type SellPcModalProps = {
   formResetKey?: number;
   /** Mostrar casilla cobrado pendiente de recogida */
   offerPendingPickup?: boolean;
+  /** Valores iniciales desde la ficha del montaje (borrador). */
+  defaultCustomer?: {
+    customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
+  };
 };
 
 export function SellPcModal({
@@ -22,7 +28,8 @@ export function SellPcModal({
   disabled,
   onSuccess,
   formResetKey = 0,
-  offerPendingPickup = true
+  offerPendingPickup = true,
+  defaultCustomer
 }: SellPcModalProps) {
   if (!open) return null;
 
@@ -67,6 +74,7 @@ export function SellPcModal({
             disabled={disabled}
             offerPendingPickup={offerPendingPickup}
             submitLabel="Confirmar venta"
+            defaultCustomer={defaultCustomer}
             onSuccess={onSuccess}
           />
         </div>

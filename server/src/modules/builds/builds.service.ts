@@ -3,6 +3,7 @@ import { prisma } from "../../db/prisma.js";
 import {
   addBuildExtraLineSchema,
   addBuildItemSchema,
+  confirmBuildSchema,
   createBuildSchema,
   fromPrebuiltPartSchema,
   updateBuildExtraLineSchema,
@@ -95,7 +96,15 @@ export async function getBuild(id: string) {
 
 export async function createBuild(payload: unknown) {
   const data = createBuildSchema.parse(payload);
-  return prisma.build.create({ data });
+  return prisma.build.create({
+    data: {
+      name: data.name.trim(),
+      notes: data.notes ?? null,
+      customerName: data.customerName ?? null,
+      customerPhone: data.customerPhone ?? null,
+      customerEmail: data.customerEmail ?? null
+    }
+  });
 }
 
 /**
@@ -161,6 +170,15 @@ export async function updateBuild(id: string, payload: unknown) {
   const patch: Prisma.BuildUpdateInput = {};
   if (data.name !== undefined) patch.name = data.name.trim();
   if (data.notes !== undefined) patch.notes = data.notes ?? null;
+  if (data.customerName !== undefined) {
+    patch.customerName = data.customerName === null ? null : data.customerName;
+  }
+  if (data.customerPhone !== undefined) {
+    patch.customerPhone = data.customerPhone === null ? null : data.customerPhone;
+  }
+  if (data.customerEmail !== undefined) {
+    patch.customerEmail = data.customerEmail === null ? null : data.customerEmail;
+  }
   if (data.saleTotalOverride !== undefined) {
     patch.saleTotalOverride =
       data.saleTotalOverride === null ? null : moneyDecimal(data.saleTotalOverride);
@@ -435,7 +453,10 @@ export async function deleteBuildExtraLine(buildId: string, lineId: string) {
   }
 }
 
-export async function confirmBuild(buildId: string) {
+export async function confirmBuild(buildId: string, payload?: unknown) {
+  const opts = confirmBuildSchema.parse(payload ?? {});
+  const targetStatus = opts.initialStatus ?? BuildStatus.CONFIRMED;
+
   const build = await prisma.build.findUnique({
     where: { id: buildId },
     include: { items: { include: { part: true } }, extraLines: true }
@@ -458,6 +479,31 @@ export async function confirmBuild(buildId: string) {
     throw new Error(`INSUFFICIENT_STOCK:${insufficient.part.name}`);
   }
 
+  const statusPatch: Prisma.BuildUpdateInput = {
+    status: targetStatus,
+    confirmedAt: new Date()
+  };
+
+  if (targetStatus === BuildStatus.CONFIRMED) {
+    statusPatch.reservationDeposit = null;
+    statusPatch.reservationRemaining = null;
+    statusPatch.pendingPaymentPaid = null;
+    statusPatch.pendingPaymentRemaining = null;
+    statusPatch.partialAccruedAt = null;
+  } else if (targetStatus === BuildStatus.RESERVED) {
+    statusPatch.pendingPaymentPaid = null;
+    statusPatch.pendingPaymentRemaining = null;
+    statusPatch.reservationDeposit = moneyDecimal(opts.reservationDeposit!);
+    statusPatch.reservationRemaining = moneyDecimal(opts.reservationRemaining!);
+    statusPatch.partialAccruedAt = new Date();
+  } else if (targetStatus === BuildStatus.PENDING_PAYMENT) {
+    statusPatch.reservationDeposit = null;
+    statusPatch.reservationRemaining = null;
+    statusPatch.pendingPaymentPaid = moneyDecimal(opts.pendingPaymentPaid!);
+    statusPatch.pendingPaymentRemaining = moneyDecimal(opts.pendingPaymentRemaining!);
+    statusPatch.partialAccruedAt = new Date();
+  }
+
   await prisma.$transaction(async (tx) => {
     for (const item of build.items) {
       if (partSkipsStockDeduction(item.part)) {
@@ -471,7 +517,7 @@ export async function confirmBuild(buildId: string) {
 
     await tx.build.update({
       where: { id: buildId },
-      data: { status: BuildStatus.CONFIRMED, confirmedAt: new Date() }
+      data: statusPatch
     });
   });
 

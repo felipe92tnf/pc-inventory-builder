@@ -13,6 +13,12 @@ type RegisterSaleFormProps = {
   variant?: "card" | "plain";
   submitLabel?: string;
   offerPendingPickup?: boolean;
+  /** Desde ficha de montaje (cliente en borrador). */
+  defaultCustomer?: {
+    customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
+  };
 };
 
 export function RegisterSaleForm({
@@ -22,11 +28,18 @@ export function RegisterSaleForm({
   onSuccess,
   variant = "card",
   submitLabel,
-  offerPendingPickup = false
+  offerPendingPickup = false,
+  defaultCustomer
 }: RegisterSaleFormProps) {
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerName, setCustomerName] = useState(
+    () => defaultCustomer?.customerName?.trim() ?? ""
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    () => defaultCustomer?.customerPhone?.trim() ?? ""
+  );
+  const [customerEmail, setCustomerEmail] = useState(
+    () => defaultCustomer?.customerEmail?.trim() ?? ""
+  );
   const [finalPrice, setFinalPrice] = useState(() => suggestedSalePrice.toFixed(2));
   const [paymentMethod, setPaymentMethod] = useState("");
   const [warrantyMonths, setWarrantyMonths] = useState("");

@@ -36,6 +36,10 @@ export type BuildItem = {
 export type Build = {
   id: string;
   name: string;
+  /** Cliente asociado al montaje (antes de registrar venta). */
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
   notes: string | null;
   status: BuildStatus;
   confirmedAt: string | null;
@@ -67,6 +71,17 @@ export type BuildDetail = Build & {
 export type CreateBuildPayload = {
   name: string;
   notes?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+};
+
+export type ConfirmBuildPayload = {
+  initialStatus?: BuildStatus;
+  reservationDeposit?: number;
+  reservationRemaining?: number;
+  pendingPaymentPaid?: number;
+  pendingPaymentRemaining?: number;
 };
 
 export type UpdateBuildPayload = Partial<CreateBuildPayload> & {
