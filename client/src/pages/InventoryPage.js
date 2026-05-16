@@ -11,7 +11,9 @@ import { ExtraTemplatesPage } from "./ExtraTemplatesPage";
 import { useParts } from "../hooks/useParts";
 import { OS_PART_CONDITION, PART_CATEGORIES, PART_CONDITIONS, isNonStockCategory, isPrebuiltPc, partCategoryLabel } from "../types/part";
 import { calculateSalePrice } from "../utils/pricing";
-import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
+import { filterPartsForInventoryPdf, getListedInventoryParts, inventoryPdfScopeLabel } from "../utils/inventoryPdfExport";
+import { computePhysicalInventoryDebugStats, physicalShelfTotals } from "../utils/physicalInventoryShelf";
+import { PRIMARY_ACTION_BUTTON_COMPACT, SECONDARY_BUTTON_SM } from "../theme/actionButtons";
 import { SUMMARY_CARD_GRID, SUMMARY_CARD_LABEL, SUMMARY_CARD_SHELL, SUMMARY_VALUE_NEGATIVE, SUMMARY_VALUE_NEUTRAL, SUMMARY_VALUE_PROFIT_POS, SUMMARY_VALUE_REVENUE } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_6XL } from "../theme/layoutDensity";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -56,27 +58,6 @@ function toPayload(values) {
         description: values.description.trim() ? values.description.trim() : undefined
     };
 }
-function inventoryTotals(parts) {
-    let totalCostValue = 0;
-    let totalSaleValue = 0;
-    let units = 0;
-    for (const p of parts) {
-        const c = Number(p.costPrice);
-        const s = Number(p.salePrice);
-        const q = p.stock;
-        if (Number.isFinite(c) && Number.isFinite(s) && Number.isFinite(q)) {
-            totalCostValue += c * q;
-            totalSaleValue += s * q;
-            units += q;
-        }
-    }
-    return {
-        totalCostValue,
-        totalSaleValue,
-        potentialProfit: totalSaleValue - totalCostValue,
-        units
-    };
-}
 function coerceMoney(v) {
     if (v == null)
         return 0;
@@ -85,10 +66,11 @@ function coerceMoney(v) {
     const n = parseFloat(String(v));
     return Number.isFinite(n) ? n : 0;
 }
-/** Montajes confirmados = PC terminado en almacén (coste/venta del montaje, sin duplicar piezas ya descontadas del stock). */
+/** Montajes confirmados sin fila PREBUILT vinculada (p. ej. premontado vendido desde stock). */
 function inventorySummaryWithBuilds(parts, builds) {
-    const shelf = inventoryTotals(parts);
-    const confirmedBuilds = builds.filter((b) => b.status === "CONFIRMED");
+    const shelf = physicalShelfTotals(parts);
+    const assembledBuildIds = new Set(parts.map((p) => p.assembledFromBuildId).filter((id) => Boolean(id)));
+    const confirmedBuilds = builds.filter((b) => b.status === "CONFIRMED" && !assembledBuildIds.has(b.id));
     let buildCostValue = 0;
     let buildSaleValue = 0;
     for (const b of confirmedBuilds) {
@@ -150,7 +132,6 @@ export function InventoryPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const { parts, loading, error, submitting, deletingId, createPart, createStockFromCatalog, updatePart, deletePart, reload } = useParts();
     const [builds, setBuilds] = useState([]);
-    const [partIdsInBuiltPcs, setPartIdsInBuiltPcs] = useState(new Set());
     const [selectedPart, setSelectedPart] = useState(null);
     const [activeTab, setActiveTab] = useState("summary");
     const [query, setQuery] = useState("");
@@ -178,6 +159,10 @@ export function InventoryPage() {
     const [pendingCatalogPick, setPendingCatalogPick] = useState(null);
     /** Acordeón «Nuevo PC completo» en pestaña Nueva pieza (plegado por defecto). */
     const [catalogPrebuiltAccordionOpen, setCatalogPrebuiltAccordionOpen] = useState(false);
+    const [pdfScope, setPdfScope] = useState("ALL");
+    const [pdfExportCategory, setPdfExportCategory] = useState("CPU");
+    const [pdfGenerating, setPdfGenerating] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
     const goToTab = useCallback((id, options) => {
         setActiveTab(id);
         setSearchParams((prev) => {
@@ -266,21 +251,9 @@ export function InventoryPage() {
         try {
             const rows = await buildsApi.listBuilds();
             setBuilds(rows);
-            const ids = new Set();
-            for (const build of rows) {
-                if (build.status === "DRAFT")
-                    continue;
-                for (const item of build.items ?? []) {
-                    if (item.part?.inventoryKind === "PART") {
-                        ids.add(item.partId);
-                    }
-                }
-            }
-            setPartIdsInBuiltPcs(ids);
         }
         catch {
             setBuilds([]);
-            setPartIdsInBuiltPcs(new Set());
         }
     }, []);
     useEffect(() => {
@@ -306,15 +279,15 @@ export function InventoryPage() {
         }
     };
     const totals = useMemo(() => inventorySummaryWithBuilds(parts, builds), [parts, builds]);
+    const inventorySummaryDebug = useMemo(() => computePhysicalInventoryDebugStats(parts), [parts]);
+    useEffect(() => {
+        if (!import.meta.env.DEV)
+            return;
+        console.debug("[SecondByte] Resumen inventario (solo stock físico)", inventorySummaryDebug);
+    }, [inventorySummaryDebug]);
     const partsListed = useMemo(() => {
-        return parts.filter((part) => {
-            if (!listedInInventory(part))
-                return false;
-            if (part.inventoryKind === "PART" && partIdsInBuiltPcs.has(part.id))
-                return false;
-            return true;
-        });
-    }, [parts, partIdsInBuiltPcs]);
+        return parts.filter((part) => listedInInventory(part));
+    }, [parts]);
     const filteredParts = useMemo(() => {
         return partsListed.filter((part) => {
             const matchesQuery = part.name.toLowerCase().includes(query.trim().toLowerCase());
@@ -416,13 +389,44 @@ export function InventoryPage() {
         setConditionFilter("ALL");
         setStockFilter("ALL");
     };
+    const handleDownloadInventoryPdf = useCallback(async () => {
+        setPdfGenerating(true);
+        setPdfError(null);
+        try {
+            const listed = getListedInventoryParts(parts);
+            const filtered = filterPartsForInventoryPdf(listed, pdfScope, pdfScope === "CATEGORY" ? pdfExportCategory : null);
+            const exportedAtIso = new Date().toISOString();
+            const scopeDescription = inventoryPdfScopeLabel(pdfScope, pdfScope === "CATEGORY" ? pdfExportCategory : null);
+            const [{ pdf }, { InventoryPdfDocument }] = await Promise.all([
+                import("@react-pdf/renderer"),
+                import("../components/inventory/InventoryPdfDocument")
+            ]);
+            const blob = await pdf(_jsx(InventoryPdfDocument, { parts: filtered, exportedAtIso: exportedAtIso, scopeDescription: scopeDescription })).toBlob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            const stamp = exportedAtIso.slice(0, 16).replace(/[-:T]/g, "");
+            a.href = url;
+            a.download = `inventario-secondbyte-${stamp}.pdf`;
+            a.rel = "noopener";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+        catch (err) {
+            setPdfError(err instanceof Error ? err.message : "No se pudo generar el PDF.");
+        }
+        finally {
+            setPdfGenerating(false);
+        }
+    }, [parts, pdfExportCategory, pdfScope]);
     const tabButtonClass = (id) => [
         "shrink-0 snap-start whitespace-nowrap rounded-t-lg border border-b-0 px-3 py-2 text-sm font-semibold transition md:px-4",
         activeTab === id
             ? "border-slate-700 bg-slate-900 text-slate-100 shadow-sm"
             : "border-transparent bg-slate-950/50 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
     ].join(" ");
-    return (_jsxs("div", { className: PAGE_OUTER_6XL, children: [_jsx("section", { className: PAGE_HERO, children: _jsx("h1", { className: "text-3xl font-bold tracking-tight", children: "Inventario" }) }), error ? (_jsxs("div", { className: "flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between", children: [_jsx("span", { children: error }), _jsx("button", { type: "button", onClick: () => {
+    return (_jsxs("div", { className: PAGE_OUTER_6XL, children: [_jsxs("section", { className: `${PAGE_HERO} flex flex-col gap-4 md:flex-row md:items-start md:justify-between`, children: [_jsx("h1", { className: "text-3xl font-bold tracking-tight", children: "Inventario" }), _jsxs("div", { className: "flex w-full max-w-xl flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-3 md:max-w-lg md:shrink-0", children: [_jsx("p", { className: "text-xs font-semibold uppercase tracking-wide text-slate-500", children: "Exportar PDF" }), _jsxs("div", { className: "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end", children: [_jsxs("label", { className: "flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-slate-400", children: ["Alcance", _jsxs("select", { value: pdfScope, onChange: (e) => setPdfScope(e.target.value), className: "min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/80 px-2 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400", children: [_jsx("option", { value: "ALL", children: "Todo el inventario" }), _jsx("option", { value: "CATEGORY", children: "Solo una categor\u00EDa" }), _jsx("option", { value: "LOW_STOCK", children: "Solo stock bajo" }), _jsx("option", { value: "PREBUILT_ONLY", children: "Solo PCs completos" })] })] }), _jsxs("label", { className: `flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-slate-400 ${pdfScope === "CATEGORY" ? "" : "opacity-45"}`, children: ["Categor\u00EDa", _jsx("select", { value: pdfExportCategory, onChange: (e) => setPdfExportCategory(e.target.value), disabled: pdfScope !== "CATEGORY", className: "min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/80 px-2 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 disabled:cursor-not-allowed", children: PART_CATEGORIES.map((c) => (_jsx("option", { value: c, children: partCategoryLabel(c) }, c))) })] })] }), _jsx("div", { className: "flex flex-wrap items-center gap-2", children: _jsx("button", { type: "button", onClick: () => void handleDownloadInventoryPdf(), disabled: loading || pdfGenerating || parts.length === 0, className: PRIMARY_ACTION_BUTTON_COMPACT, children: pdfGenerating ? "Generando…" : "Exportar PDF" }) }), pdfError ? _jsx("p", { className: "text-xs text-rose-300", children: pdfError }) : null] })] }), error ? (_jsxs("div", { className: "flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between", children: [_jsx("span", { children: error }), _jsx("button", { type: "button", onClick: () => {
                             void reload();
                             void refreshBuilds();
                         }, className: "rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70", children: "Reintentar" })] })) : null, _jsx("div", { className: "rounded-2xl border border-slate-800 bg-slate-950/40 p-1.5 shadow-inner shadow-black/30 md:p-2", children: _jsx("div", { className: "-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0", role: "tablist", "aria-label": "Secciones de inventario", children: INVENTORY_TABS.map((tab) => (_jsx("button", { type: "button", role: "tab", id: `inventory-tab-${tab.id}`, "aria-selected": activeTab === tab.id, "aria-controls": `inventory-panel-${tab.id}`, tabIndex: activeTab === tab.id ? 0 : -1, className: tabButtonClass(tab.id), onClick: () => goToTab(tab.id), children: tab.label }, tab.id))) }) }), _jsxs("section", { id: "inventory-panel-summary", role: "tabpanel", "aria-labelledby": "inventory-tab-summary", hidden: activeTab !== "summary", className: activeTab === "summary" ? "space-y-4" : "hidden", children: [_jsxs("div", { className: SUMMARY_CARD_GRID, children: [_jsxs("article", { className: SUMMARY_CARD_SHELL, children: [_jsx("p", { className: SUMMARY_CARD_LABEL, children: "Coste total" }), _jsx("p", { className: SUMMARY_VALUE_NEUTRAL, children: money(totals.totalCostValue) })] }), _jsxs("article", { className: SUMMARY_CARD_SHELL, children: [_jsx("p", { className: SUMMARY_CARD_LABEL, children: "Venta estimada" }), _jsx("p", { className: SUMMARY_VALUE_REVENUE, children: money(totals.totalSaleValue) })] }), _jsxs("article", { className: SUMMARY_CARD_SHELL, children: [_jsx("p", { className: SUMMARY_CARD_LABEL, children: "Beneficio" }), _jsx("p", { className: totals.potentialProfit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE, children: money(totals.potentialProfit) })] }), _jsxs("article", { className: SUMMARY_CARD_SHELL, children: [_jsx("p", { className: SUMMARY_CARD_LABEL, children: "Unidades" }), _jsx("p", { className: SUMMARY_VALUE_NEUTRAL, children: totals.units })] })] }), _jsxs("div", { className: "grid grid-cols-1 gap-3 lg:grid-cols-2", children: [_jsxs("article", { className: "rounded-xl border border-amber-500/25 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5", children: [_jsx("div", { className: "flex flex-wrap items-baseline justify-between gap-2", children: _jsx("h2", { className: "text-base font-semibold text-slate-100", children: "Stock bajo" }) }), lowStockCategories.length === 0 && !prebuiltStockLow ? (_jsx("p", { className: "mt-3 text-sm text-slate-400", children: "Sin avisos." })) : (_jsx(_Fragment, { children: _jsxs("ul", { className: "mt-3 max-h-52 space-y-2 overflow-y-auto text-sm", children: [lowStockCategories.map(({ category, total }) => (_jsxs("li", { className: "flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2", children: [_jsx("span", { className: "min-w-0 font-medium text-slate-200", children: partCategoryLabel(category) }), _jsxs("span", { className: "shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-200", children: [total, " u. en categor\u00EDa"] })] }, category))), prebuiltStockLow ? (_jsxs("li", { className: "flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2", children: [_jsx("span", { className: "min-w-0 font-medium text-slate-200", children: "PCs completos (premontados)" }), _jsxs("span", { className: "shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-200", children: [prebuiltStockTotal, " u. en total"] })] })) : null] }) }))] }), _jsxs("article", { className: "rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 md:p-5", children: [_jsx("h2", { className: "text-base font-semibold text-slate-100", children: "\u00DAltimas actualizaciones" }), recentParts.length === 0 ? (_jsx("p", { className: "mt-3 text-sm text-slate-400", children: "Sin datos todavia." })) : (_jsx("ul", { className: "mt-3 max-h-52 space-y-2 overflow-y-auto text-sm", children: recentParts.map((p) => (_jsx("li", { children: _jsxs("button", { type: "button", onClick: () => setSelectedPart(p), className: "flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2 text-left transition hover:border-indigo-500/35 hover:bg-slate-900/80", children: [_jsx("span", { className: "min-w-0 flex-1 font-medium text-slate-200", children: p.name }), _jsxs("span", { className: "flex shrink-0 flex-wrap items-center gap-2", children: [_jsx(StatusBadge, { variant: isPrebuiltPc(p) ? "prebuilt" : "neutral", size: "table", className: "uppercase tracking-wide", children: isPrebuiltPc(p) ? "PC" : "Pieza" }), _jsx("span", { className: "text-xs text-slate-500", children: formatShortDate(p.updatedAt) })] })] }) }, p.id))) }))] })] })] }), _jsxs("section", { id: "inventory-panel-catalog", role: "tabpanel", "aria-labelledby": "inventory-tab-catalog", hidden: activeTab !== "catalog", className: activeTab === "catalog" ? "space-y-4" : "hidden", children: [!selectedPart ? (_jsxs("div", { className: "flex w-full max-w-lg rounded-lg border border-slate-800 bg-slate-950/50 p-1", role: "group", "aria-label": "Tipo de alta en cat\u00E1logo", children: [_jsx("button", { type: "button", "aria-pressed": catalogNuevaMode === "parte", onClick: () => goToTab("catalog", { nueva: "parte" }), className: [

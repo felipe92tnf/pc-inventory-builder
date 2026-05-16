@@ -4,6 +4,7 @@ import * as salesApi from "../api/sales";
 import * as extraTemplatesApi from "../api/extraTemplates";
 import { BuildItemsTable } from "../components/builds/BuildItemsTable";
 import { BuildExtraLinesTable } from "../components/builds/BuildExtraLinesTable";
+import { BuildManualLinesTable } from "../components/builds/BuildManualLinesTable";
 import { PcConfiguratorForm } from "../components/builds/PcConfiguratorForm";
 import { SellPcModal } from "../components/sales/SellPcModal";
 import { useBuildDetail } from "../hooks/useBuildDetail";
@@ -11,23 +12,33 @@ import { isConfiguratorPart } from "../types/part";
 import type { BuildStatus, ConfirmBuildPayload, UpdateBuildPayload } from "../types/build";
 import type { SaleListRow } from "../types/sale";
 import {
-  PRIMARY_ACTION_BUTTON,
+  PRIMARY_ACTION_BUTTON_BUILD_CONFIRM,
   PRIMARY_ACTION_BUTTON_COMPACT,
-  SECONDARY_BUTTON_SM
+  SECONDARY_BUTTON_SM,
+  SECONDARY_GHOST_SM
 } from "../theme/actionButtons";
 import {
   SUMMARY_CARD_GRID_THREE,
   SUMMARY_CARD_LABEL,
-  SUMMARY_CARD_SHELL,
-  SUMMARY_CARD_SHELL_AUTO,
   SUMMARY_VALUE_NEGATIVE,
   SUMMARY_VALUE_NEUTRAL,
   SUMMARY_VALUE_PROFIT_POS
 } from "../theme/summaryCards";
-import { PAGE_HEADER_COMPACT, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
+import { PAGE_HEADER_COMPACT, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
 import type { ExtraTemplate } from "../types/extraTemplate";
 import { buildStatusLabelEs } from "../utils/buildStatusLabel";
+import { CustomerPicker } from "../components/customers/CustomerPicker";
+
+const BUILD_PAGE_SHELL =
+  "mx-auto w-full max-w-7xl space-y-3 px-2 pb-5 text-slate-100 md:space-y-3.5 md:px-4";
+
+const BUILD_SECTION =
+  "rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/30 md:p-4";
+
+/** KPI alineadas (detalle montaje): misma altura mínima. */
+const BUILD_KPI_CARD =
+  "flex min-h-[7.25rem] flex-col justify-between rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-[#0a0f1a] via-[#0c1424] to-[#081018] p-3 shadow-[0_12px_40px_-16px_rgba(6,182,212,0.18)] ring-1 ring-cyan-500/10 sm:min-h-[7.5rem] sm:p-3.5";
 
 function money(value: number): string {
   return `${value.toFixed(2)} EUR`;
@@ -101,10 +112,17 @@ export function BuildDetailPage() {
     revertToDraft,
     updateBuildFields,
     reload,
+    addManualLine,
     addExtraLine,
     updateExtraLine,
     removeExtraLine
   } = useBuildDetail(buildId);
+
+  const [manualName, setManualName] = useState("");
+  const [manualDesc, setManualDesc] = useState("");
+  const [manualQty, setManualQty] = useState(1);
+  const [manualCost, setManualCost] = useState("");
+  const [manualSale, setManualSale] = useState("");
 
   const [linkedSale, setLinkedSale] = useState<SaleListRow | null>(null);
 
@@ -119,17 +137,6 @@ export function BuildDetailPage() {
         : Number(build.computedSaleTotal ?? build.totalSale);
     return Number.isFinite(shown) ? Math.max(0, shown) : 0;
   }, [build, build?.totalSale, build?.saleTotalOverride, build?.computedSaleTotal]);
-
-  const sellSuggestedPrice = useMemo(() => {
-    if (!build) return 0;
-    if (build.status === "RESERVED" && build.reservationRemaining != null) {
-      return Number(build.reservationRemaining);
-    }
-    if (build.status === "PENDING_PAYMENT" && build.pendingPaymentRemaining != null) {
-      return Number(build.pendingPaymentRemaining);
-    }
-    return Number(build.totalSale);
-  }, [build]);
 
   const pricingLocked = build?.status === "SOLD" || build?.status === "PENDING_PICKUP";
 
@@ -163,16 +170,17 @@ export function BuildDetailPage() {
   const mountSyncedBuildIdRef = useRef<string | null>(null);
   const [mountForm, setMountForm] = useState({
     name: "",
+    customerId: null as string | null,
     customerName: "",
     customerPhone: "",
     customerEmail: "",
     notes: "",
     initialStatus: "CONFIRMED" as BuildStatus,
     confirmResDeposit: "",
-    confirmPayPaid: "",
-    confirmPayRemaining: ""
+    confirmPayPaid: ""
   });
   const [mountDataSaved, setMountDataSaved] = useState(false);
+  const [manualConceptOpen, setManualConceptOpen] = useState(false);
 
   const headerClientLine = useMemo(() => {
     if (!build) return null;
@@ -191,7 +199,6 @@ export function BuildDetailPage() {
   const [opStatus, setOpStatus] = useState<BuildStatus>("CONFIRMED");
   const [resDeposit, setResDeposit] = useState("");
   const [payPaid, setPayPaid] = useState("");
-  const [payRemaining, setPayRemaining] = useState("");
 
   /** Restante calculado al editar reserva (estado operativo Reservado). */
   const derivedReservationRemaining = useMemo(() => {
@@ -206,6 +213,31 @@ export function BuildDetailPage() {
     if (d === null) return null;
     return reservationRemainingFromTotalAndDeposit(totalSaleShown, d);
   }, [mountForm.confirmResDeposit, totalSaleShown]);
+
+  /** Pendiente = total venta − ya cobrado (mismo cálculo que resto de reserva). */
+  const derivedPendingRemaining = useMemo(() => {
+    const p = parseMoneyInput(payPaid);
+    if (p === null) return null;
+    return reservationRemainingFromTotalAndDeposit(totalSaleShown, p);
+  }, [payPaid, totalSaleShown]);
+
+  const draftDerivedPendingRemaining = useMemo(() => {
+    const p = parseMoneyInput(mountForm.confirmPayPaid);
+    if (p === null) return null;
+    return reservationRemainingFromTotalAndDeposit(totalSaleShown, p);
+  }, [mountForm.confirmPayPaid, totalSaleShown]);
+
+  const sellSuggestedPrice = useMemo(() => {
+    if (!build) return 0;
+    if (build.status === "RESERVED" && build.reservationRemaining != null) {
+      return Number(build.reservationRemaining);
+    }
+    if (build.status === "PENDING_PAYMENT") {
+      if (derivedPendingRemaining !== null) return derivedPendingRemaining;
+      if (build.pendingPaymentRemaining != null) return Number(build.pendingPaymentRemaining);
+    }
+    return Number(build.totalSale);
+  }, [build, derivedPendingRemaining]);
 
   useEffect(() => {
     if (!build) return;
@@ -225,9 +257,6 @@ export function BuildDetailPage() {
     }
     setResDeposit(build.reservationDeposit != null ? Number(build.reservationDeposit).toFixed(2) : "");
     setPayPaid(build.pendingPaymentPaid != null ? Number(build.pendingPaymentPaid).toFixed(2) : "");
-    setPayRemaining(
-      build.pendingPaymentRemaining != null ? Number(build.pendingPaymentRemaining).toFixed(2) : ""
-    );
   }, [build]);
 
   useEffect(() => {
@@ -255,14 +284,14 @@ export function BuildDetailPage() {
     mountSyncedBuildIdRef.current = build.id;
     setMountForm({
       name: build.name,
+      customerId: build.customerId ?? null,
       customerName: build.customerName ?? "",
       customerPhone: build.customerPhone ?? "",
       customerEmail: build.customerEmail ?? "",
       notes: build.notes ?? "",
       initialStatus: "CONFIRMED",
       confirmResDeposit: "",
-      confirmPayPaid: "",
-      confirmPayRemaining: ""
+      confirmPayPaid: ""
     });
     setMountDataSaved(false);
   }, [build]);
@@ -310,13 +339,16 @@ export function BuildDetailPage() {
       payload.reservationRemaining = reservationRemainingFromTotalAndDeposit(totalSaleShown, d);
     } else if (opStatus === "PENDING_PAYMENT") {
       const p = parseMoneyInput(payPaid);
-      const r = parseMoneyInput(payRemaining);
-      if (p === null || r === null) {
-        window.alert("Indica importe cobrado y pendiente (numeros validos >= 0).");
+      if (p === null) {
+        window.alert("Indica importe cobrado (numero valido >= 0).");
+        return;
+      }
+      if (p > totalSaleShown + 0.005) {
+        window.alert("El importe cobrado no puede ser mayor que el precio de venta total del montaje.");
         return;
       }
       payload.pendingPaymentPaid = p;
-      payload.pendingPaymentRemaining = r;
+      payload.pendingPaymentRemaining = reservationRemainingFromTotalAndDeposit(totalSaleShown, p);
     }
     void updateBuildFields(payload);
   };
@@ -347,6 +379,7 @@ export function BuildDetailPage() {
       await updateBuildFields({
         name: mountForm.name.trim(),
         notes: mountForm.notes.trim() ? mountForm.notes.trim() : null,
+        customerId: mountForm.customerId,
         customerName: mountForm.customerName.trim() ? mountForm.customerName.trim() : null,
         customerPhone: mountForm.customerPhone.trim() ? mountForm.customerPhone.trim() : null,
         customerEmail: emailTrim ? emailTrim : null
@@ -392,6 +425,7 @@ export function BuildDetailPage() {
     const patch: UpdateBuildPayload = {
       name,
       notes: mountForm.notes.trim() ? mountForm.notes.trim() : null,
+      customerId: mountForm.customerId,
       customerName,
       customerPhone: phone,
       customerEmail: emailTrim ? emailTrim : null
@@ -421,13 +455,16 @@ export function BuildDetailPage() {
       confirmPayload.reservationRemaining = reservationRemainingFromTotalAndDeposit(saleTotalForReserve, d);
     } else if (mountForm.initialStatus === "PENDING_PAYMENT") {
       const p = parseMoneyInput(mountForm.confirmPayPaid);
-      const r = parseMoneyInput(mountForm.confirmPayRemaining);
-      if (p === null || r === null) {
-        window.alert("Indica importe cobrado y pendiente (numeros validos >= 0).");
+      if (p === null) {
+        window.alert("Indica importe ya cobrado (numero valido >= 0).");
+        return;
+      }
+      if (p > roundedSale + 0.005) {
+        window.alert("El importe cobrado no puede ser mayor que el precio de venta total.");
         return;
       }
       confirmPayload.pendingPaymentPaid = p;
-      confirmPayload.pendingPaymentRemaining = r;
+      confirmPayload.pendingPaymentRemaining = reservationRemainingFromTotalAndDeposit(roundedSale, p);
     }
 
     try {
@@ -491,7 +528,7 @@ export function BuildDetailPage() {
   }
 
   return (
-    <div className={PAGE_OUTER_7XL}>
+    <div className={BUILD_PAGE_SHELL}>
       {flashMessage ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
           <span>{flashMessage}</span>
@@ -516,7 +553,7 @@ export function BuildDetailPage() {
           </button>
         </div>
       ) : null}
-      <header className={PAGE_HEADER_COMPACT}>
+      <header className={`${PAGE_HEADER_COMPACT} !py-2.5 sm:!py-3`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -595,12 +632,378 @@ export function BuildDetailPage() {
         </div>
       ) : null}
 
-      <section className={SUMMARY_CARD_GRID_THREE}>
-        <article className={SUMMARY_CARD_SHELL}>
+      {(build.status === "DRAFT" || isAssembledOperational(build.status)) ? (
+        <section className={BUILD_SECTION}>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Información
+          </h2>
+          {build.status === "DRAFT" ? (
+            <>
+              {mountDataSaved ? (
+                <p className="mb-2 text-xs font-medium text-emerald-300/90">Guardado.</p>
+              ) : null}
+              <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                <label className="flex flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
+                  Nombre del montaje
+                  <input
+                    value={mountForm.name}
+                    onChange={(e) => setMountForm((m) => ({ ...m, name: e.target.value }))}
+                    disabled={actionLoading}
+                    className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    placeholder="Ej: PC Oficina Garcia"
+                  />
+                </label>
+                <div className="md:col-span-2">
+                  <CustomerPicker
+                    value={{
+                      customerId: mountForm.customerId,
+                      customerName: mountForm.customerName,
+                      customerPhone: mountForm.customerPhone,
+                      customerEmail: mountForm.customerEmail
+                    }}
+                    onChange={(c) =>
+                      setMountForm((m) => ({
+                        ...m,
+                        customerId: c.customerId,
+                        customerName: c.customerName,
+                        customerPhone: c.customerPhone,
+                        customerEmail: c.customerEmail
+                      }))
+                    }
+                    requireName={false}
+                    requirePhone={false}
+                  />
+                </div>
+                <label className="flex flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
+                  Notas
+                  <textarea
+                    value={mountForm.notes}
+                    onChange={(e) => setMountForm((m) => ({ ...m, notes: e.target.value }))}
+                    disabled={actionLoading}
+                    rows={2}
+                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    placeholder="Preferencias, plazo…"
+                  />
+                </label>
+              </div>
+            </>
+          ) : null}
+          {isAssembledOperational(build.status) && build.status !== "SOLD" ? (
+            <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-end">
+              <label className="flex min-w-[10rem] flex-1 flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Estado
+                <select
+                  value={opStatus}
+                  onChange={(e) => {
+                    const next = e.target.value as BuildStatus;
+                    if (next === "PENDING_PAYMENT" && build) {
+                      setPayPaid("0.00");
+                    }
+                    setOpStatus(next);
+                  }}
+                  disabled={actionLoading}
+                  className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm font-medium text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                >
+                  {OPERATIONAL_STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {opStatus === "RESERVED" ? (
+                <>
+                  <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Reserva cobrada
+                    <input
+                      value={resDeposit}
+                      onChange={(e) => setResDeposit(e.target.value)}
+                      disabled={actionLoading}
+                      inputMode="decimal"
+                      className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    />
+                  </label>
+                  <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-2.5 py-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Restante</span>
+                    <span className="text-sm font-bold tabular-nums text-slate-100">
+                      {derivedReservationRemaining === null ? "—" : money(derivedReservationRemaining)}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+              {opStatus === "PENDING_PAYMENT" ? (
+                <>
+                  <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Cobrado
+                    <input
+                      value={payPaid}
+                      onChange={(e) => setPayPaid(e.target.value)}
+                      disabled={actionLoading}
+                      inputMode="decimal"
+                      className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    />
+                  </label>
+                  <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-2.5 py-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Pendiente
+                    </span>
+                    <span className="text-sm font-bold tabular-nums text-slate-100">
+                      {derivedPendingRemaining === null ? "—" : money(derivedPendingRemaining)}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section className={BUILD_SECTION}>
+        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Montaje</h2>
+        {build.status === "DRAFT" ? (
+          <PcConfiguratorForm
+            parts={configuratorParts}
+            disabled={actionLoading}
+            onAddSelected={handleAddConfiguratorParts}
+            heading="Añadir desde inventario"
+            lead=""
+            compact
+            slotLayout="accordion"
+            extrasAccordion={
+              <>
+                <div className="flex max-w-3xl flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                  <label className="flex min-w-[12rem] flex-1 flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Extra (plantilla)
+                    <select
+                      value={extraTemplateId}
+                      disabled={actionLoading}
+                      onChange={(e) => setExtraTemplateId(e.target.value)}
+                      className="min-h-[36px] rounded-lg border border-slate-600 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    >
+                      <option value="">Elegir…</option>
+                      {extraTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                          {t.category?.trim() ? ` (${t.category})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex w-16 flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:w-20">
+                    Uds.
+                    <input
+                      type="number"
+                      min={1}
+                      value={extraQty}
+                      disabled={actionLoading}
+                      onChange={(e) => setExtraQty(Math.max(1, Number(e.target.value) || 1))}
+                      className="min-h-[36px] rounded-lg border border-slate-600 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={actionLoading || !extraTemplateId}
+                    onClick={() => {
+                      void addExtraLine({ extraTemplateId, quantity: extraQty });
+                    }}
+                    className={SECONDARY_BUTTON_SM}
+                  >
+                    Añadir
+                  </button>
+                </div>
+                <div className="mt-2">
+                  {!manualConceptOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setManualConceptOpen(true)}
+                      className={`${SECONDARY_GHOST_SM} w-full justify-center sm:w-auto`}
+                    >
+                      + Añadir concepto manual
+                    </button>
+                  ) : (
+                    <div className="rounded-lg border border-indigo-500/35 bg-slate-950/50 p-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-100">Concepto manual</span>
+                        <button
+                          type="button"
+                          onClick={() => setManualConceptOpen(false)}
+                          className="rounded-md px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                        >
+                          Cerrar
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-200 sm:col-span-2">
+                          Nombre
+                          <input
+                            value={manualName}
+                            onChange={(e) => setManualName(e.target.value)}
+                            disabled={actionLoading}
+                            className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-200 sm:col-span-2">
+                          Descripción
+                          <input
+                            value={manualDesc}
+                            onChange={(e) => setManualDesc(e.target.value)}
+                            disabled={actionLoading}
+                            className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-200">
+                          Cantidad
+                          <input
+                            type="number"
+                            min={1}
+                            value={manualQty}
+                            onChange={(e) => setManualQty(Math.max(1, Number(e.target.value) || 1))}
+                            disabled={actionLoading}
+                            className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-200">
+                          Coste u. (opc.)
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={manualCost}
+                            onChange={(e) => setManualCost(e.target.value)}
+                            disabled={actionLoading}
+                            placeholder="—"
+                            className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-200 sm:col-span-2">
+                          Precio venta unit.
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={manualSale}
+                            onChange={(e) => setManualSale(e.target.value)}
+                            disabled={actionLoading}
+                            className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        className={`${PRIMARY_ACTION_BUTTON_COMPACT} mt-3 w-full sm:w-auto`}
+                        onClick={() => {
+                          const qty = Math.max(1, Math.floor(Number(manualQty)));
+                          const sale = Number(manualSale.replace(",", ".").trim());
+                          if (!manualName.trim()) {
+                            window.alert("Nombre obligatorio.");
+                            return;
+                          }
+                          if (!Number.isFinite(sale) || sale < 0) {
+                            window.alert("Precio de venta unitario invalido.");
+                            return;
+                          }
+                          let unitCost = 0;
+                          if (manualCost.trim() !== "") {
+                            const c = Number(manualCost.replace(",", ".").trim());
+                            if (!Number.isFinite(c) || c < 0) {
+                              window.alert("Coste unitario invalido.");
+                              return;
+                            }
+                            unitCost = c;
+                          }
+                          void addManualLine({
+                            name: manualName.trim(),
+                            description: manualDesc.trim() || null,
+                            quantity: qty,
+                            unitCost,
+                            unitSalePrice: sale
+                          }).then(() => {
+                            setManualName("");
+                            setManualDesc("");
+                            setManualQty(1);
+                            setManualCost("");
+                            setManualSale("");
+                            setManualConceptOpen(false);
+                          });
+                        }}
+                      >
+                        Añadir línea
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            }
+          />
+        ) : null}
+        <div className={build.status === "DRAFT" ? "mt-3 border-t border-slate-800/70 pt-3" : ""}>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Piezas en el montaje
+          </p>
+          <BuildItemsTable
+            prominent
+            compactDensity
+            items={build.items}
+            status={build.status}
+            actionLoading={actionLoading}
+            onRemove={async (itemId) => {
+              await removeItem(itemId);
+            }}
+            onUpdateLineSale={
+              build.status === "DRAFT"
+                ? async (itemId, unitSalePrice) => {
+                    await updateBuildItemLine(itemId, { unitSalePrice });
+                  }
+                : undefined
+            }
+          />
+          <div className="mt-2 space-y-2">
+            <BuildManualLinesTable
+              lines={build.extraLines ?? []}
+              status={build.status}
+              actionLoading={actionLoading}
+              onRemove={removeExtraLine}
+              onUpdateLine={
+                build.status === "DRAFT"
+                  ? async (lineId, unitSalePrice, unitCost) => {
+                      await updateExtraLine(lineId, {
+                        unitSalePrice,
+                        ...(unitCost !== undefined ? { unitCost } : {})
+                      });
+                    }
+                  : undefined
+              }
+            />
+            <BuildExtraLinesTable
+              compactHeader
+              lines={build.extraLines ?? []}
+              status={build.status}
+              actionLoading={actionLoading}
+              onRemove={async (lineId) => {
+                await removeExtraLine(lineId);
+              }}
+              onUpdateLine={
+                build.status === "DRAFT"
+                  ? async (lineId, unitSalePrice, unitCost) => {
+                      await updateExtraLine(lineId, {
+                        unitSalePrice,
+                        ...(unitCost !== undefined ? { unitCost } : {})
+                      });
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      <div>
+        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Totales</h2>
+        <section className={SUMMARY_CARD_GRID_THREE}>
+        <article className={BUILD_KPI_CARD}>
           <p className={SUMMARY_CARD_LABEL}>Coste total</p>
-          <p className={SUMMARY_VALUE_NEUTRAL}>{money(build.totalCost)}</p>
+          <p className={`${SUMMARY_VALUE_NEUTRAL} !text-lg sm:!text-xl`}>{money(build.totalCost)}</p>
         </article>
-        <article className={SUMMARY_CARD_SHELL_AUTO}>
+        <article className={BUILD_KPI_CARD}>
           <p className={SUMMARY_CARD_LABEL}>Precio venta</p>
           <input
             type="text"
@@ -608,14 +1011,14 @@ export function BuildDetailPage() {
             value={saleDraft}
             onChange={(event) => setSaleDraft(event.target.value)}
             disabled={actionLoading || pricingLocked}
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-xl font-bold tabular-nums text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50 sm:text-2xl"
+            className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-lg font-bold tabular-nums text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50 sm:text-xl"
             aria-label="Precio de venta total"
-            title={`Calculado por líneas: ${money(build.computedSaleTotal)}`}
+            title={`Calculado: ${money(build.computedSaleTotal)}`}
           />
           {build.saleTotalOverride != null ? (
-            <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">Total manual</p>
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">Manual</p>
           ) : null}
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             <button
               type="button"
               disabled={actionLoading || pricingLocked}
@@ -639,25 +1042,29 @@ export function BuildDetailPage() {
                 onClick={() => {
                   void updateBuildFields({ saleTotalOverride: null });
                 }}
-                className="rounded-lg border border-emerald-500/45 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-emerald-500/45 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Usar calculado ({money(build.computedSaleTotal)})
+                Calculado ({money(build.computedSaleTotal)})
               </button>
             ) : null}
           </div>
         </article>
-        <article className={SUMMARY_CARD_SHELL}>
-          <p className={SUMMARY_CARD_LABEL}>Beneficio estimado</p>
+        <article className={BUILD_KPI_CARD}>
+          <p className={SUMMARY_CARD_LABEL}>Beneficio</p>
           <p className={build.profit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE}>
             {money(build.profit)}
           </p>
         </article>
       </section>
+      </div>
 
-      {build.status === "DRAFT" ? (
-        <section className={`${SECTION_SHELL} !py-3`} aria-label="Estado al confirmar">
-          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <section className={BUILD_SECTION}>
+        {build.status === "DRAFT" ? (
+          <div
+            className="mb-3 flex flex-col gap-2 border-b border-slate-800/70 pb-3 lg:flex-row lg:flex-wrap lg:items-end"
+            aria-label="Estado al confirmar"
+          >
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               Estado al confirmar
               <select
                 value={mountForm.initialStatus}
@@ -668,15 +1075,14 @@ export function BuildDetailPage() {
                     if (next === "PENDING_PAYMENT") {
                       return {
                         ...patch,
-                        confirmPayPaid: "0.00",
-                        confirmPayRemaining: totalSaleShown > 0 ? totalSaleShown.toFixed(2) : "0.00"
+                        confirmPayPaid: "0.00"
                       };
                     }
                     return patch;
                   });
                 }}
                 disabled={actionLoading}
-                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm font-medium text-slate-100 outline-none focus:border-indigo-400 focus:ring"
               >
                 {CONFIRM_INITIAL_STATUS_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -687,19 +1093,19 @@ export function BuildDetailPage() {
             </label>
             {mountForm.initialStatus === "RESERVED" ? (
               <>
-                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Reserva cobrada
                   <input
                     value={mountForm.confirmResDeposit}
                     onChange={(e) => setMountForm((m) => ({ ...m, confirmResDeposit: e.target.value }))}
                     disabled={actionLoading}
                     inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
                   />
                 </label>
-                <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-3 py-2">
+                <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-2.5 py-1.5">
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Restante</span>
-                  <span className="text-base font-bold tabular-nums text-slate-100">
+                  <span className="text-sm font-bold tabular-nums text-slate-100">
                     {draftDerivedReservationRemaining === null ? "—" : money(draftDerivedReservationRemaining)}
                   </span>
                 </div>
@@ -707,268 +1113,29 @@ export function BuildDetailPage() {
             ) : null}
             {mountForm.initialStatus === "PENDING_PAYMENT" ? (
               <>
-                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Ya cobrado
                   <input
                     value={mountForm.confirmPayPaid}
                     onChange={(e) => setMountForm((m) => ({ ...m, confirmPayPaid: e.target.value }))}
                     disabled={actionLoading}
                     inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+                    className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
                   />
                 </label>
-                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Pendiente
-                  <input
-                    value={mountForm.confirmPayRemaining}
-                    onChange={(e) => setMountForm((m) => ({ ...m, confirmPayRemaining: e.target.value }))}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-              </>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {isAssembledOperational(build.status) && build.status !== "SOLD" ? (
-        <section
-          className={`${SECTION_SHELL} !py-3`}
-          aria-label="Estado y cobro"
-        >
-          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-            <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Estado
-              <select
-                value={opStatus}
-                onChange={(e) => {
-                  const next = e.target.value as BuildStatus;
-                  if (next === "PENDING_PAYMENT" && build) {
-                    setPayPaid("0.00");
-                    setPayRemaining(totalSaleShown > 0 ? totalSaleShown.toFixed(2) : "0.00");
-                  }
-                  setOpStatus(next);
-                }}
-                disabled={actionLoading}
-                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-medium text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-              >
-                {OPERATIONAL_STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {opStatus === "RESERVED" ? (
-              <>
-                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Reserva cobrada
-                  <input
-                    value={resDeposit}
-                    onChange={(e) => setResDeposit(e.target.value)}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-                <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-3 py-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Restante</span>
-                  <span className="text-base font-bold tabular-nums text-slate-100">
-                    {derivedReservationRemaining === null ? "—" : money(derivedReservationRemaining)}
+                <div className="flex min-w-[7rem] flex-col gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 px-2.5 py-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    Pendiente
+                  </span>
+                  <span className="text-sm font-bold tabular-nums text-slate-100">
+                    {draftDerivedPendingRemaining === null ? "—" : money(draftDerivedPendingRemaining)}
                   </span>
                 </div>
               </>
             ) : null}
-            {opStatus === "PENDING_PAYMENT" ? (
-              <>
-                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Cobrado
-                  <input
-                    value={payPaid}
-                    onChange={(e) => setPayPaid(e.target.value)}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-                <label className="flex w-full min-w-[8rem] max-w-[11rem] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Pendiente
-                  <input
-                    value={payRemaining}
-                    onChange={(e) => setPayRemaining(e.target.value)}
-                    disabled={actionLoading}
-                    inputMode="decimal"
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-              </>
-            ) : null}
           </div>
-        </section>
-      ) : null}
+        ) : null}
 
-      {build.status === "DRAFT" ? (
-        <section className={SECTION_SHELL}>
-          {mountDataSaved ? (
-            <p className="mb-3 text-xs font-medium text-emerald-300/90">Guardado.</p>
-          ) : null}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
-              Nombre del montaje
-              <input
-                value={mountForm.name}
-                onChange={(e) => setMountForm((m) => ({ ...m, name: e.target.value }))}
-                disabled={actionLoading}
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                placeholder="Ej: PC Oficina Garcia"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Cliente
-              <input
-                value={mountForm.customerName}
-                onChange={(e) => setMountForm((m) => ({ ...m, customerName: e.target.value }))}
-                disabled={actionLoading}
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                placeholder="Nombre y apellidos"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Telefono
-              <input
-                value={mountForm.customerPhone}
-                onChange={(e) => setMountForm((m) => ({ ...m, customerPhone: e.target.value }))}
-                disabled={actionLoading}
-                inputMode="tel"
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                placeholder="600 000 000"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
-              Email (opcional)
-              <input
-                type="email"
-                value={mountForm.customerEmail}
-                onChange={(e) => setMountForm((m) => ({ ...m, customerEmail: e.target.value }))}
-                disabled={actionLoading}
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                placeholder="cliente@correo.es"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
-              Notas
-              <textarea
-                value={mountForm.notes}
-                onChange={(e) => setMountForm((m) => ({ ...m, notes: e.target.value }))}
-                disabled={actionLoading}
-                rows={2}
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                placeholder="Preferencias, plazo…"
-              />
-            </label>
-          </div>
-        </section>
-      ) : null}
-
-      {build.status === "DRAFT" ? (
-        <section className={`${SECTION_SHELL} !py-3`}>
-          <div className="flex max-w-3xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Extra
-              <select
-                value={extraTemplateId}
-                disabled={actionLoading}
-                onChange={(e) => setExtraTemplateId(e.target.value)}
-                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-              >
-                <option value="">Elegir…</option>
-                {extraTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.category?.trim() ? ` (${t.category})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex w-20 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Uds.
-              <input
-                type="number"
-                min={1}
-                value={extraQty}
-                disabled={actionLoading}
-                onChange={(e) => setExtraQty(Math.max(1, Number(e.target.value) || 1))}
-                className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={actionLoading || !extraTemplateId}
-              onClick={() => {
-                void addExtraLine({ extraTemplateId, quantity: extraQty });
-              }}
-              className={SECONDARY_BUTTON_SM}
-            >
-              Añadir
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {build.status === "DRAFT" ? (
-        <PcConfiguratorForm
-          parts={configuratorParts}
-          disabled={actionLoading}
-          onAddSelected={handleAddConfiguratorParts}
-          heading="Añadir piezas"
-          lead=""
-          compact
-        />
-      ) : null}
-
-      <div className="space-y-2">
-        <h2 className="text-base font-semibold tracking-tight text-slate-100 sm:text-lg">Componentes</h2>
-        <BuildItemsTable
-          prominent
-          items={build.items}
-          status={build.status}
-          actionLoading={actionLoading}
-          onRemove={async (itemId) => {
-            await removeItem(itemId);
-          }}
-          onUpdateLineSale={
-            build.status === "DRAFT"
-              ? async (itemId, unitSalePrice) => {
-                  await updateBuildItemLine(itemId, { unitSalePrice });
-                }
-              : undefined
-          }
-        />
-      </div>
-
-      <BuildExtraLinesTable
-        compactHeader
-        lines={build.extraLines ?? []}
-        status={build.status}
-        actionLoading={actionLoading}
-        onRemove={async (lineId) => {
-          await removeExtraLine(lineId);
-        }}
-        onUpdateLine={
-          build.status === "DRAFT"
-            ? async (lineId, unitSalePrice, unitCost) => {
-                await updateExtraLine(lineId, {
-                  unitSalePrice,
-                  ...(unitCost !== undefined ? { unitCost } : {})
-                });
-              }
-            : undefined
-        }
-      />
-
-      <section className="rounded-xl border border-slate-800/90 bg-slate-950/40 px-3 py-3 sm:px-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             {build.status === "DRAFT" ? (
@@ -992,7 +1159,7 @@ export function BuildDetailPage() {
               </button>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-2 sm:justify-end">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
             {isAssembledOperational(build.status) && !linkedSale ? (
               <button
                 type="button"
@@ -1017,7 +1184,7 @@ export function BuildDetailPage() {
                 ((build.items?.length ?? 0) === 0 && (build.extraLines?.length ?? 0) === 0)
               }
               onClick={() => void handleConfirmMontaje()}
-              className={PRIMARY_ACTION_BUTTON}
+              className={PRIMARY_ACTION_BUTTON_BUILD_CONFIRM}
             >
               {build.status === "SOLD" || build.status === "PENDING_PICKUP"
                 ? build.status === "PENDING_PICKUP"
@@ -1042,6 +1209,7 @@ export function BuildDetailPage() {
         disabled={actionLoading}
         formResetKey={sellFormKey}
         defaultCustomer={{
+          customerId: build.customerId,
           customerName: build.customerName,
           customerPhone: build.customerPhone,
           customerEmail: build.customerEmail

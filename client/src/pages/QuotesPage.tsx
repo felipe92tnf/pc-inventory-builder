@@ -21,6 +21,8 @@ import {
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL, TABLE_CELL } from "../theme/layoutDensity";
 import { StatusBadge, quoteStatusVariant } from "../components/ui/StatusBadge";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
+import { CustomerPicker, emptyCustomerFields } from "../components/customers/CustomerPicker";
+import type { CustomerFieldValue } from "../types/customer";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -71,9 +73,7 @@ export function QuotesPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | "ALL">("ALL");
 
-  const [newCustomerName, setNewCustomerName] = useState("");
-  const [newCustomerPhone, setNewCustomerPhone] = useState("");
-  const [newCustomerEmail, setNewCustomerEmail] = useState("");
+  const [newCustomer, setNewCustomer] = useState<CustomerFieldValue>(emptyCustomerFields);
   const [newTitle, setNewTitle] = useState("");
   /** Móvil: un acordeón por estado; por defecto plegados. */
   const [mobileStatusOpen, setMobileStatusOpen] = useState<Partial<Record<QuoteStatus, boolean>>>({});
@@ -126,7 +126,7 @@ export function QuotesPage() {
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!newCustomerName.trim() || !newTitle.trim()) {
+    if (!newCustomer.customerName.trim() || !newTitle.trim()) {
       window.alert("Cliente y titulo son obligatorios.");
       return;
     }
@@ -134,16 +134,15 @@ export function QuotesPage() {
     setError(null);
     try {
       const payload: CreateQuotePayload = {
-        customerName: newCustomerName.trim(),
-        customerPhone: newCustomerPhone.trim() || null,
-        customerEmail: newCustomerEmail.trim() || null,
+        customerId: newCustomer.customerId,
+        customerName: newCustomer.customerName.trim(),
+        customerPhone: newCustomer.customerPhone.trim() || null,
+        customerEmail: newCustomer.customerEmail.trim() || null,
         title: newTitle.trim()
       };
       const created = await quotesApi.createQuote(payload);
       setQuotes((prev) => [created, ...prev]);
-      setNewCustomerName("");
-      setNewCustomerPhone("");
-      setNewCustomerEmail("");
+      setNewCustomer(emptyCustomerFields());
       setNewTitle("");
       setShowForm(false);
     } catch (err) {
@@ -186,32 +185,9 @@ export function QuotesPage() {
         >
           <h2 className="text-lg font-semibold text-slate-100">Crear presupuesto</h2>
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
-              Cliente
-              <input
-                required
-                value={newCustomerName}
-                onChange={(e) => setNewCustomerName(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
-              Telefono (opcional)
-              <input
-                value={newCustomerPhone}
-                onChange={(e) => setNewCustomerPhone(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200 md:col-span-2">
-              Email (opcional)
-              <input
-                type="email"
-                value={newCustomerEmail}
-                onChange={(e) => setNewCustomerEmail(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-              />
-            </label>
+            <div className="md:col-span-2">
+              <CustomerPicker value={newCustomer} onChange={setNewCustomer} requirePhone={false} />
+            </div>
             <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200 md:col-span-2">
               Titulo del presupuesto
               <input

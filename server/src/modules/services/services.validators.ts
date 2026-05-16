@@ -38,10 +38,16 @@ export const patchServiceExtraLineSchema = z
     message: "Al menos un campo"
   });
 
+const optionalCustomerId = z
+  .union([z.string().min(1), z.null()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v));
+
 export const createServiceSchema = z
   .object({
     type: z.nativeEnum(ServiceType),
     title: z.string().min(1),
+    customerId: optionalCustomerId,
     customerName: z.string().min(1),
     customerPhone: z.string().min(1),
     customerEmail: z.union([z.string().email(), z.literal("")]).optional().nullable(),
@@ -103,6 +109,7 @@ export const patchServiceSchema = z
   .object({
     type: z.nativeEnum(ServiceType).optional(),
     title: z.string().min(1).optional(),
+    customerId: optionalCustomerId,
     customerName: z.string().min(1).optional(),
     customerPhone: z.string().min(1).optional(),
     customerEmail: z.union([z.string().email(), z.literal("")]).optional().nullable(),

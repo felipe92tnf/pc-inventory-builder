@@ -34,7 +34,8 @@ const CATEGORY_LABELS: Partial<Record<PartCategory, string>> = {
   MONITOR: "Monitor",
   PERIPHERAL: "Periférico",
   OS: "Sistema Operativo",
-  LABOR: "Mano de obra"
+  LABOR: "Mano de obra",
+  OTHER: "Otros"
 };
 
 export function partCategoryLabel(category: PartCategory): string {

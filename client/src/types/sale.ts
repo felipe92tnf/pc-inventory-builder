@@ -57,6 +57,7 @@ export type MonthlySalesSummaryRow = {
 };
 
 export type CreateSaleFromBuildPayload = {
+  customerId?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail?: string | null;
@@ -70,6 +71,7 @@ export type CreateSaleFromBuildPayload = {
 };
 
 export type PatchSalePayload = {
+  customerId?: string | null;
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string | null;

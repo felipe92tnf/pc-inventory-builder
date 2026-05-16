@@ -5,7 +5,13 @@ const optionalTrimmed = z
   .optional()
   .transform((v) => (v === undefined ? undefined : v.trim() === "" ? undefined : v.trim()));
 
+const optionalCustomerId = z
+  .union([z.string().min(1), z.null()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v));
+
 export const createSaleFromBuildSchema = z.object({
+  customerId: optionalCustomerId,
   customerName: z.string().min(1),
   customerPhone: z.string().min(1),
   customerEmail: z.union([z.string().email(), z.literal("")]).optional(),
@@ -20,6 +26,7 @@ export const createSaleFromBuildSchema = z.object({
 
 export const patchSaleSchema = z
   .object({
+    customerId: optionalCustomerId,
     customerName: z.string().min(1).optional(),
     customerPhone: z.string().min(1).optional(),
     customerEmail: z.union([z.string().email(), z.literal("")]).nullable().optional(),

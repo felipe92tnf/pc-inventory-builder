@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { InventoryKind, Prisma, ServiceStatus, ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { customerDataForEntity } from "../customers/customers.resolve.js";
 import {
   addServiceExtraLineBodySchema,
   createServiceSchema,
@@ -138,7 +139,12 @@ async function resolveExtraLineSnapshots(
 export async function createService(payload: unknown) {
   const data = createServiceSchema.parse(payload);
 
-  const customerEmail = normEmail(data.customerEmail ?? undefined);
+  const customer = await customerDataForEntity({
+    customerId: data.customerId,
+    customerName: data.customerName,
+    customerPhone: data.customerPhone,
+    customerEmail: data.customerEmail
+  });
   const supplement = data.homeServiceSupplement ?? 0;
   const extra = await resolveExtraLineSnapshots(data.extraLines);
 
@@ -159,9 +165,10 @@ export async function createService(payload: unknown) {
         data: {
           type: data.type,
           title: data.title.trim(),
-          customerName: data.customerName.trim(),
-          customerPhone: data.customerPhone.trim(),
-          customerEmail,
+          customerId: customer.customerId,
+          customerName: customer.customerName,
+          customerPhone: customer.customerPhone ?? "",
+          customerEmail: customer.customerEmail,
           description: data.description?.trim() ?? "",
           selectedPartId: lines.length === 1 ? lines[0].partId : null,
           quantity: lines.length === 1 ? lines[0].quantity : null,
@@ -216,9 +223,10 @@ export async function createService(payload: unknown) {
       data: {
         type: data.type,
         title: data.title.trim(),
-        customerName: data.customerName.trim(),
-        customerPhone: data.customerPhone.trim(),
-        customerEmail,
+        customerId: customer.customerId,
+        customerName: customer.customerName,
+        customerPhone: customer.customerPhone ?? "",
+        customerEmail: customer.customerEmail,
         description: data.description?.trim() ?? "",
         selectedPartId: null,
         quantity: null,
@@ -350,10 +358,25 @@ export async function patchService(id: string, payload: unknown) {
 
   if (data.type !== undefined) patch.type = data.type;
   if (data.title !== undefined) patch.title = data.title.trim();
-  if (data.customerName !== undefined) patch.customerName = data.customerName.trim();
-  if (data.customerPhone !== undefined) patch.customerPhone = data.customerPhone.trim();
-  if (data.customerEmail !== undefined) {
-    patch.customerEmail = normEmail(data.customerEmail);
+  if (
+    data.customerId !== undefined ||
+    data.customerName !== undefined ||
+    data.customerPhone !== undefined ||
+    data.customerEmail !== undefined
+  ) {
+    const customer = await customerDataForEntity({
+      customerId: data.customerId ?? existing.customerId,
+      customerName: data.customerName ?? existing.customerName,
+      customerPhone: data.customerPhone ?? existing.customerPhone,
+      customerEmail:
+        data.customerEmail !== undefined ? normEmail(data.customerEmail) : existing.customerEmail
+    });
+    if (customer.customerId) {
+      patch.customerId = customer.customerId;
+    }
+    patch.customerName = customer.customerName;
+    patch.customerPhone = customer.customerPhone ?? "";
+    patch.customerEmail = customer.customerEmail;
   }
   if (data.description !== undefined) patch.description = data.description.trim();
   if (data.isHomeService !== undefined) patch.isHomeService = data.isHomeService;

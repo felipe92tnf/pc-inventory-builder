@@ -10,13 +10,14 @@ function defaultCost(line) {
     return line.extraTemplate ? Number(line.extraTemplate.defaultCostPrice) : Number(line.unitCost);
 }
 export function BuildExtraLinesTable({ lines, status, actionLoading, onRemove, onUpdateLine, compactHeader = false }) {
-    if (lines.length === 0) {
+    const templateLines = lines.filter((l) => l.extraTemplateId != null);
+    if (templateLines.length === 0) {
         return null;
     }
     const editable = status === "DRAFT" && onUpdateLine !== undefined;
     return (_jsxs("section", { className: `overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40 ${compactHeader ? "mt-3" : "mt-6"}`, children: [_jsxs("div", { className: `border-b border-slate-800 ${compactHeader ? "px-3 py-2" : "px-4 py-3"}`, children: [_jsx("h2", { className: compactHeader
                             ? "text-sm font-semibold tracking-tight text-slate-200"
-                            : "text-sm font-semibold uppercase tracking-wide text-slate-400", children: "Extras" }), !compactHeader ? (_jsx("p", { className: "mt-1 text-xs text-slate-500", children: "SO, instalaciones, packs \u2014 no descuentan inventario." })) : null] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full text-left text-sm text-slate-200", children: [_jsx("thead", { className: "bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400", children: _jsxs("tr", { children: [_jsx("th", { className: TABLE_CELL, children: "Concepto" }), _jsx("th", { className: TABLE_CELL, children: "Cantidad" }), _jsx("th", { className: TABLE_CELL, children: "Coste unit." }), _jsx("th", { className: TABLE_CELL, children: "Venta unit." }), _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Acciones" })] }) }), _jsx("tbody", { className: "divide-y divide-slate-800", children: lines.map((line) => {
+                            : "text-sm font-semibold uppercase tracking-wide text-slate-400", children: "Extras" }), !compactHeader ? (_jsx("p", { className: "mt-1 text-xs text-slate-500", children: "SO, instalaciones, packs \u2014 no descuentan inventario." })) : null] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full text-left text-sm text-slate-200", children: [_jsx("thead", { className: "bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400", children: _jsxs("tr", { children: [_jsx("th", { className: TABLE_CELL, children: "Concepto" }), _jsx("th", { className: TABLE_CELL, children: "Cantidad" }), _jsx("th", { className: TABLE_CELL, children: "Coste unit." }), _jsx("th", { className: TABLE_CELL, children: "Venta unit." }), _jsx("th", { className: `${TABLE_CELL} text-right`, children: "Acciones" })] }) }), _jsx("tbody", { className: "divide-y divide-slate-800", children: templateLines.map((line) => {
                                 const cat = line.extraTemplate?.category?.trim();
                                 const sale = Number(line.unitSalePrice);
                                 const cost = Number(line.unitCost);

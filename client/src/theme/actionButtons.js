@@ -3,6 +3,8 @@
  * Exporta strings de clases Tailwind para usar en `className` (tipado como `string`).
  */
 export const PRIMARY_ACTION_BUTTON = "inline-flex min-h-[44px] w-full shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 ring-1 ring-white/10 transition hover:from-violet-500 hover:via-indigo-500 hover:to-cyan-500 hover:shadow-[0_0_28px_-8px_rgba(99,102,241,0.5)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto";
+/** Confirmar montaje (detalle): más visible sin cambiar la paleta. */
+export const PRIMARY_ACTION_BUTTON_BUILD_CONFIRM = "inline-flex min-h-[52px] w-full shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-6 py-3.5 text-base font-bold text-white shadow-xl shadow-indigo-900/50 ring-1 ring-white/15 transition hover:from-violet-500 hover:via-indigo-500 hover:to-cyan-500 hover:shadow-[0_0_36px_-8px_rgba(99,102,241,0.55)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-50 md:min-w-[17rem] md:w-auto";
 /** Misma acción que en cabecera, oculta en móvil cuando hay dock fijo inferior duplicado. */
 export const PRIMARY_ACTION_BUTTON_HEADER = `${PRIMARY_ACTION_BUTTON} max-md:hidden`;
 /**

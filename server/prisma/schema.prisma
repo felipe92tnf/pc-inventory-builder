@@ -80,12 +80,33 @@ enum QuoteItemType {
 }
 
 /// Notas de ficha de cliente (clave deduplicada en aplicacion: telefono + nombre).
+/// @deprecated Preferir `Customer.notes`; se mantiene por compatibilidad.
 model CustomerProfile {
   id         String   @id @default(cuid())
   lookupKey  String   @unique
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+/// Cliente reutilizable (nombre + telefono como identidad; lookupKey para deduplicar).
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @default("")
+  email     String?
+  notes     String?
+  lookupKey String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes   Quote[]
+  services Service[]
+  builds   Build[]
+  sales    Sale[]
+
+  @@index([name])
+  @@index([phone])
 }
 
 /// Plantilla de extra / servicio sin stock (SO, instalacion, drivers, packs, etc.).
@@ -145,10 +166,13 @@ model Part {
   description     String         @default("")
   /// Si la pieza viene del catalogo, referencia a la plantilla.
   catalogPartId   String?
+  /// PC ensamblado en taller: unidad vinculada al montaje (1:1) al confirmar montaje por piezas.
+  assembledFromBuildId String? @unique
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   catalogPart            PartCatalog? @relation(fields: [catalogPartId], references: [id], onDelete: SetNull)
+  assembledFromBuild     Build?         @relation("AssembledInventoryPart", fields: [assembledFromBuildId], references: [id], onDelete: SetNull)
   buildItems             BuildPartItem[]
   sparePartServices      Service[]             @relation("SparePart")
   serviceSparePartLines  ServiceSparePartLine[]
@@ -165,6 +189,7 @@ model Service {
   id                     String          @id @default(cuid())
   type                   ServiceType
   title                  String
+  customerId             String?
   customerName           String
   customerPhone          String
   customerEmail          String?
@@ -185,10 +210,12 @@ model Service {
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
+  customer       Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
   selectedPart   Part?                  @relation("SparePart", fields: [selectedPartId], references: [id], onDelete: SetNull)
   sparePartLines ServiceSparePartLine[]
   extraLines     ServiceExtraLine[]
 
+  @@index([customerId])
   @@index([type])
   @@index([status])
   @@index([serviceDate])
@@ -227,6 +254,7 @@ model ServiceExtraLine {
 model Build {
   id                 String          @id @default(cuid())
   name               String
+  customerId         String?
   /// Cliente (ficha del montaje; la venta puede ampliar o coincidir al registrar cobro).
   customerName       String?
   customerPhone      String?
@@ -249,12 +277,16 @@ model Build {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
+  customer   Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items      BuildPartItem[]
   extraLines BuildExtraLine[]
   sale       Sale?
 
   convertedFromQuote Quote? @relation("QuoteConvertedBuild")
 
+  assembledInventoryPart Part? @relation("AssembledInventoryPart")
+
+  @@index([customerId])
   @@index([status])
   @@index([name])
 }
@@ -262,6 +294,7 @@ model Build {
 model Sale {
   id             String   @id @default(cuid())
   buildId        String   @unique
+  customerId     String?
   customerName   String
   customerPhone  String
   customerEmail  String?
@@ -285,8 +318,10 @@ model Sale {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  build    Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
+  @@index([customerId])
   @@index([soldAt])
   @@index([importBatchId])
 }
@@ -329,6 +364,7 @@ model BuildExtraLine {
 model Quote {
   id              String       @id @default(cuid())
   quoteNumber     Int          @unique @default(autoincrement())
+  customerId      String?
   customerName    String
   customerPhone   String?
   customerEmail   String?
@@ -351,10 +387,12 @@ model Quote {
   convertedToBuildId String?   @unique
   convertedAt        DateTime?
 
-  items QuoteItem[]
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items    QuoteItem[]
 
   convertedBuild Build? @relation("QuoteConvertedBuild", fields: [convertedToBuildId], references: [id], onDelete: SetNull)
 
+  @@index([customerId])
   @@index([status])
   @@index([createdAt])
 }

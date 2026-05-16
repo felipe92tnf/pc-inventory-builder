@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import * as salesApi from "../../api/sales";
 import type { CreateSaleFromBuildPayload, SaleDetail } from "../../types/sale";
+import { CustomerPicker, emptyCustomerFields } from "../customers/CustomerPicker";
+import type { CustomerFieldValue } from "../../types/customer";
 import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
 import { SECTION_SHELL } from "../../theme/layoutDensity";
 
@@ -15,6 +17,7 @@ type RegisterSaleFormProps = {
   offerPendingPickup?: boolean;
   /** Desde ficha de montaje (cliente en borrador). */
   defaultCustomer?: {
+    customerId?: string | null;
     customerName?: string | null;
     customerPhone?: string | null;
     customerEmail?: string | null;
@@ -31,15 +34,12 @@ export function RegisterSaleForm({
   offerPendingPickup = false,
   defaultCustomer
 }: RegisterSaleFormProps) {
-  const [customerName, setCustomerName] = useState(
-    () => defaultCustomer?.customerName?.trim() ?? ""
-  );
-  const [customerPhone, setCustomerPhone] = useState(
-    () => defaultCustomer?.customerPhone?.trim() ?? ""
-  );
-  const [customerEmail, setCustomerEmail] = useState(
-    () => defaultCustomer?.customerEmail?.trim() ?? ""
-  );
+  const [customerFields, setCustomerFields] = useState<CustomerFieldValue>(() => ({
+    customerId: defaultCustomer?.customerId ?? null,
+    customerName: defaultCustomer?.customerName?.trim() ?? "",
+    customerPhone: defaultCustomer?.customerPhone?.trim() ?? "",
+    customerEmail: defaultCustomer?.customerEmail?.trim() ?? ""
+  }));
   const [finalPrice, setFinalPrice] = useState(() => suggestedSalePrice.toFixed(2));
   const [paymentMethod, setPaymentMethod] = useState("");
   const [warrantyMonths, setWarrantyMonths] = useState("");
@@ -54,8 +54,8 @@ export function RegisterSaleForm({
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const name = customerName.trim();
-    const phone = customerPhone.trim();
+    const name = customerFields.customerName.trim();
+    const phone = customerFields.customerPhone.trim();
     if (!name || !phone) {
       window.alert("Nombre y telefono del cliente son obligatorios.");
       return;
@@ -67,9 +67,12 @@ export function RegisterSaleForm({
     }
 
     const payload: CreateSaleFromBuildPayload = {
+      customerId: customerFields.customerId,
       customerName: name,
       customerPhone: phone,
-      customerEmail: customerEmail.trim() ? customerEmail.trim() : undefined,
+      customerEmail: customerFields.customerEmail.trim()
+        ? customerFields.customerEmail.trim()
+        : undefined,
       finalSalePrice: Math.round(normalized * 100) / 100,
       paymentMethod: paymentMethod.trim() ? paymentMethod.trim() : undefined,
       warrantyMonths:
@@ -91,38 +94,13 @@ export function RegisterSaleForm({
 
   const form = (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-        Nombre del cliente
-        <input
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          disabled={disabled || submitting}
-          required
-          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+      <div className="md:col-span-2">
+        <CustomerPicker
+          value={customerFields}
+          onChange={setCustomerFields}
+          requirePhone
         />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-        Telefono
-        <input
-          value={customerPhone}
-          onChange={(e) => setCustomerPhone(e.target.value)}
-          disabled={disabled || submitting}
-          required
-          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-        Email (opcional)
-        <input
-          type="email"
-          value={customerEmail}
-          onChange={(e) => setCustomerEmail(e.target.value)}
-          disabled={disabled || submitting}
-          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
-        />
-      </label>
+      </div>
 
       <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
         Precio final de venta (EUR)

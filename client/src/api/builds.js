@@ -46,6 +46,12 @@ export function deleteBuildItem(buildId, itemId) {
         method: "DELETE"
     });
 }
+export function addBuildManualLine(buildId, payload) {
+    return http(`/builds/${buildId}/manual-lines`, {
+        method: "POST",
+        body: payload
+    });
+}
 export function addBuildExtraLine(buildId, payload) {
     return http(`/builds/${buildId}/extra-lines`, {
         method: "POST",

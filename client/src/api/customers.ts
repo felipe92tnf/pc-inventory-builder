@@ -1,43 +1,49 @@
 import { http } from "./http";
-import type { QuoteStatus } from "../types/quote";
-import type { ServiceStatus, ServiceType } from "../types/service";
+import type {
+  CustomerDetail,
+  CustomerListItem,
+  CustomerOverview,
+  CustomerSearchResult
+} from "../types/customer";
 
-export type CustomerOverviewQuote = {
-  id: string;
-  quoteNumber: number;
-  title: string;
-  status: QuoteStatus;
-  total: number;
-  createdAt: string;
-};
+export type {
+  CustomerOverviewQuote,
+  CustomerOverviewService,
+  CustomerOverviewSale,
+  CustomerOverviewBuild
+} from "../types/customer";
 
-export type CustomerOverviewService = {
-  id: string;
-  title: string;
-  type: ServiceType;
-  status: ServiceStatus;
-  salePrice: number;
-  profit: number;
-  serviceDate: string;
-};
+export function listCustomers(q?: string) {
+  const sp = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+  return http<CustomerListItem[]>(`/customers${sp}`);
+}
 
-export type CustomerOverviewSale = {
-  id: string;
-  soldAt: string;
-  finalSalePrice: number;
-  profit: number;
-  buildName: string;
-};
+export function searchCustomers(q: string, limit = 12) {
+  const sp = new URLSearchParams();
+  sp.set("q", q);
+  sp.set("limit", String(limit));
+  return http<CustomerSearchResult[]>(`/customers/search?${sp.toString()}`);
+}
 
-export type CustomerOverview = {
-  lookupKey: string;
-  displayName: string;
-  displayPhone: string;
-  notes: string | null;
-  quotes: CustomerOverviewQuote[];
-  services: CustomerOverviewService[];
-  sales: CustomerOverviewSale[];
-};
+export function getCustomerById(id: string) {
+  return http<CustomerDetail>(`/customers/${id}`);
+}
+
+export function createCustomer(payload: {
+  name: string;
+  phone?: string;
+  email?: string | null;
+  notes?: string | null;
+}) {
+  return http<CustomerDetail>(`/customers`, { method: "POST", body: payload });
+}
+
+export function patchCustomer(
+  id: string,
+  payload: { name?: string; phone?: string; email?: string | null; notes?: string | null }
+) {
+  return http<CustomerDetail>(`/customers/${id}`, { method: "PATCH", body: payload });
+}
 
 export function getCustomerOverview(name: string, phone: string) {
   const sp = new URLSearchParams();
@@ -47,8 +53,8 @@ export function getCustomerOverview(name: string, phone: string) {
 }
 
 export function patchCustomerNotes(payload: { name: string; phone: string; notes: string | null }) {
-  return http<{ lookupKey: string; notes: string | null; updatedAt: string }>(`/customers/notes`, {
-    method: "PATCH",
-    body: payload
-  });
+  return http<{ customerId: string | null; lookupKey: string; notes: string | null; updatedAt: string }>(
+    `/customers/notes`,
+    { method: "PATCH", body: payload }
+  );
 }

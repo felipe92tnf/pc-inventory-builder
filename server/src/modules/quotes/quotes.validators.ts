@@ -25,7 +25,13 @@ const optionalPhoneNullable = z
     return t === "" ? null : t;
   });
 
+const optionalCustomerId = z
+  .union([z.string().min(1), z.null()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v));
+
 export const createQuoteSchema = z.object({
+  customerId: optionalCustomerId,
   customerName: z.string().min(1),
   customerPhone: optionalPhoneNullable,
   customerEmail: z.union([z.string().email(), z.literal("")]).optional().nullable(),
@@ -39,6 +45,7 @@ export const createQuoteSchema = z.object({
 
 export const patchQuoteSchema = z
   .object({
+    customerId: optionalCustomerId,
     customerName: z.string().min(1).optional(),
     customerPhone: z
       .union([z.string(), z.null()])

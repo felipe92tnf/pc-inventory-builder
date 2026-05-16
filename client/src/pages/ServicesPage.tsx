@@ -37,6 +37,8 @@ import {
 } from "../theme/listPageMobile";
 import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
+import { CustomerPicker, emptyCustomerFields } from "../components/customers/CustomerPicker";
+import type { CustomerFieldValue } from "../types/customer";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   SPARE_PART_SALE: "Venta de pieza suelta",
@@ -187,8 +189,7 @@ export function ServicesPage() {
 
   const [formType, setFormType] = useState<ServiceType>("DIAGNOSTIC");
   const [title, setTitle] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerFields, setCustomerFields] = useState<CustomerFieldValue>(emptyCustomerFields);
   const [description, setDescription] = useState("");
   const [spareLines, setSpareLines] = useState<SpareLineDraft[]>([{ partId: "", quantity: 1 }]);
   const [costPrice, setCostPrice] = useState<number | "">("");
@@ -239,8 +240,7 @@ export function ServicesPage() {
   const resetForm = () => {
     setFormType("DIAGNOSTIC");
     setTitle("");
-    setCustomerName("");
-    setCustomerPhone("");
+    setCustomerFields(emptyCustomerFields());
     setDescription("");
     setSpareLines([{ partId: "", quantity: 1 }]);
     setCostPrice("");
@@ -284,8 +284,10 @@ export function ServicesPage() {
     const base: CreateServicePayload = {
       type: formType,
       title: title.trim(),
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerId: customerFields.customerId,
+      customerName: customerFields.customerName.trim(),
+      customerPhone: customerFields.customerPhone.trim(),
+      customerEmail: customerFields.customerEmail.trim() || null,
       description: description.trim(),
       isHomeService,
       homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
@@ -343,8 +345,12 @@ export function ServicesPage() {
     setCreateModalOpen(false);
     setFormType(s.type);
     setTitle(s.title);
-    setCustomerName(s.customerName);
-    setCustomerPhone(s.customerPhone);
+    setCustomerFields({
+      customerId: s.customerId ?? null,
+      customerName: s.customerName,
+      customerPhone: s.customerPhone,
+      customerEmail: s.customerEmail ?? ""
+    });
     setDescription(s.description ?? "");
     const sup = Number(s.homeServiceSupplement ?? 0);
     setHomeServiceSupplement(s.homeServiceSupplement != null && sup > 0 ? sup : "");
@@ -378,8 +384,10 @@ export function ServicesPage() {
 
     const base: PatchServicePayload = {
       title: title.trim(),
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerId: customerFields.customerId,
+      customerName: customerFields.customerName.trim(),
+      customerPhone: customerFields.customerPhone.trim(),
+      customerEmail: customerFields.customerEmail.trim() || null,
       description: description.trim(),
       isHomeService,
       homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
@@ -726,24 +734,13 @@ export function ServicesPage() {
                   />
                 </label>
 
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-                  Cliente
-                  <input
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    required
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
+                <div className="md:col-span-2">
+                  <CustomerPicker
+                    value={customerFields}
+                    onChange={setCustomerFields}
+                    requirePhone
                   />
-                </label>
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-                  Telefono
-                  <input
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    required
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                  />
-                </label>
+                </div>
 
                 <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
                   Descripcion

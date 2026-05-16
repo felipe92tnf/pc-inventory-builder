@@ -1,6 +1,7 @@
 import { BuildStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { finalizePricing } from "../builds/builds.service.js";
+import { customerDataForEntity } from "../customers/customers.resolve.js";
 import { createSaleFromBuildSchema, patchSaleSchema } from "./sales.validators.js";
 
 function moneyDecimal(value: number): Prisma.Decimal {
@@ -80,13 +81,21 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
   const pickupConfirmedAt = pendingPickup ? null : soldAt;
   const nextBuildStatus = pendingPickup ? BuildStatus.PENDING_PICKUP : BuildStatus.SOLD;
 
+  const customer = await customerDataForEntity({
+    customerId: data.customerId ?? build.customerId,
+    customerName: data.customerName,
+    customerPhone: data.customerPhone,
+    customerEmail
+  });
+
   return prisma.$transaction(async (tx) => {
     const sale = await tx.sale.create({
       data: {
         buildId,
-        customerName: data.customerName.trim(),
-        customerPhone: data.customerPhone.trim(),
-        customerEmail,
+        customerId: customer.customerId,
+        customerName: customer.customerName,
+        customerPhone: customer.customerPhone ?? "",
+        customerEmail: customer.customerEmail,
         finalSalePrice: moneyDecimal(suggestedSale),
         totalCost: moneyDecimal(allocatedCost),
         profit: moneyDecimal(profit),
@@ -171,11 +180,29 @@ export async function patchSale(id: string, payload: unknown) {
 
   const patch: Prisma.SaleUpdateInput = {};
 
-  if (data.customerName !== undefined) patch.customerName = data.customerName.trim();
-  if (data.customerPhone !== undefined) patch.customerPhone = data.customerPhone.trim();
-  if (data.customerEmail !== undefined) {
-    patch.customerEmail =
-      data.customerEmail === null || data.customerEmail === "" ? null : data.customerEmail;
+  if (
+    data.customerId !== undefined ||
+    data.customerName !== undefined ||
+    data.customerPhone !== undefined ||
+    data.customerEmail !== undefined
+  ) {
+    const customer = await customerDataForEntity({
+      customerId: data.customerId ?? existing.customerId,
+      customerName: data.customerName ?? existing.customerName,
+      customerPhone: data.customerPhone ?? existing.customerPhone,
+      customerEmail:
+        data.customerEmail !== undefined
+          ? data.customerEmail === null || data.customerEmail === ""
+            ? null
+            : data.customerEmail
+          : existing.customerEmail
+    });
+    if (customer.customerId) {
+      patch.customer = { connect: { id: customer.customerId } };
+    }
+    patch.customerName = customer.customerName;
+    patch.customerPhone = customer.customerPhone ?? "";
+    patch.customerEmail = customer.customerEmail;
   }
   if (data.finalSalePrice !== undefined) {
     patch.finalSalePrice = moneyDecimal(data.finalSalePrice);

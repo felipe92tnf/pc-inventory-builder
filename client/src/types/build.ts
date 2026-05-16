@@ -36,6 +36,7 @@ export type BuildItem = {
 export type Build = {
   id: string;
   name: string;
+  customerId?: string | null;
   /** Cliente asociado al montaje (antes de registrar venta). */
   customerName?: string | null;
   customerPhone?: string | null;
@@ -71,6 +72,7 @@ export type BuildDetail = Build & {
 export type CreateBuildPayload = {
   name: string;
   notes?: string | null;
+  customerId?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
@@ -103,6 +105,14 @@ export type AddBuildItemPayload = {
 export type UpdateBuildItemPayload = {
   quantity?: number;
   unitSalePrice?: number;
+};
+
+export type AddBuildManualLinePayload = {
+  name: string;
+  description?: string | null;
+  quantity?: number;
+  unitCost: number;
+  unitSalePrice: number;
 };
 
 export type AddBuildExtraLinePayload = {

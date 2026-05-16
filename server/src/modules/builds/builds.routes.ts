@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   addBuildExtraLineHandler,
+  addBuildManualLineHandler,
   addBuildItemHandler,
   confirmBuildHandler,
   createBuildFromPrebuiltHandler,
@@ -30,6 +31,7 @@ buildsRouter.post("/:id/items", addBuildItemHandler);
 buildsRouter.patch("/:id/items/:itemId", updateBuildItemHandler);
 buildsRouter.delete("/:id/items/:itemId", deleteBuildItemHandler);
 
+buildsRouter.post("/:id/manual-lines", addBuildManualLineHandler);
 buildsRouter.post("/:id/extra-lines", addBuildExtraLineHandler);
 buildsRouter.patch("/:id/extra-lines/:lineId", updateBuildExtraLineHandler);
 buildsRouter.delete("/:id/extra-lines/:lineId", deleteBuildExtraLineHandler);

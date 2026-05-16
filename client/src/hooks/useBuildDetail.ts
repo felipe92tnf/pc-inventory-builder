@@ -3,6 +3,7 @@ import * as buildsApi from "../api/builds";
 import * as partsApi from "../api/parts";
 import type {
   AddBuildExtraLinePayload,
+  AddBuildManualLinePayload,
   AddBuildItemPayload,
   BuildDetail,
   ConfirmBuildPayload,
@@ -21,6 +22,7 @@ type UseBuildDetailReturn = {
   addItem: (payload: AddBuildItemPayload) => Promise<void>;
   updateBuildItemLine: (itemId: string, payload: UpdateBuildItemPayload) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
+  addManualLine: (payload: AddBuildManualLinePayload) => Promise<void>;
   addExtraLine: (payload: AddBuildExtraLinePayload) => Promise<void>;
   updateExtraLine: (lineId: string, payload: UpdateBuildExtraLinePayload) => Promise<void>;
   removeExtraLine: (lineId: string) => Promise<void>;
@@ -99,6 +101,23 @@ export function useBuildDetail(buildId: string): UseBuildDetailReturn {
         setBuild(updated);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo eliminar la pieza del montaje.");
+        throw err;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [buildId]
+  );
+
+  const addManualLine = useCallback(
+    async (payload: AddBuildManualLinePayload) => {
+      setActionLoading(true);
+      setError(null);
+      try {
+        const updated = await buildsApi.addBuildManualLine(buildId, payload);
+        setBuild(updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo anadir la pieza manual.");
         throw err;
       } finally {
         setActionLoading(false);
@@ -215,6 +234,7 @@ export function useBuildDetail(buildId: string): UseBuildDetailReturn {
     addItem,
     updateBuildItemLine,
     removeItem,
+    addManualLine,
     addExtraLine,
     updateExtraLine,
     removeExtraLine,

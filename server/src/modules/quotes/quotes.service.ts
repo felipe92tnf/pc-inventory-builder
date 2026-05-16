@@ -1,5 +1,6 @@
 import { BuildStatus, Prisma, QuoteItemType, QuoteStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { customerDataForEntity } from "../customers/customers.resolve.js";
 import { getBuild } from "../builds/builds.service.js";
 import {
   addQuoteItemSchema,
@@ -111,11 +112,19 @@ export async function createQuote(payload: unknown) {
       ? data.validUntil
       : defaultValidUntilFromNow();
 
+  const customer = await customerDataForEntity({
+    customerId: data.customerId,
+    customerName: data.customerName,
+    customerPhone: data.customerPhone,
+    customerEmail
+  });
+
   return prisma.quote.create({
     data: {
-      customerName: data.customerName.trim(),
-      customerPhone: data.customerPhone,
-      customerEmail,
+      customerId: customer.customerId,
+      customerName: customer.customerName,
+      customerPhone: customer.customerPhone,
+      customerEmail: customer.customerEmail,
       title: data.title.trim(),
       description: data.description ?? null,
       validUntil,
@@ -144,10 +153,27 @@ export async function patchQuote(id: string, payload: unknown) {
 
   const patch: Prisma.QuoteUpdateInput = {};
 
-  if (data.customerName !== undefined) patch.customerName = data.customerName.trim();
-  if (data.customerPhone !== undefined) patch.customerPhone = data.customerPhone;
-  if (data.customerEmail !== undefined) {
-    patch.customerEmail = normEmail(data.customerEmail === null ? null : data.customerEmail);
+  if (
+    data.customerId !== undefined ||
+    data.customerName !== undefined ||
+    data.customerPhone !== undefined ||
+    data.customerEmail !== undefined
+  ) {
+    const customer = await customerDataForEntity({
+      customerId: data.customerId ?? existing.customerId,
+      customerName: data.customerName ?? existing.customerName,
+      customerPhone: data.customerPhone !== undefined ? data.customerPhone : existing.customerPhone,
+      customerEmail:
+        data.customerEmail !== undefined
+          ? normEmail(data.customerEmail === null ? null : data.customerEmail)
+          : existing.customerEmail
+    });
+    if (customer.customerId) {
+      patch.customer = { connect: { id: customer.customerId } };
+    }
+    patch.customerName = customer.customerName;
+    patch.customerPhone = customer.customerPhone;
+    patch.customerEmail = customer.customerEmail;
   }
   if (data.title !== undefined) patch.title = data.title.trim();
   if (data.description !== undefined) patch.description = data.description;
@@ -435,15 +461,11 @@ export async function deleteQuoteItem(quoteId: string, itemId: string) {
   return getQuote(quoteId);
 }
 
+/** Notas del montaje al convertir presupuesto: solo texto del usuario + referencia interna de lineas no copiadas (sin duplicar cliente/total). */
 function formatQuoteConversionNotes(
   quote: {
-    customerName: string;
-    customerPhone: string | null;
-    customerEmail: string | null;
     description: string | null;
     notes: string | null;
-    discountAmount: unknown;
-    total: unknown;
   },
   manualLines: {
     itemType: QuoteItemType;
@@ -454,28 +476,15 @@ function formatQuoteConversionNotes(
     total: unknown;
   }[]
 ): string {
-  const lines: string[] = [];
-  lines.push(`Cliente: ${quote.customerName}`);
-  if (quote.customerPhone?.trim()) {
-    lines.push(`Tel: ${quote.customerPhone.trim()}`);
-  }
-  if (quote.customerEmail?.trim()) {
-    lines.push(`Email: ${quote.customerEmail.trim()}`);
-  }
-  if (quote.description?.trim()) {
-    lines.push("");
-    lines.push("Descripción (presupuesto):");
-    lines.push(quote.description.trim());
-  }
+  const parts: string[] = [];
+
   if (quote.notes?.trim()) {
-    lines.push("");
-    lines.push("Notas internas (presupuesto):");
-    lines.push(quote.notes.trim());
+    parts.push(quote.notes.trim());
   }
 
   if (manualLines.length > 0) {
-    lines.push("");
-    lines.push("--- Líneas no copiadas al montaje (manual / servicio / sin pieza) ---");
+    if (parts.length > 0) parts.push("");
+    parts.push("--- Líneas no copiadas al montaje (manual / servicio / sin pieza) ---");
     for (const m of manualLines) {
       const typeLabel =
         m.itemType === QuoteItemType.SERVICE
@@ -486,19 +495,13 @@ function formatQuoteConversionNotes(
               ? "Extra (plantilla)"
               : "Inventario (referencia)";
       const desc = m.description?.trim() ? ` — ${m.description.trim()}` : "";
-      lines.push(
+      parts.push(
         `• [${typeLabel}] ${m.name} ×${m.quantity} @ ${Number(m.unitSalePrice).toFixed(2)} €/u → ${Number(m.total).toFixed(2)} €${desc}`
       );
     }
   }
 
-  lines.push("");
-  lines.push(`Total presupuesto aceptado (referencia venta): ${Number(quote.total).toFixed(2)} €`);
-  if (Number(quote.discountAmount) > 0) {
-    lines.push(`Descuento en presupuesto: ${Number(quote.discountAmount).toFixed(2)} €`);
-  }
-
-  return lines.join("\n");
+  return parts.join("\n").trim();
 }
 
 /**
@@ -561,6 +564,7 @@ export async function convertQuoteToBuild(quoteId: string) {
         notes: notesBody,
         status: BuildStatus.DRAFT,
         saleTotalOverride: moneyDecimal(Number(quote.total)),
+        customerId: quote.customerId,
         customerName: quote.customerName.trim(),
         customerPhone: quote.customerPhone?.trim() || null,
         customerEmail: quote.customerEmail?.trim() || null

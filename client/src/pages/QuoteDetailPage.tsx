@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import * as quotesApi from "../api/quotes";
 import * as extraTemplatesApi from "../api/extraTemplates";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
+import { CustomerPicker, emptyCustomerFields } from "../components/customers/CustomerPicker";
+import type { CustomerFieldValue } from "../types/customer";
 import { PcConfiguratorForm, type ConfiguratorAddItem } from "../components/builds/PcConfiguratorForm";
 import { useParts } from "../hooks/useParts";
 import { isConfiguratorPart, isPrebuiltPc } from "../types/part";
@@ -87,9 +89,7 @@ export function QuoteDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
 
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerFields, setCustomerFields] = useState<CustomerFieldValue>(emptyCustomerFields);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [validUntilDate, setValidUntilDate] = useState("");
@@ -124,9 +124,12 @@ export function QuoteDetailPage() {
   const [editSale, setEditSale] = useState("");
 
   const applyQuoteToForm = useCallback((q: Quote) => {
-    setCustomerName(q.customerName);
-    setCustomerPhone(q.customerPhone ?? "");
-    setCustomerEmail(q.customerEmail ?? "");
+    setCustomerFields({
+      customerId: q.customerId ?? null,
+      customerName: q.customerName,
+      customerPhone: q.customerPhone ?? "",
+      customerEmail: q.customerEmail ?? ""
+    });
     setTitle(q.title);
     setDescription(q.description ?? "");
     setValidUntilDate(isoDateOnly(q.validUntil));
@@ -226,9 +229,10 @@ export function QuoteDetailPage() {
     setError(null);
     try {
       await quotesApi.patchQuote(quoteId, {
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim() || null,
-        customerEmail: customerEmail.trim() || null,
+        customerId: customerFields.customerId,
+        customerName: customerFields.customerName.trim(),
+        customerPhone: customerFields.customerPhone.trim() || null,
+        customerEmail: customerFields.customerEmail.trim() || null,
         title: title.trim(),
         description: description.trim() || null,
         validUntil: validUntilDate ? new Date(validUntilDate).toISOString() : null,
@@ -690,34 +694,16 @@ export function QuoteDetailPage() {
       <section className={SECTION_SHELL}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-slate-100">Cliente y datos generales</h2>
-          <CustomerProfileLink customerName={quote.customerName} customerPhone={quote.customerPhone} />
+          <CustomerProfileLink
+            customerName={quote.customerName}
+            customerPhone={quote.customerPhone}
+            customerId={quote.customerId}
+          />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-            Nombre del cliente
-            <input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-            Telefono (opcional)
-            <input
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-            Email
-            <input
-              type="email"
-              value={customerEmail}
-              onChange={(e) => setCustomerEmail(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-            />
-          </label>
+          <div className="md:col-span-2">
+            <CustomerPicker value={customerFields} onChange={setCustomerFields} requirePhone={false} />
+          </div>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
             Titulo
             <input

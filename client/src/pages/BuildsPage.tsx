@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, createSearchParams, useLocation, useNavigate } from "react-router-dom";
 import * as buildsApi from "../api/builds";
 import { useBuilds } from "../hooks/useBuilds";
 import { useParts } from "../hooks/useParts";
@@ -563,6 +563,14 @@ function partLineProfit(part: Part): number {
   return Math.round((Number(part.salePrice) - Number(part.costPrice)) * 100) / 100;
 }
 
+function inventoryPrebuiltDetailLink(partId: string): string {
+  const qs = createSearchParams({
+    tab: "prebuilt",
+    highlightPart: partId
+  }).toString();
+  return `/inventory?${qs}`;
+}
+
 function BuildSection({
   title,
   tone,
@@ -699,7 +707,7 @@ function BuildSection({
                             </td>
                             <td className={TABLE_CELL}>
                               <div className="flex justify-end gap-2">
-                                <Link to="/inventory" className={SECONDARY_GHOST_SM}>
+                                <Link to={inventoryPrebuiltDetailLink(part.id)} className={SECONDARY_GHOST_SM}>
                                   Ver detalle
                                 </Link>
                                 {onRegisterInventoryPrebuilt ? (
@@ -799,7 +807,7 @@ function BuildSection({
                         </p>
                         <p className="mt-1 text-sm text-cyan-300">Beneficio {money(partLineProfit(part))}</p>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <Link to="/inventory" className={SECONDARY_GHOST_SM}>
+                          <Link to={inventoryPrebuiltDetailLink(part.id)} className={SECONDARY_GHOST_SM}>
                             Ver detalle
                           </Link>
                           {onRegisterInventoryPrebuilt ? (

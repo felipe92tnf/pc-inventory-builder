@@ -8,6 +8,7 @@ import { useAuth } from "../hooks/useAuth";
 import { BuildDetailPage } from "../pages/BuildDetailPage";
 import { BuildsPage } from "../pages/BuildsPage";
 import { CustomerDetailPage } from "../pages/CustomerDetailPage";
+import { CustomersIndexPage } from "../pages/CustomersIndexPage";
 import { InventoryPage } from "../pages/InventoryPage";
 import { LoginPage } from "../pages/LoginPage";
 import { QuoteDetailPage } from "../pages/QuoteDetailPage";
@@ -68,6 +69,20 @@ function QuotesIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+      />
+    </svg>
+  );
+}
+
+function UsersNavIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm8 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
       />
     </svg>
   );
@@ -160,6 +175,14 @@ function AppShell() {
               <SalesIcon className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" />
               <span className="whitespace-nowrap">Ventas</span>
             </NavLink>
+            <NavLink
+              to="/customers"
+              end
+              className={({ isActive }) => [navLinkClass, isActive ? navActive : navInactive].join(" ")}
+            >
+              <UsersNavIcon className="h-6 w-6 shrink-0 opacity-90 sm:h-7 sm:w-7" />
+              <span className="whitespace-nowrap">Clientes</span>
+            </NavLink>
             <button
               type="button"
               onClick={() => void signOut()}
@@ -197,7 +220,8 @@ export function AppRouter() {
           <Route path="quotes/:id" element={<QuoteDetailPage />} />
           <Route path="extras" element={<Navigate to={{ pathname: "/", search: "?tab=catalog&nueva=extra" }} replace />} />
           <Route path="services" element={<ServicesPage />} />
-          <Route path="customers" element={<CustomerDetailPage />} />
+          <Route path="customers" element={<CustomersIndexPage />} />
+          <Route path="customers/:id" element={<CustomerDetailPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>

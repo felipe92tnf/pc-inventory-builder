@@ -14,6 +14,7 @@ type SellPcModalProps = {
   offerPendingPickup?: boolean;
   /** Valores iniciales desde la ficha del montaje (borrador). */
   defaultCustomer?: {
+    customerId?: string | null;
     customerName?: string | null;
     customerPhone?: string | null;
     customerEmail?: string | null;

@@ -26,9 +26,15 @@ const optionalCustomerEmailNullable = optionalCustomerNullable.superRefine((val,
   }
 });
 
+const optionalCustomerId = z
+  .union([z.string().min(1), z.null()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v));
+
 export const createBuildSchema = z.object({
   name: z.string().min(1),
   notes: z.string().optional().nullable(),
+  customerId: optionalCustomerId,
   customerName: optionalCustomerNullable,
   customerPhone: optionalCustomerNullable,
   customerEmail: optionalCustomerEmailNullable
@@ -68,6 +74,21 @@ export const addBuildExtraLineSchema = z.object({
   quantity: z.coerce.number().int().positive().optional().default(1),
   unitCost: z.coerce.number().finite().nonnegative().optional(),
   unitSalePrice: z.coerce.number().finite().nonnegative().optional()
+});
+
+/** Pieza/concepto fuera de inventario (sin plantilla ni stock). */
+export const addBuildManualLineSchema = z.object({
+  name: z.string().min(1, "Indica el nombre"),
+  description: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null) return "";
+      return v.trim();
+    }),
+  quantity: z.coerce.number().int().positive().optional().default(1),
+  unitCost: z.coerce.number().finite().nonnegative(),
+  unitSalePrice: z.coerce.number().finite().nonnegative()
 });
 
 export const updateBuildExtraLineSchema = z

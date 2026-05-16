@@ -1,6 +1,7 @@
 import { http } from "./http";
 import type {
   AddBuildExtraLinePayload,
+  AddBuildManualLinePayload,
   AddBuildItemPayload,
   Build,
   BuildDetail,
@@ -64,6 +65,13 @@ export function updateBuildItem(buildId: string, itemId: string, payload: Update
 export function deleteBuildItem(buildId: string, itemId: string) {
   return http<void>(`/builds/${buildId}/items/${itemId}`, {
     method: "DELETE"
+  });
+}
+
+export function addBuildManualLine(buildId: string, payload: AddBuildManualLinePayload) {
+  return http<BuildDetail>(`/builds/${buildId}/manual-lines`, {
+    method: "POST",
+    body: payload
   });
 }
 

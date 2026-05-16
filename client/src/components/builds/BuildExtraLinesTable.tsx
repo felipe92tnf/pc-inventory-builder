@@ -31,7 +31,8 @@ export function BuildExtraLinesTable({
   onUpdateLine,
   compactHeader = false
 }: BuildExtraLinesTableProps) {
-  if (lines.length === 0) {
+  const templateLines = lines.filter((l) => l.extraTemplateId != null);
+  if (templateLines.length === 0) {
     return null;
   }
 
@@ -67,7 +68,7 @@ export function BuildExtraLinesTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
-            {lines.map((line) => {
+            {templateLines.map((line) => {
               const cat = line.extraTemplate?.category?.trim();
               const sale = Number(line.unitSalePrice);
               const cost = Number(line.unitCost);

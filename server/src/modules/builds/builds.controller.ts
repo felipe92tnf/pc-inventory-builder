@@ -268,6 +268,23 @@ export async function deleteBuildItemHandler(req: Request, res: Response) {
   }
 }
 
+export async function addBuildManualLineHandler(req: Request, res: Response) {
+  try {
+    const buildId = String(req.params.id);
+    await buildsService.addBuildManualLine(buildId, req.body);
+    const build = await buildsService.getBuild(buildId);
+    if (!build) {
+      res.status(404).json({ message: "Build not found" });
+      return;
+    }
+    res.status(201).json(serializeBuildDetail(build));
+  } catch (error) {
+    if (!mapValidationOrBuildError(error, res)) {
+      throw error;
+    }
+  }
+}
+
 export async function addBuildExtraLineHandler(req: Request, res: Response) {
   try {
     const buildId = String(req.params.id);

@@ -42,6 +42,7 @@ export type ServiceRow = {
   id: string;
   type: ServiceType;
   title: string;
+  customerId?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;
@@ -89,6 +90,7 @@ export type ServiceExtraLinePayload = {
 export type CreateServicePayload = {
   type: ServiceType;
   title: string;
+  customerId?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail?: string | null;

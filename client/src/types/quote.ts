@@ -49,6 +49,7 @@ export type QuoteItem = {
 export type Quote = {
   id: string;
   quoteNumber: number;
+  customerId?: string | null;
   customerName: string;
   customerPhone: string | null;
   customerEmail: string | null;
@@ -80,6 +81,7 @@ export type Quote = {
 };
 
 export type CreateQuotePayload = {
+  customerId?: string | null;
   customerName: string;
   customerPhone?: string | null;
   customerEmail?: string | null;
@@ -92,6 +94,7 @@ export type CreateQuotePayload = {
 };
 
 export type PatchQuotePayload = {
+  customerId?: string | null;
   customerName?: string;
   customerPhone?: string | null;
   customerEmail?: string | null;

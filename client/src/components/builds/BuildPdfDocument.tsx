@@ -379,6 +379,71 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     color: "#4c1d95"
   },
+  /** Resumen de pago (solo estado Pendiente de pago). */
+  paymentSummaryCard: {
+    marginTop: 4,
+    marginBottom: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+    backgroundColor: "#fffbeb",
+    overflow: "hidden"
+  },
+  paymentSummaryTopAccent: {
+    height: 3,
+    backgroundColor: "#f59e0b"
+  },
+  paymentSummaryBody: {
+    paddingVertical: 10,
+    paddingHorizontal: 14
+  },
+  paymentSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 7
+  },
+  paymentSummaryLabel: {
+    fontSize: 8.5,
+    color: "#78350f",
+    fontFamily: "Helvetica-Bold"
+  },
+  paymentSummaryValue: {
+    fontSize: 9.5,
+    fontFamily: "Helvetica-Bold",
+    color: palette.ink
+  },
+  paymentPendingHighlight: {
+    marginTop: 4,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    backgroundColor: "#fef3c7",
+    borderTopWidth: 1,
+    borderTopColor: "#f59e0b",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  paymentPendingLeft: {
+    flexShrink: 1,
+    marginRight: 8
+  },
+  paymentPendingTitle: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: "#b45309",
+    letterSpacing: 0.2
+  },
+  paymentPendingHint: {
+    fontSize: 6.5,
+    color: "#92400e",
+    marginTop: 2
+  },
+  paymentPendingAmount: {
+    fontSize: 16,
+    fontFamily: "Helvetica-Bold",
+    color: "#c2410c"
+  },
   footer: {
     position: "absolute",
     left: 28,
@@ -460,8 +525,30 @@ function normalizeNoteLine(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** Texto generado al convertir presupuesto o metadatos que no son notas manuales del montaje. */
+function isSystemGeneratedNoteLine(line: string): boolean {
+  const t = normalizeNoteLine(line);
+  if (!t) return true;
+  const low = t.toLowerCase();
+
+  if (/^tel\s*:/.test(low) || /^telefono\s*:/.test(low) || /^teléfono\s*:/.test(low)) return true;
+  if (/^cliente\s*:/.test(low) || /^nombre\s*:/.test(low)) return true;
+  if (/^email\s*:/.test(low) || /^correo\s*:/.test(low)) return true;
+  if (low.includes("total presupuesto aceptado")) return true;
+  if (low.includes("referencia venta")) return true;
+  if (low.includes("descuento en presupuesto")) return true;
+  if (low.startsWith("descripción (presupuesto)")) return true;
+  if (low.startsWith("notas internas (presupuesto)")) return true;
+  if (low.includes("líneas no copiadas al montaje") || low.startsWith("---")) return true;
+  if (/^•\s*\[/.test(t) || /^•\s*\(/.test(t)) return true;
+
+  return false;
+}
+
 /** Evita mostrar notas que solo duplican datos ya visibles en el PDF. */
 function isBoilerplateNoteLine(line: string, build: BuildDetail): boolean {
+  if (isSystemGeneratedNoteLine(line)) return true;
+
   const t = normalizeNoteLine(line);
   if (!t) return true;
   const lowCompact = t.toLowerCase().replace(/\s/g, "");
@@ -480,7 +567,9 @@ function isBoilerplateNoteLine(line: string, build: BuildDetail): boolean {
     const val = t.slice(colonIdx + 1).trim();
     const valCompact = val.toLowerCase().replace(/\s/g, "");
     if ((key === "cliente" || key === "nombre") && name && valCompact === name) return true;
-    if ((key === "teléfono" || key === "telefono") && phone && valCompact === phone) return true;
+    if ((key === "tel" || key === "teléfono" || key === "telefono") && phone && valCompact === phone) {
+      return true;
+    }
     if (key === "email" && email && val.toLowerCase().trim() === email) return true;
     if ((key === "total" || key === "importe") && val) {
       const tryFromVal = Number(
@@ -597,6 +686,48 @@ function reservedClientTotals(build: BuildDetail): { deposit: number; remaining:
   return { deposit, remaining };
 }
 
+/** Resumen cliente: total = paid + pending (pending = total − paid). */
+function pendingPaymentPdfTotals(build: BuildDetail): { total: number; paid: number; pending: number } | null {
+  if (build.status !== "PENDING_PAYMENT") return null;
+  const total = coerceNumber(build.totalSale);
+  const paid = coerceNumber(build.pendingPaymentPaid);
+  const pending = Math.max(0, Math.round((total - paid) * 100) / 100);
+  return { total, paid, pending };
+}
+
+function PendingPaymentSummaryBlock({
+  total,
+  paid,
+  pending
+}: {
+  total: number;
+  paid: number;
+  pending: number;
+}) {
+  return (
+    <View style={styles.paymentSummaryCard} wrap={false}>
+      <View style={styles.paymentSummaryTopAccent} />
+      <View style={styles.paymentSummaryBody}>
+        <View style={styles.paymentSummaryRow}>
+          <Text style={styles.paymentSummaryLabel}>Total montaje</Text>
+          <Text style={styles.paymentSummaryValue}>{formatMoney(total)}</Text>
+        </View>
+        <View style={[styles.paymentSummaryRow, { marginBottom: 0 }]}>
+          <Text style={styles.paymentSummaryLabel}>Cantidad cobrada</Text>
+          <Text style={styles.paymentSummaryValue}>{formatMoney(paid)}</Text>
+        </View>
+      </View>
+      <View style={styles.paymentPendingHighlight} wrap={false}>
+        <View style={styles.paymentPendingLeft}>
+          <Text style={styles.paymentPendingTitle}>Pendiente de pago</Text>
+          <Text style={styles.paymentPendingHint}>Importe restante (total menos cobrado)</Text>
+        </View>
+        <Text style={styles.paymentPendingAmount}>{formatMoney(pending)}</Text>
+      </View>
+    </View>
+  );
+}
+
 function clientPdfSocialLine(): string | null {
   const parts: string[] = [];
   const wa = String(CLIENT_PDF_SOCIAL.whatsapp).trim();
@@ -635,7 +766,8 @@ export type BuildPdfDocumentProps = {
 
 export function BuildPdfDocument({ build }: BuildPdfDocumentProps) {
   const items = build.items ?? [];
-  const extras = build.extraLines ?? [];
+  const manualLines = (build.extraLines ?? []).filter((l) => l.extraTemplateId == null);
+  const extras = (build.extraLines ?? []).filter((l) => l.extraTemplateId != null);
   const notesPdf = meaningfulNotesForClient(build);
   const hasClientNotes = notesPdf != null;
 
@@ -651,6 +783,7 @@ export function BuildPdfDocument({ build }: BuildPdfDocumentProps) {
   ];
 
   const reservedTotals = reservedClientTotals(build);
+  const pendingPaymentTotals = pendingPaymentPdfTotals(build);
 
   const sharedHeader = (
     <>
@@ -711,26 +844,49 @@ export function BuildPdfDocument({ build }: BuildPdfDocumentProps) {
         </View>
         <View style={styles.tableOuter}>
           <LineTableHeaderThreeCol />
-          {items.length === 0 ? (
+          {items.length === 0 && manualLines.length === 0 ? (
             <Text style={styles.emptyHint}>Sin componentes listados en este documento.</Text>
           ) : (
-            items.map((item, index) => {
-              const isLast = index === items.length - 1;
-              const zebra = index % 2 === 1;
-              return (
-                <View
-                  key={item.id}
-                  style={[styles.tableRow, ...(zebra ? [styles.tableRowAlt] : []), ...(isLast ? [styles.tableRowLast] : [])]}
-                  wrap={false}
-                >
-                  <Text style={[styles.td, styles.colConcept]} wrap>
-                    {item.part?.name ?? "Componente"}
-                  </Text>
-                  <Text style={[styles.td, styles.colQty]}>{item.quantity}</Text>
-                  <Text style={[styles.td, styles.colSale]}>{formatMoney(partLineSale(item))}</Text>
-                </View>
-              );
-            })
+            <>
+              {items.map((item, index) => {
+                const zebra = index % 2 === 1;
+                return (
+                  <View
+                    key={item.id}
+                    style={[styles.tableRow, ...(zebra ? [styles.tableRowAlt] : [])]}
+                    wrap={false}
+                  >
+                    <Text style={[styles.td, styles.colConcept]} wrap>
+                      {item.part?.name ?? "Componente"}
+                    </Text>
+                    <Text style={[styles.td, styles.colQty]}>{item.quantity}</Text>
+                    <Text style={[styles.td, styles.colSale]}>{formatMoney(partLineSale(item))}</Text>
+                  </View>
+                );
+              })}
+              {manualLines.map((line, index) => {
+                const rowIndex = items.length + index;
+                const zebra = rowIndex % 2 === 1;
+                const isLast = rowIndex === items.length + manualLines.length - 1 && extras.length === 0;
+                return (
+                  <View
+                    key={line.id}
+                    style={[
+                      styles.tableRow,
+                      ...(zebra ? [styles.tableRowAlt] : []),
+                      ...(isLast ? [styles.tableRowLast] : [])
+                    ]}
+                    wrap={false}
+                  >
+                    <Text style={[styles.td, styles.colConcept]} wrap>
+                      {line.name}
+                    </Text>
+                    <Text style={[styles.td, styles.colQty]}>{line.quantity}</Text>
+                    <Text style={[styles.td, styles.colSale]}>{formatMoney(extraLineSale(line))}</Text>
+                  </View>
+                );
+              })}
+            </>
           )}
         </View>
 
@@ -777,24 +933,32 @@ export function BuildPdfDocument({ build }: BuildPdfDocumentProps) {
           </View>
         ) : null}
 
-        <View style={styles.totalStrip} wrap={false}>
-          <View style={styles.totalStripAccent} />
-          <View style={styles.totalStripInner}>
-            <View>
-              <Text style={styles.totalLabel}>
-                {reservedTotals ? "Restante a abonar" : "Total montaje"}
-              </Text>
-              <Text style={styles.totalHint}>
-                {reservedTotals
-                  ? "Importe pendiente (precio total menos reserva cobrada)"
-                  : "Precio de venta final"}
+        {pendingPaymentTotals ? (
+          <PendingPaymentSummaryBlock
+            total={pendingPaymentTotals.total}
+            paid={pendingPaymentTotals.paid}
+            pending={pendingPaymentTotals.pending}
+          />
+        ) : (
+          <View style={styles.totalStrip} wrap={false}>
+            <View style={styles.totalStripAccent} />
+            <View style={styles.totalStripInner}>
+              <View>
+                <Text style={styles.totalLabel}>
+                  {reservedTotals ? "Restante a abonar" : "Total montaje"}
+                </Text>
+                <Text style={styles.totalHint}>
+                  {reservedTotals
+                    ? "Importe pendiente (precio total menos reserva cobrada)"
+                    : "Precio de venta final"}
+                </Text>
+              </View>
+              <Text style={styles.totalValue}>
+                {formatMoney(reservedTotals ? reservedTotals.remaining : build.totalSale)}
               </Text>
             </View>
-            <Text style={styles.totalValue}>
-              {formatMoney(reservedTotals ? reservedTotals.remaining : build.totalSale)}
-            </Text>
           </View>
-        </View>
+        )}
 
         <FooterBlock />
       </Page>

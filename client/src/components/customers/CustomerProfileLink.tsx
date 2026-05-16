@@ -6,6 +6,7 @@ import { SECONDARY_GHOST_SM } from "../../theme/actionButtons";
 type CustomerProfileLinkProps = {
   customerName: string;
   customerPhone?: string | null;
+  customerId?: string | null;
   className?: string;
   children?: ReactNode;
 };
@@ -13,12 +14,13 @@ type CustomerProfileLinkProps = {
 export function CustomerProfileLink({
   customerName,
   customerPhone,
+  customerId,
   className,
   children
 }: CustomerProfileLinkProps) {
   return (
     <Link
-      to={customerProfilePath(customerName, customerPhone)}
+      to={customerProfilePath(customerName, customerPhone, customerId)}
       className={className ?? SECONDARY_GHOST_SM}
     >
       {children ?? "Ficha cliente"}

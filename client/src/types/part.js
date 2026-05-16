@@ -25,7 +25,8 @@ const CATEGORY_LABELS = {
     MONITOR: "Monitor",
     PERIPHERAL: "Periférico",
     OS: "Sistema Operativo",
-    LABOR: "Mano de obra"
+    LABOR: "Mano de obra",
+    OTHER: "Otros"
 };
 export function partCategoryLabel(category) {
     return CATEGORY_LABELS[category] ?? category;

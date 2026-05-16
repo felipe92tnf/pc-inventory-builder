@@ -1,2 +1,3 @@
--- CreateIndex
-CREATE INDEX "Part_inventoryKind_idx" ON "Part"("inventoryKind");
+-- No-op (corregido): antes aquí se creaba `Part_inventoryKind_idx` sobre una columna
+-- que aún no existía (`inventoryKind` se añade en `20260510203000_inventory_kind_prebuilt_pc`).
+-- El índice se crea en `20260516150000_fix_part_inventory_kind_index`.

@@ -1,7 +1,9 @@
 import { BuildStatus, InventoryKind, PartCategory, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { customerDataForEntity } from "../customers/customers.resolve.js";
 import {
   addBuildExtraLineSchema,
+  addBuildManualLineSchema,
   addBuildItemSchema,
   confirmBuildSchema,
   createBuildSchema,
@@ -96,13 +98,24 @@ export async function getBuild(id: string) {
 
 export async function createBuild(payload: unknown) {
   const data = createBuildSchema.parse(payload);
+  const customer =
+    data.customerName != null && data.customerName !== ""
+      ? await customerDataForEntity({
+          customerId: data.customerId,
+          customerName: data.customerName,
+          customerPhone: data.customerPhone,
+          customerEmail: data.customerEmail
+        })
+      : null;
+
   return prisma.build.create({
     data: {
       name: data.name.trim(),
       notes: data.notes ?? null,
-      customerName: data.customerName ?? null,
-      customerPhone: data.customerPhone ?? null,
-      customerEmail: data.customerEmail ?? null
+      customerId: customer?.customerId ?? null,
+      customerName: customer?.customerName || null,
+      customerPhone: customer?.customerPhone ?? null,
+      customerEmail: customer?.customerEmail ?? null
     }
   });
 }
@@ -170,14 +183,35 @@ export async function updateBuild(id: string, payload: unknown) {
   const patch: Prisma.BuildUpdateInput = {};
   if (data.name !== undefined) patch.name = data.name.trim();
   if (data.notes !== undefined) patch.notes = data.notes ?? null;
-  if (data.customerName !== undefined) {
-    patch.customerName = data.customerName === null ? null : data.customerName;
-  }
-  if (data.customerPhone !== undefined) {
-    patch.customerPhone = data.customerPhone === null ? null : data.customerPhone;
-  }
-  if (data.customerEmail !== undefined) {
-    patch.customerEmail = data.customerEmail === null ? null : data.customerEmail;
+  if (
+    data.customerId !== undefined ||
+    data.customerName !== undefined ||
+    data.customerPhone !== undefined ||
+    data.customerEmail !== undefined
+  ) {
+    const nextName =
+      data.customerName !== undefined ? data.customerName : existing.customerName;
+    if (nextName === null || nextName === "") {
+      patch.customer = { disconnect: true };
+      patch.customerName = null;
+      patch.customerPhone = null;
+      patch.customerEmail = null;
+    } else {
+      const customer = await customerDataForEntity({
+        customerId: data.customerId ?? existing.customerId,
+        customerName: nextName,
+        customerPhone:
+          data.customerPhone !== undefined ? data.customerPhone : existing.customerPhone,
+        customerEmail:
+          data.customerEmail !== undefined ? data.customerEmail : existing.customerEmail
+      });
+      if (customer.customerId) {
+        patch.customer = { connect: { id: customer.customerId } };
+      }
+      patch.customerName = customer.customerName;
+      patch.customerPhone = customer.customerPhone;
+      patch.customerEmail = customer.customerEmail;
+    }
   }
   if (data.saleTotalOverride !== undefined) {
     patch.saleTotalOverride =
@@ -365,6 +399,30 @@ export async function deleteBuildItem(buildId: string, itemId: string) {
   }
 
   return prisma.buildPartItem.delete({ where: { id: itemId } });
+}
+
+export async function addBuildManualLine(buildId: string, payload: unknown) {
+  const data = addBuildManualLineSchema.parse(payload);
+
+  const build = await prisma.build.findUnique({ where: { id: buildId } });
+  if (!build) {
+    throw new Error("BUILD_NOT_FOUND");
+  }
+  if (build.status !== BuildStatus.DRAFT) {
+    throw new Error("BUILD_NOT_EDITABLE");
+  }
+
+  return prisma.buildExtraLine.create({
+    data: {
+      buildId,
+      extraTemplateId: null,
+      name: data.name.trim(),
+      description: data.description ?? "",
+      quantity: data.quantity ?? 1,
+      unitCost: moneyDecimal(data.unitCost),
+      unitSalePrice: moneyDecimal(data.unitSalePrice)
+    }
+  });
 }
 
 export async function addBuildExtraLine(buildId: string, payload: unknown) {

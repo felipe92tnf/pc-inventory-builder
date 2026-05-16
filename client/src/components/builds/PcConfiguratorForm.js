@@ -19,6 +19,11 @@ const CONFIGURATOR_SLOTS = [
     { id: "LABOR", label: "Mano de obra", categories: ["LABOR"] },
     { id: "OTHER", label: "Other", categories: ["OTHER", "NETWORK"] }
 ];
+const CONFIGURATOR_ACCORDION_GROUPS = [
+    { title: "Componentes principales", slotIds: ["CPU", "MOTHERBOARD", "GPU", "RAM", "STORAGE", "PSU"] },
+    { title: "Caja y refrigeración", slotIds: ["CASE", "COOLING", "FANS"] },
+    { title: "Periféricos y otros", slotIds: ["MONITOR", "PERIPHERAL", "OS", "LABOR", "OTHER"] }
+];
 function formatMoney(value) {
     return `${Number(value).toFixed(2)} EUR`;
 }
@@ -37,7 +42,7 @@ function emptyQuantities() {
 function emptySaleDrafts() {
     return {};
 }
-export function PcConfiguratorForm({ parts, disabled, onAddSelected, catalogSaleOnly = false, heading = "Configurar montaje", lead = "Elige pieza y cantidad por ranura (opcional). Puedes ajustar el precio de venta unitario para este montaje (por defecto es el del inventario). En sistema operativo y mano de obra no hay stock y la cantidad es 1. Pulsa el boton para anadirlas al montaje.", compact = false }) {
+export function PcConfiguratorForm({ parts, disabled, onAddSelected, catalogSaleOnly = false, heading = "Configurar montaje", lead = "Elige pieza y cantidad por ranura (opcional). Puedes ajustar el precio de venta unitario para este montaje (por defecto es el del inventario). En sistema operativo y mano de obra no hay stock y la cantidad es 1. Pulsa el boton para anadirlas al montaje.", compact = false, slotLayout = "flat", extrasAccordion }) {
     const [selections, setSelections] = useState(emptySelections);
     const [quantities, setQuantities] = useState(emptyQuantities);
     const [saleDraftBySlot, setSaleDraftBySlot] = useState(() => emptySaleDrafts());
@@ -166,43 +171,55 @@ export function PcConfiguratorForm({ parts, disabled, onAddSelected, catalogSale
     };
     const hasAnySelection = CONFIGURATOR_SLOTS.some((slot) => selections[slot.id] !== "");
     const busy = disabled || submitting;
+    const renderConfiguratorSlot = (slot) => {
+        const options = partsBySlot.get(slot.id) ?? [];
+        const selected = selectedPartBySlot.get(slot.id) ?? null;
+        const selectValue = selections[slot.id];
+        const qtyValue = quantities[slot.id];
+        const maxQty = selected
+            ? isNonStockCategory(selected.category)
+                ? 1
+                : Math.max(1, selected.stock)
+            : 1;
+        return (_jsxs("div", { className: compact
+                ? "flex flex-col gap-2 rounded-lg border border-slate-800/90 bg-slate-950/40 p-2.5 lg:flex-row lg:items-center lg:gap-2"
+                : "flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4 lg:flex-row lg:items-end lg:gap-4", children: [_jsxs("label", { className: compact
+                        ? "min-w-0 flex-1 flex flex-col gap-0.5 text-xs font-medium text-slate-200"
+                        : "min-w-0 flex-1 flex flex-col gap-1 text-sm font-medium text-slate-200", children: [slot.label, _jsxs("select", { value: selectValue, onChange: (event) => handleSelectChange(slot.id, event.target.value), disabled: busy || options.length === 0, className: compact
+                                ? "rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                                : "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50", children: [_jsx("option", { value: "", children: options.length === 0 ? "Sin stock en esta categoria" : "Sin seleccionar" }), options.map((part) => (_jsx("option", { value: part.id, children: part.name }, part.id)))] })] }), _jsxs("label", { className: compact
+                        ? "flex w-full flex-col gap-0.5 text-xs font-medium text-slate-200 lg:w-24 shrink-0"
+                        : "flex w-full flex-col gap-1 text-sm font-medium text-slate-200 lg:w-36", children: ["Cantidad", _jsx("select", { value: selected && maxQty >= 1 ? String(Math.min(Math.max(1, qtyValue), maxQty)) : "", onChange: (event) => handleQuantityChange(slot.id, Number(event.target.value)), disabled: busy || !selected || maxQty < 1, className: compact
+                                ? "rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
+                                : "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50", children: !selected || maxQty < 1 ? (_jsx("option", { value: "", children: "\u2014" })) : (Array.from({ length: maxQty }, (_, index) => index + 1).map((n) => (_jsx("option", { value: n, children: n }, n)))) })] }), _jsxs("div", { className: compact
+                        ? "flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] lg:shrink-0 lg:flex-1 lg:justify-end"
+                        : "flex flex-wrap gap-4 text-sm lg:shrink-0 lg:flex-1 lg:justify-end", children: [_jsxs("div", { children: [_jsx("p", { className: compact
+                                        ? "text-[10px] uppercase tracking-wide text-slate-500"
+                                        : "text-xs uppercase tracking-wide text-slate-500", children: "Stock" }), _jsx("p", { className: compact ? "font-medium leading-tight text-slate-200" : "font-medium text-slate-200", children: selected ? (isNonStockCategory(selected.category) ? "N/A" : selected.stock) : "—" })] }), _jsxs("div", { children: [_jsx("p", { className: compact
+                                        ? "text-[10px] uppercase tracking-wide text-slate-500"
+                                        : "text-xs uppercase tracking-wide text-slate-500", children: "Coste inv." }), _jsx("p", { className: compact ? "font-medium leading-tight text-slate-200" : "font-medium text-slate-200", children: selected ? formatMoney(selected.costPrice) : "—" })] }), _jsxs("div", { children: [_jsx("p", { className: compact
+                                        ? "text-[10px] uppercase tracking-wide text-slate-500"
+                                        : "text-xs uppercase tracking-wide text-slate-500", children: "Venta inv." }), _jsx("p", { className: compact ? "font-medium leading-tight text-slate-400" : "font-medium text-slate-400", children: selected ? formatMoney(selected.salePrice) : "—" })] }), !catalogSaleOnly ? (_jsxs("label", { className: "flex min-w-[9rem] flex-col gap-1", children: [_jsx("span", { className: "text-xs uppercase tracking-wide text-slate-500", children: "Venta montaje" }), _jsx("input", { type: "text", inputMode: "decimal", value: selected ? (saleDraftBySlot[slot.id] ?? Number(selected.salePrice).toFixed(2)) : "", onChange: (event) => setSaleDraftBySlot((prev) => ({
+                                        ...prev,
+                                        [slot.id]: event.target.value
+                                    })), disabled: busy || !selected, placeholder: "EUR", className: "rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-sm font-medium text-emerald-200/95 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50" })] })) : null] })] }, slot.id));
+    };
     return (_jsxs("section", { className: compact
             ? "rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/40 sm:p-4"
-            : SECTION_SHELL, children: [_jsx("h2", { className: compact ? "mb-0.5 text-base font-semibold text-slate-100" : "mb-1 text-lg font-semibold text-slate-100", children: heading }), lead !== "" ? (_jsx("p", { className: compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-3 text-sm text-slate-400", children: lead })) : null, _jsx("div", { className: compact ? "space-y-2" : "space-y-3", children: CONFIGURATOR_SLOTS.map((slot) => {
-                    const options = partsBySlot.get(slot.id) ?? [];
-                    const selected = selectedPartBySlot.get(slot.id) ?? null;
-                    const selectValue = selections[slot.id];
-                    const qtyValue = quantities[slot.id];
-                    const maxQty = selected
-                        ? isNonStockCategory(selected.category)
-                            ? 1
-                            : Math.max(1, selected.stock)
-                        : 1;
-                    return (_jsxs("div", { className: compact
-                            ? "flex flex-col gap-2 rounded-lg border border-slate-800/90 bg-slate-950/40 p-2.5 lg:flex-row lg:items-center lg:gap-2"
-                            : "flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4 lg:flex-row lg:items-end lg:gap-4", children: [_jsxs("label", { className: compact
-                                    ? "min-w-0 flex-1 flex flex-col gap-0.5 text-xs font-medium text-slate-200"
-                                    : "min-w-0 flex-1 flex flex-col gap-1 text-sm font-medium text-slate-200", children: [slot.label, _jsxs("select", { value: selectValue, onChange: (event) => handleSelectChange(slot.id, event.target.value), disabled: busy || options.length === 0, className: compact
-                                            ? "rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
-                                            : "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50", children: [_jsx("option", { value: "", children: options.length === 0 ? "Sin stock en esta categoria" : "Sin seleccionar" }), options.map((part) => (_jsx("option", { value: part.id, children: part.name }, part.id)))] })] }), _jsxs("label", { className: compact
-                                    ? "flex w-full flex-col gap-0.5 text-xs font-medium text-slate-200 lg:w-24 shrink-0"
-                                    : "flex w-full flex-col gap-1 text-sm font-medium text-slate-200 lg:w-36", children: ["Cantidad", _jsx("select", { value: selected && maxQty >= 1 ? String(Math.min(Math.max(1, qtyValue), maxQty)) : "", onChange: (event) => handleQuantityChange(slot.id, Number(event.target.value)), disabled: busy || !selected || maxQty < 1, className: compact
-                                            ? "rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
-                                            : "rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50", children: !selected || maxQty < 1 ? (_jsx("option", { value: "", children: "\u2014" })) : (Array.from({ length: maxQty }, (_, index) => index + 1).map((n) => (_jsx("option", { value: n, children: n }, n)))) })] }), _jsxs("div", { className: compact
-                                    ? "flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] lg:shrink-0 lg:flex-1 lg:justify-end"
-                                    : "flex flex-wrap gap-4 text-sm lg:shrink-0 lg:flex-1 lg:justify-end", children: [_jsxs("div", { children: [_jsx("p", { className: compact
-                                                    ? "text-[10px] uppercase tracking-wide text-slate-500"
-                                                    : "text-xs uppercase tracking-wide text-slate-500", children: "Stock" }), _jsx("p", { className: compact ? "font-medium leading-tight text-slate-200" : "font-medium text-slate-200", children: selected ? (isNonStockCategory(selected.category) ? "N/A" : selected.stock) : "—" })] }), _jsxs("div", { children: [_jsx("p", { className: compact
-                                                    ? "text-[10px] uppercase tracking-wide text-slate-500"
-                                                    : "text-xs uppercase tracking-wide text-slate-500", children: "Coste inv." }), _jsx("p", { className: compact ? "font-medium leading-tight text-slate-200" : "font-medium text-slate-200", children: selected ? formatMoney(selected.costPrice) : "—" })] }), _jsxs("div", { children: [_jsx("p", { className: compact
-                                                    ? "text-[10px] uppercase tracking-wide text-slate-500"
-                                                    : "text-xs uppercase tracking-wide text-slate-500", children: "Venta inv." }), _jsx("p", { className: compact ? "font-medium leading-tight text-slate-400" : "font-medium text-slate-400", children: selected ? formatMoney(selected.salePrice) : "—" })] }), !catalogSaleOnly ? (_jsxs("label", { className: "flex min-w-[9rem] flex-col gap-1", children: [_jsx("span", { className: "text-xs uppercase tracking-wide text-slate-500", children: "Venta montaje" }), _jsx("input", { type: "text", inputMode: "decimal", value: selected
-                                                    ? (saleDraftBySlot[slot.id] ?? Number(selected.salePrice).toFixed(2))
-                                                    : "", onChange: (event) => setSaleDraftBySlot((prev) => ({
-                                                    ...prev,
-                                                    [slot.id]: event.target.value
-                                                })), disabled: busy || !selected, placeholder: "EUR", className: "rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-sm font-medium text-emerald-200/95 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50" })] })) : null] })] }, slot.id));
-                }) }), _jsx("div", { className: compact ? "mt-3 flex flex-wrap items-center gap-2" : "mt-6 flex flex-wrap items-center gap-3", children: _jsx("button", { type: "button", onClick: () => {
+            : SECTION_SHELL, children: [_jsx("h2", { className: compact ? "mb-0.5 text-base font-semibold text-slate-100" : "mb-1 text-lg font-semibold text-slate-100", children: heading }), lead !== "" ? (_jsx("p", { className: compact ? "mb-2 text-xs leading-snug text-slate-400" : "mb-3 text-sm text-slate-400", children: lead })) : null, _jsxs("div", { className: slotLayout === "accordion"
+                    ? "space-y-1.5"
+                    : compact
+                        ? "space-y-2"
+                        : "space-y-3", children: [slotLayout === "accordion"
+                        ? CONFIGURATOR_ACCORDION_GROUPS.map((group) => (_jsxs("details", { className: "group rounded-lg border border-slate-800/90 bg-slate-950/30 open:border-slate-700/85", children: [_jsxs("summary", { className: "flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-100 outline-none hover:bg-slate-900/50 sm:px-3 [&::-webkit-details-marker]:hidden", children: [_jsx("span", { children: group.title }), _jsx("span", { className: "inline-block text-slate-500 transition-transform duration-200 group-open:rotate-90", "aria-hidden": true, children: "\u25B8" })] }), _jsx("div", { className: compact
+                                        ? "space-y-2 border-t border-slate-800/70 p-2 pt-2"
+                                        : "space-y-3 border-t border-slate-800/70 p-2 pt-3", children: group.slotIds.map((id) => {
+                                        const slot = CONFIGURATOR_SLOTS.find((s) => s.id === id);
+                                        return slot ? renderConfiguratorSlot(slot) : null;
+                                    }) })] }, group.title)))
+                        : CONFIGURATOR_SLOTS.map((slot) => renderConfiguratorSlot(slot)), slotLayout === "accordion" && extrasAccordion ? (_jsxs("details", { className: "group rounded-lg border border-slate-800/90 bg-slate-950/30 open:border-slate-700/85", children: [_jsxs("summary", { className: "flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-100 outline-none hover:bg-slate-900/50 sm:px-3 [&::-webkit-details-marker]:hidden", children: [_jsx("span", { children: "Extras y servicios" }), _jsx("span", { className: "inline-block text-slate-500 transition-transform duration-200 group-open:rotate-90", "aria-hidden": true, children: "\u25B8" })] }), _jsx("div", { className: compact
+                                    ? "space-y-2 border-t border-slate-800/70 p-2 pt-2"
+                                    : "space-y-3 border-t border-slate-800/70 p-2 pt-3", children: extrasAccordion })] })) : null] }), _jsx("div", { className: compact ? "mt-3 flex flex-wrap items-center gap-2" : "mt-6 flex flex-wrap items-center gap-3", children: _jsx("button", { type: "button", onClick: () => {
                         void handleAddSelected();
                     }, disabled: busy || !hasAnySelection, className: compact ? PRIMARY_ACTION_BUTTON_COMPACT : PRIMARY_ACTION_BUTTON, children: submitting ? "Anadiendo..." : catalogSaleOnly ? "Anadir al presupuesto" : "Anadir piezas seleccionadas" }) })] }));
 }

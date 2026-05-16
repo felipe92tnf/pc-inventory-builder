@@ -71,6 +71,21 @@ export function useBuildDetail(buildId) {
             setActionLoading(false);
         }
     }, [buildId]);
+    const addManualLine = useCallback(async (payload) => {
+        setActionLoading(true);
+        setError(null);
+        try {
+            const updated = await buildsApi.addBuildManualLine(buildId, payload);
+            setBuild(updated);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo anadir la pieza manual.");
+            throw err;
+        }
+        finally {
+            setActionLoading(false);
+        }
+    }, [buildId]);
     const addExtraLine = useCallback(async (payload) => {
         setActionLoading(true);
         setError(null);
@@ -176,6 +191,7 @@ export function useBuildDetail(buildId) {
         addItem,
         updateBuildItemLine,
         removeItem,
+        addManualLine,
         addExtraLine,
         updateExtraLine,
         removeExtraLine,

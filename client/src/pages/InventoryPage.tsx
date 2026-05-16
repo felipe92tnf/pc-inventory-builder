@@ -25,7 +25,17 @@ import {
   type PendingCatalogStockPick
 } from "../types/part";
 import { calculateSalePrice } from "../utils/pricing";
-import { SECONDARY_BUTTON_SM } from "../theme/actionButtons";
+import {
+  filterPartsForInventoryPdf,
+  getListedInventoryParts,
+  inventoryPdfScopeLabel,
+  type InventoryPdfScope
+} from "../utils/inventoryPdfExport";
+import {
+  computePhysicalInventoryDebugStats,
+  physicalShelfTotals
+} from "../utils/physicalInventoryShelf";
+import { PRIMARY_ACTION_BUTTON_COMPACT, SECONDARY_BUTTON_SM } from "../theme/actionButtons";
 import {
   SUMMARY_CARD_GRID,
   SUMMARY_CARD_LABEL,
@@ -82,28 +92,6 @@ function toPayload(values: PartFormValues): PartPayload {
   };
 }
 
-function inventoryTotals(parts: Part[]) {
-  let totalCostValue = 0;
-  let totalSaleValue = 0;
-  let units = 0;
-  for (const p of parts) {
-    const c = Number(p.costPrice);
-    const s = Number(p.salePrice);
-    const q = p.stock;
-    if (Number.isFinite(c) && Number.isFinite(s) && Number.isFinite(q)) {
-      totalCostValue += c * q;
-      totalSaleValue += s * q;
-      units += q;
-    }
-  }
-  return {
-    totalCostValue,
-    totalSaleValue,
-    potentialProfit: totalSaleValue - totalCostValue,
-    units
-  };
-}
-
 function coerceMoney(v: number | string | null | undefined): number {
   if (v == null) return 0;
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
@@ -113,7 +101,7 @@ function coerceMoney(v: number | string | null | undefined): number {
 
 /** Montajes confirmados = PC terminado en almacén (coste/venta del montaje, sin duplicar piezas ya descontadas del stock). */
 function inventorySummaryWithBuilds(parts: Part[], builds: Build[]) {
-  const shelf = inventoryTotals(parts);
+  const shelf = physicalShelfTotals(parts);
   const confirmedBuilds = builds.filter((b) => b.status === "CONFIRMED");
   let buildCostValue = 0;
   let buildSaleValue = 0;
@@ -203,7 +191,6 @@ export function InventoryPage() {
     reload
   } = useParts();
   const [builds, setBuilds] = useState<Build[]>([]);
-  const [partIdsInBuiltPcs, setPartIdsInBuiltPcs] = useState<Set<string>>(new Set());
   const [selectedPart, setSelectedPart] = useState<Part | null>(null);
   const [activeTab, setActiveTab] = useState<InventoryTabId>("summary");
   const [query, setQuery] = useState("");
@@ -240,6 +227,11 @@ export function InventoryPage() {
 
   /** Acordeón «Nuevo PC completo» en pestaña Nueva pieza (plegado por defecto). */
   const [catalogPrebuiltAccordionOpen, setCatalogPrebuiltAccordionOpen] = useState(false);
+
+  const [pdfScope, setPdfScope] = useState<InventoryPdfScope>("ALL");
+  const [pdfExportCategory, setPdfExportCategory] = useState<PartCategory>("CPU");
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const goToTab = useCallback(
     (id: InventoryTabId, options?: GoToTabOptions) => {
@@ -343,19 +335,8 @@ export function InventoryPage() {
     try {
       const rows = await buildsApi.listBuilds();
       setBuilds(rows);
-      const ids = new Set<string>();
-      for (const build of rows) {
-        if (build.status === "DRAFT") continue;
-        for (const item of build.items ?? []) {
-          if (item.part?.inventoryKind === "PART") {
-            ids.add(item.partId);
-          }
-        }
-      }
-      setPartIdsInBuiltPcs(ids);
     } catch {
       setBuilds([]);
-      setPartIdsInBuiltPcs(new Set());
     }
   }, []);
 
@@ -386,13 +367,16 @@ export function InventoryPage() {
 
   const totals = useMemo(() => inventorySummaryWithBuilds(parts, builds), [parts, builds]);
 
+  const inventorySummaryDebug = useMemo(() => computePhysicalInventoryDebugStats(parts), [parts]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    console.debug("[SecondByte] Resumen inventario (solo stock físico)", inventorySummaryDebug);
+  }, [inventorySummaryDebug]);
+
   const partsListed = useMemo(() => {
-    return parts.filter((part) => {
-      if (!listedInInventory(part)) return false;
-      if (part.inventoryKind === "PART" && partIdsInBuiltPcs.has(part.id)) return false;
-      return true;
-    });
-  }, [parts, partIdsInBuiltPcs]);
+    return parts.filter((part) => listedInInventory(part));
+  }, [parts]);
 
   const filteredParts = useMemo(() => {
     return partsListed.filter((part) => {
@@ -523,6 +507,49 @@ export function InventoryPage() {
     setStockFilter("ALL");
   };
 
+  const handleDownloadInventoryPdf = useCallback(async () => {
+    setPdfGenerating(true);
+    setPdfError(null);
+    try {
+      const listed = getListedInventoryParts(parts);
+      const filtered = filterPartsForInventoryPdf(
+        listed,
+        pdfScope,
+        pdfScope === "CATEGORY" ? pdfExportCategory : null
+      );
+      const exportedAtIso = new Date().toISOString();
+      const scopeDescription = inventoryPdfScopeLabel(
+        pdfScope,
+        pdfScope === "CATEGORY" ? pdfExportCategory : null
+      );
+      const [{ pdf }, { InventoryPdfDocument }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("../components/inventory/InventoryPdfDocument")
+      ]);
+      const blob = await pdf(
+        <InventoryPdfDocument
+          parts={filtered}
+          exportedAtIso={exportedAtIso}
+          scopeDescription={scopeDescription}
+        />
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = exportedAtIso.slice(0, 16).replace(/[-:T]/g, "");
+      a.href = url;
+      a.download = `inventario-secondbyte-${stamp}.pdf`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : "No se pudo generar el PDF.");
+    } finally {
+      setPdfGenerating(false);
+    }
+  }, [parts, pdfExportCategory, pdfScope]);
+
   const tabButtonClass = (id: InventoryTabId) =>
     [
       "shrink-0 snap-start whitespace-nowrap rounded-t-lg border border-b-0 px-3 py-2 text-sm font-semibold transition md:px-4",
@@ -533,8 +560,56 @@ export function InventoryPage() {
 
   return (
     <div className={PAGE_OUTER_6XL}>
-      <section className={PAGE_HERO}>
+      <section
+        className={`${PAGE_HERO} flex flex-col gap-4 md:flex-row md:items-start md:justify-between`}
+      >
         <h1 className="text-3xl font-bold tracking-tight">Inventario</h1>
+        <div className="flex w-full max-w-xl flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-3 md:max-w-lg md:shrink-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Exportar PDF</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-slate-400">
+              Alcance
+              <select
+                value={pdfScope}
+                onChange={(e) => setPdfScope(e.target.value as InventoryPdfScope)}
+                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/80 px-2 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400"
+              >
+                <option value="ALL">Todo el inventario</option>
+                <option value="CATEGORY">Solo una categoría</option>
+                <option value="LOW_STOCK">Solo stock bajo</option>
+                <option value="PREBUILT_ONLY">Solo PCs completos</option>
+              </select>
+            </label>
+            <label
+              className={`flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-slate-400 ${pdfScope === "CATEGORY" ? "" : "opacity-45"}`}
+            >
+              Categoría
+              <select
+                value={pdfExportCategory}
+                onChange={(e) => setPdfExportCategory(e.target.value as PartCategory)}
+                disabled={pdfScope !== "CATEGORY"}
+                className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/80 px-2 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 disabled:cursor-not-allowed"
+              >
+                {PART_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {partCategoryLabel(c)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleDownloadInventoryPdf()}
+              disabled={loading || pdfGenerating || parts.length === 0}
+              className={PRIMARY_ACTION_BUTTON_COMPACT}
+            >
+              {pdfGenerating ? "Generando…" : "Exportar PDF"}
+            </button>
+          </div>
+          {pdfError ? <p className="text-xs text-rose-300">{pdfError}</p> : null}
+        </div>
       </section>
 
       {error ? (

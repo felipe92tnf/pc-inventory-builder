@@ -11,8 +11,13 @@ export function buildCustomerLookupKey(displayName: string, displayPhone: string
   return `${normalizePhoneDigits(displayPhone)}::${normalizeNameKey(displayName)}`;
 }
 
-/** Ruta de ficha de cliente (query: name, phone). */
-export function customerProfilePath(customerName: string, customerPhone: string | null | undefined): string {
+/** Ruta de ficha por id (preferido) o query legacy. */
+export function customerProfilePath(
+  customerName: string,
+  customerPhone: string | null | undefined,
+  customerId?: string | null
+): string {
+  if (customerId) return `/customers/${customerId}`;
   const params = new URLSearchParams();
   params.set("name", customerName.trim());
   params.set("phone", (customerPhone ?? "").trim());
