@@ -87,6 +87,14 @@ export type ServiceExtraLinePayload = {
   unitSalePrice?: number;
 };
 
+export type ServiceManualLinePayload = {
+  name: string;
+  description?: string;
+  quantity?: number;
+  unitCost?: number;
+  unitSalePrice: number;
+};
+
 export type CreateServicePayload = {
   type: ServiceType;
   title: string;
@@ -99,6 +107,7 @@ export type CreateServicePayload = {
   quantity?: number | null;
   sparePartLines?: SparePartLinePayload[];
   extraLines?: ServiceExtraLinePayload[];
+  manualLines?: ServiceManualLinePayload[];
   costPrice?: number;
   salePrice?: number;
   isHomeService?: boolean;

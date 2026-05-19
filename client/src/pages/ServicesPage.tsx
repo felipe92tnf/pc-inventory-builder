@@ -1,18 +1,10 @@
-import { useMemo, useState, useEffect, type FormEvent, type ReactNode } from "react";
-import { useParts } from "../hooks/useParts";
+import { useMemo, useState, useEffect, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import * as servicesApi from "../api/services";
 import { useServices } from "../hooks/useServices";
-import * as extraTemplatesApi from "../api/extraTemplates";
-import type {
-  CreateServicePayload,
-  PatchServicePayload,
-  ServiceExtraLinePayload,
-  ServiceRow,
-  ServiceStatus,
-  ServiceType
-} from "../types/service";
-import { isPartPiece, PART_CATEGORIES, partCategoryLabel, type PartCategory } from "../types/part";
-import type { ExtraTemplate } from "../types/extraTemplate";
+import type { ServiceRow, ServiceStatus, ServiceType } from "../types/service";
 import { SERVICE_TYPES, SERVICE_STATUSES } from "../types/service";
+import { downloadServicePdf } from "../utils/servicePdfExport";
 import {
   PRIMARY_ACTION_BUTTON,
   PRIMARY_ACTION_BUTTON_HEADER,
@@ -37,8 +29,6 @@ import {
 } from "../theme/listPageMobile";
 import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
-import { CustomerPicker, emptyCustomerFields } from "../components/customers/CustomerPicker";
-import type { CustomerFieldValue } from "../types/customer";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   SPARE_PART_SALE: "Venta de pieza suelta",
@@ -60,13 +50,6 @@ const STATUS_LABELS: Record<ServiceStatus, string> = {
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
-}
-
-function toIsoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function ChevronDown({ open, className = "" }: { open: boolean; className?: string }) {
@@ -119,9 +102,9 @@ function spareSaleSummary(s: ServiceRow): string | null {
   return null;
 }
 
-type SpareLineDraft = { partId: string; quantity: number };
-
 export function ServicesPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState(now.getMonth() + 1);
   const [filterYear, setFilterYear] = useState(now.getFullYear());
@@ -135,314 +118,60 @@ export function ServicesPage() {
     services,
     loading,
     error,
-    submitting,
     actionId,
     reload,
-    createService,
     patchService,
     deleteService,
     completeService
   } = useServices(filterMonth, filterYear, typeParam, statusParam);
 
-  const { parts } = useParts();
-
-  useEffect(() => {
-    let cancelled = false;
-    void extraTemplatesApi.listExtraTemplates(true).then((rows) => {
-      if (!cancelled) setServiceExtraTemplates(rows);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const partsForSpare = useMemo(
-    () => parts.filter((p) => isPartPiece(p) && p.stock > 0),
-    [parts]
-  );
-
-  /** Piezas con stock para venta suelta, agrupadas por categoría (orden fijo) y nombre dentro de cada grupo */
-  const sparePartsByCategory = useMemo(() => {
-    const byCat = new Map<PartCategory, typeof partsForSpare>();
-    for (const p of partsForSpare) {
-      const cat = (p.category ?? "OTHER") as PartCategory;
-      const list = byCat.get(cat);
-      if (list) list.push(p);
-      else byCat.set(cat, [p]);
-    }
-    for (const list of byCat.values()) {
-      list.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
-    }
-    return PART_CATEGORIES.filter((c) => byCat.has(c)).map((category) => ({
-      category,
-      label: partCategoryLabel(category),
-      parts: byCat.get(category)!
-    }));
-  }, [partsForSpare]);
-
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [editingService, setEditingService] = useState<ServiceRow | null>(null);
+  const [creatingQuick, setCreatingQuick] = useState(false);
+  const [listFlash, setListFlash] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openPending, setOpenPending] = useState(true);
   const [openCompleted, setOpenCompleted] = useState(false);
   const [openCancelled, setOpenCancelled] = useState(false);
+  const [pdfGeneratingId, setPdfGeneratingId] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
-  const [formType, setFormType] = useState<ServiceType>("DIAGNOSTIC");
-  const [title, setTitle] = useState("");
-  const [customerFields, setCustomerFields] = useState<CustomerFieldValue>(emptyCustomerFields);
-  const [description, setDescription] = useState("");
-  const [spareLines, setSpareLines] = useState<SpareLineDraft[]>([{ partId: "", quantity: 1 }]);
-  const [costPrice, setCostPrice] = useState<number | "">("");
-  const [salePrice, setSalePrice] = useState<number | "">("");
-  const [isHomeService, setIsHomeService] = useState(false);
-  const [homeServiceAddress, setHomeServiceAddress] = useState("");
-  const [homeServiceSupplement, setHomeServiceSupplement] = useState<number | "">("");
-  const [serviceDate, setServiceDate] = useState(toIsoDate(new Date()));
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [notes, setNotes] = useState("");
+  useEffect(() => {
+    const msg = (location.state as { flash?: string } | null)?.flash;
+    if (!msg) return;
+    setListFlash(msg);
+    navigate(location.pathname, { replace: true, state: {} });
+    void reload();
+  }, [location.pathname, location.state, navigate, reload]);
 
-  const [serviceExtraTemplates, setServiceExtraTemplates] = useState<ExtraTemplate[]>([]);
-  const [createExtraLines, setCreateExtraLines] = useState<ServiceExtraLinePayload[]>([]);
-  const [extraTplPickId, setExtraTplPickId] = useState("");
-  const [extraTplPickQty, setExtraTplPickQty] = useState(1);
-
-  const spareInventoryCost = useMemo(() => {
-    if (formType !== "SPARE_PART_SALE") return null;
-    let cost = 0;
-    let anyLine = false;
-    for (const line of spareLines) {
-      if (!line.partId || line.quantity < 1) continue;
-      const p = parts.find((x) => x.id === line.partId);
-      if (!p) continue;
-      anyLine = true;
-      cost += Number(p.costPrice) * line.quantity;
-    }
-    return anyLine ? cost : null;
-  }, [formType, spareLines, parts]);
-
-  const sparePreview = useMemo(() => {
-    if (formType !== "SPARE_PART_SALE" || spareInventoryCost === null) {
-      return null;
-    }
-    const sup = typeof homeServiceSupplement === "number" ? homeServiceSupplement : 0;
-    const manual = typeof salePrice === "number" && !Number.isNaN(salePrice) ? salePrice : null;
-    if (manual === null) {
-      return {
-        cost: spareInventoryCost,
-        sale: null as number | null,
-        profit: null as number | null
-      };
-    }
-    const sale = manual + sup;
-    return { cost: spareInventoryCost, sale, profit: sale - spareInventoryCost };
-  }, [formType, spareInventoryCost, homeServiceSupplement, salePrice]);
-
-  const resetForm = () => {
-    setFormType("DIAGNOSTIC");
-    setTitle("");
-    setCustomerFields(emptyCustomerFields());
-    setDescription("");
-    setSpareLines([{ partId: "", quantity: 1 }]);
-    setCostPrice("");
-    setSalePrice("");
-    setIsHomeService(false);
-    setHomeServiceAddress("");
-    setHomeServiceSupplement("");
-    setServiceDate(toIsoDate(new Date()));
-    setPaymentMethod("");
-    setNotes("");
-    setCreateExtraLines([]);
-    setExtraTplPickId("");
-    setExtraTplPickQty(1);
-  };
-
-  const closeModal = () => {
-    setCreateModalOpen(false);
-    setEditingService(null);
-  };
-
-  const openCreateModal = () => {
-    resetForm();
-    setEditingService(null);
-    setCreateModalOpen(true);
-  };
-
-  const updateSpareLine = (index: number, patch: Partial<SpareLineDraft>) => {
-    setSpareLines((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  };
-
-  const addSpareLine = () => {
-    setSpareLines((prev) => [...prev, { partId: "", quantity: 1 }]);
-  };
-
-  const removeSpareLine = (index: number) => {
-    setSpareLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
-  };
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    const base: CreateServicePayload = {
-      type: formType,
-      title: title.trim(),
-      customerId: customerFields.customerId,
-      customerName: customerFields.customerName.trim(),
-      customerPhone: customerFields.customerPhone.trim(),
-      customerEmail: customerFields.customerEmail.trim() || null,
-      description: description.trim(),
-      isHomeService,
-      homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
-      homeServiceSupplement:
-        typeof homeServiceSupplement === "number" && homeServiceSupplement > 0
-          ? homeServiceSupplement
-          : null,
-      serviceDate: new Date(serviceDate).toISOString(),
-      paymentMethod: paymentMethod.trim() || null,
-      notes: notes.trim() || null
-    };
-
+  const handleQuickCreate = async () => {
+    setCreatingQuick(true);
     try {
-      if (formType === "SPARE_PART_SALE") {
-        const lines = spareLines
-          .filter((l) => l.partId.trim() !== "" && l.quantity >= 1)
-          .map((l) => ({ partId: l.partId.trim(), quantity: l.quantity }));
-        if (lines.length === 0) {
-          window.alert("Añade al menos una pieza con cantidad.");
-          return;
-        }
-        const manualSale = typeof salePrice === "number" ? salePrice : NaN;
-        if (!Number.isFinite(manualSale) || manualSale < 0) {
-          window.alert("Indica el precio de venta (puede ser 0).");
-          return;
-        }
-        await createService({
-          ...base,
-          sparePartLines: lines,
-          salePrice: manualSale,
-          selectedPartId: null,
-          quantity: null,
-          ...(createExtraLines.length > 0 ? { extraLines: createExtraLines } : {})
-        });
-      } else {
-        const c = typeof costPrice === "number" ? costPrice : 0;
-        const s = typeof salePrice === "number" ? salePrice : 0;
-        await createService({
-          ...base,
-          costPrice: c,
-          salePrice: s,
-          selectedPartId: null,
-          quantity: null,
-          ...(createExtraLines.length > 0 ? { extraLines: createExtraLines } : {})
-        });
-      }
-      resetForm();
-      closeModal();
-    } catch {
-      /* error en estado del hook */
+      const created = await servicesApi.createService({
+        type: "DIAGNOSTIC",
+        title: "Nuevo servicio",
+        customerName: "Por definir",
+        customerPhone: "-",
+        serviceDate: new Date().toISOString(),
+        costPrice: 0,
+        salePrice: 0,
+        manualLines: []
+      });
+      navigate(`/services/${created.id}`);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "No se pudo crear el servicio.");
+    } finally {
+      setCreatingQuick(false);
     }
   };
 
-  const openEditService = (s: ServiceRow) => {
-    setCreateModalOpen(false);
-    setFormType(s.type);
-    setTitle(s.title);
-    setCustomerFields({
-      customerId: s.customerId ?? null,
-      customerName: s.customerName,
-      customerPhone: s.customerPhone,
-      customerEmail: s.customerEmail ?? ""
-    });
-    setDescription(s.description ?? "");
-    const sup = Number(s.homeServiceSupplement ?? 0);
-    setHomeServiceSupplement(s.homeServiceSupplement != null && sup > 0 ? sup : "");
-    setIsHomeService(s.isHomeService);
-    setHomeServiceAddress(s.homeServiceAddress ?? "");
-    setServiceDate(toIsoDate(new Date(s.serviceDate)));
-    setPaymentMethod(s.paymentMethod ?? "");
-    setNotes(s.notes ?? "");
-    if (s.type === "SPARE_PART_SALE") {
-      if (s.sparePartLines && s.sparePartLines.length > 0) {
-        setSpareLines(s.sparePartLines.map((l) => ({ partId: l.partId, quantity: l.quantity })));
-      } else if (s.selectedPartId && s.quantity) {
-        setSpareLines([{ partId: s.selectedPartId, quantity: s.quantity }]);
-      } else {
-        setSpareLines([{ partId: "", quantity: 1 }]);
-      }
-      setCostPrice(Number(s.costPrice));
-      setSalePrice(Number(s.salePrice) - sup);
-    } else {
-      setSpareLines([{ partId: "", quantity: 1 }]);
-      setCostPrice(Number(s.costPrice));
-      setSalePrice(Number(s.salePrice) - sup);
-    }
-    setEditingService(s);
-  };
-
-  const handleEditSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    const svc = editingService;
-    if (!svc) return;
-
-    const base: PatchServicePayload = {
-      title: title.trim(),
-      customerId: customerFields.customerId,
-      customerName: customerFields.customerName.trim(),
-      customerPhone: customerFields.customerPhone.trim(),
-      customerEmail: customerFields.customerEmail.trim() || null,
-      description: description.trim(),
-      isHomeService,
-      homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
-      homeServiceSupplement:
-        typeof homeServiceSupplement === "number" && homeServiceSupplement > 0
-          ? homeServiceSupplement
-          : null,
-      serviceDate: new Date(serviceDate).toISOString(),
-      paymentMethod: paymentMethod.trim() || null,
-      notes: notes.trim() || null
-    };
-
+  const handleDownloadPdf = async (service: ServiceRow) => {
+    setPdfError(null);
+    setPdfGeneratingId(service.id);
     try {
-      if (svc.type === "SPARE_PART_SALE") {
-        const manualSale = typeof salePrice === "number" ? salePrice : NaN;
-        if (!Number.isFinite(manualSale) || manualSale < 0) {
-          window.alert("Indica el precio de venta (puede ser 0).");
-          return;
-        }
-        const c = typeof costPrice === "number" ? costPrice : NaN;
-        if (!Number.isFinite(c) || c < 0) {
-          window.alert("Indica el coste (puede ser 0).");
-          return;
-        }
-        await patchService(svc.id, {
-          ...base,
-          salePrice: manualSale,
-          costPrice: c
-        });
-      } else {
-        const c = typeof costPrice === "number" ? costPrice : 0;
-        const s = typeof salePrice === "number" ? salePrice : 0;
-        await patchService(svc.id, {
-          ...base,
-          costPrice: c,
-          salePrice: s
-        });
-      }
-      resetForm();
-      closeModal();
-    } catch {
-      /* error en estado del hook */
-    }
-  };
-
-  const handleDeleteFromEdit = async () => {
-    const svc = editingService;
-    if (!svc) return;
-    if (!window.confirm("Eliminar este servicio? Esta accion no se puede deshacer.")) return;
-    try {
-      await deleteService(svc.id);
-      resetForm();
-      closeModal();
-    } catch {
-      /* error en estado del hook */
+      await downloadServicePdf(service);
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : "No se pudo generar el PDF.");
+    } finally {
+      setPdfGeneratingId(null);
     }
   };
 
@@ -491,17 +220,32 @@ export function ServicesPage() {
       if (window.confirm("Eliminar este servicio?")) {
         void deleteService(id);
       }
-    }
+    },
+    onDownloadPdf: (service: ServiceRow) => {
+      void handleDownloadPdf(service);
+    },
+    pdfGeneratingId
   };
 
   return (
     <div className={`${PAGE_OUTER_7XL} max-md:pb-32`}>
       <section className={`${PAGE_HERO} flex flex-col gap-3 md:flex-row md:items-start md:justify-between`}>
         <h1 className="text-3xl font-bold tracking-tight">Servicios</h1>
-        <button type="button" onClick={openCreateModal} className={PRIMARY_ACTION_BUTTON_HEADER}>
-          Nuevo servicio
+        <button
+          type="button"
+          disabled={creatingQuick}
+          onClick={() => void handleQuickCreate()}
+          className={PRIMARY_ACTION_BUTTON_HEADER}
+        >
+          {creatingQuick ? "Creando…" : "Nuevo servicio"}
         </button>
       </section>
+
+      {listFlash ? (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
+          {listFlash}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between">
@@ -514,6 +258,19 @@ export function ServicesPage() {
             className="rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70"
           >
             Reintentar
+          </button>
+        </div>
+      ) : null}
+
+      {pdfError ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
+          <span>{pdfError}</span>
+          <button
+            type="button"
+            onClick={() => setPdfError(null)}
+            className="rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1 text-xs font-semibold text-rose-100 hover:bg-rose-800/70"
+          >
+            Cerrar
           </button>
         </div>
       ) : null}
@@ -636,7 +393,6 @@ export function ServicesPage() {
                     accent="border-cyan-500/40 bg-cyan-500/5"
                     rows={completedParts.spare}
                     actionId={actionId}
-                    onEditService={openEditService}
                     {...serviceActions}
                   />
                 ) : null}
@@ -646,7 +402,6 @@ export function ServicesPage() {
                     accent="border-indigo-500/40 bg-indigo-500/5"
                     rows={completedParts.technical}
                     actionId={actionId}
-                    onEditService={openEditService}
                     {...serviceActions}
                   />
                 ) : null}
@@ -656,7 +411,6 @@ export function ServicesPage() {
                     accent="border-violet-500/40 bg-violet-500/5"
                     rows={completedParts.home}
                     actionId={actionId}
-                    onEditService={openEditService}
                     {...serviceActions}
                   />
                 ) : null}
@@ -677,442 +431,14 @@ export function ServicesPage() {
         )}
       </section>
 
-      {/* Modal nuevo servicio / editar completado */}
-      {createModalOpen || editingService ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="service-modal-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeModal();
-          }}
-        >
-          <div
-            className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-t-2xl border border-slate-700 bg-slate-900 shadow-2xl sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 px-4 py-4 sm:px-6">
-              <div>
-                <h2 id="service-modal-title" className="text-xl font-semibold text-slate-100">
-                  {editingService ? "Editar servicio" : "Nuevo servicio"}
-                </h2>
-              </div>
-              <button type="button" onClick={closeModal} className={SECONDARY_BUTTON_SM}>
-                Cerrar
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-2 sm:px-6">
-              <form
-                onSubmit={(e) => void (editingService ? handleEditSubmit(e) : handleSubmit(e))}
-                className="grid grid-cols-1 gap-4 md:grid-cols-2"
-              >
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                  Tipo
-                  <select
-                    value={formType}
-                    onChange={(e) => setFormType(e.target.value as ServiceType)}
-                    disabled={!!editingService}
-                    className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {SERVICE_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {SERVICE_LABELS[t]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                  Titulo
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                    placeholder="Ej: Revision torre cliente Juan"
-                  />
-                </label>
-
-                <div className="md:col-span-2">
-                  <CustomerPicker
-                    value={customerFields}
-                    onChange={setCustomerFields}
-                    requirePhone
-                  />
-                </div>
-
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                  Descripcion
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={2}
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-
-                {!editingService ? (
-                  <div className="md:col-span-2 rounded-xl border border-slate-700 bg-slate-950/30 p-4">
-                    <p className="text-sm font-medium text-slate-200">Extras desde plantilla (sin stock)</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Opcional. Se suman al coste y al PVP del servicio con los importes de la plantilla.
-                    </p>
-                    {createExtraLines.length > 0 ? (
-                      <ul className="mt-3 space-y-1 text-sm text-slate-300">
-                        {createExtraLines.map((row, i) => {
-                          const t = serviceExtraTemplates.find((x) => x.id === row.extraTemplateId);
-                          return (
-                            <li
-                              key={`${row.extraTemplateId}-${i}`}
-                              className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700/80 bg-slate-900/50 px-2 py-1.5"
-                            >
-                              <span>
-                                {t?.name ?? row.extraTemplateId} ×{row.quantity ?? 1}
-                              </span>
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-rose-300 hover:underline"
-                                onClick={() => setCreateExtraLines((prev) => prev.filter((_, j) => j !== i))}
-                              >
-                                Quitar
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : null}
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                      <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs font-medium text-slate-300">
-                        Plantilla
-                        <select
-                          value={extraTplPickId}
-                          onChange={(e) => setExtraTplPickId(e.target.value)}
-                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                        >
-                          <option value="">Elegir…</option>
-                          {serviceExtraTemplates.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="flex w-20 flex-col gap-1 text-xs font-medium text-slate-300">
-                        Cant.
-                        <input
-                          type="number"
-                          min={1}
-                          value={extraTplPickQty}
-                          onChange={(e) => setExtraTplPickQty(Math.max(1, Number(e.target.value) || 1))}
-                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className={SECONDARY_BUTTON_SM}
-                        onClick={() => {
-                          if (!extraTplPickId) {
-                            window.alert("Elige una plantilla.");
-                            return;
-                          }
-                          setCreateExtraLines((prev) => [
-                            ...prev,
-                            { extraTemplateId: extraTplPickId, quantity: extraTplPickQty }
-                          ]);
-                          setExtraTplPickId("");
-                          setExtraTplPickQty(1);
-                        }}
-                      >
-                        Añadir a la lista
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-
-                {formType === "SPARE_PART_SALE" ? (
-                  editingService?.status === "COMPLETED" ? (
-                    <>
-                      <div className="space-y-2 md:col-span-2">
-                        <p className="text-sm font-medium text-slate-200">Piezas vendidas</p>
-                        <p className="text-xs text-slate-500">
-                          No se pueden cambiar las piezas tras completar; solo datos y precios.
-                        </p>
-                        <ul className="space-y-1 rounded-lg border border-slate-700 bg-slate-950/40 p-3 text-sm text-slate-200">
-                          {editingService.sparePartLines && editingService.sparePartLines.length > 0
-                            ? editingService.sparePartLines.map((l) => (
-                                <li key={l.id}>
-                                  {l.part.name} × {l.quantity}
-                                </li>
-                              ))
-                            : editingService.selectedPart ? (
-                                <li>
-                                  {editingService.selectedPart.name} × {editingService.quantity ?? 1}
-                                </li>
-                              ) : (
-                                <li className="text-slate-500">—</li>
-                              )}
-                        </ul>
-                      </div>
-                      <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                        Coste (registrado)
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={costPrice === "" ? "" : costPrice}
-                          onChange={(e) =>
-                            setCostPrice(e.target.value === "" ? "" : Number(e.target.value))
-                          }
-                          required
-                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                        Precio de venta (base piezas, sin suplemento domicilio)
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={salePrice === "" ? "" : salePrice}
-                          onChange={(e) =>
-                            setSalePrice(e.target.value === "" ? "" : Number(e.target.value))
-                          }
-                          required
-                          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                        />
-                      </label>
-                      <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/30 p-4 text-sm md:col-span-2">
-                        <p className="text-xs uppercase tracking-wide text-slate-500">
-                          Venta total (base + domicilio)
-                        </p>
-                        <p className="mt-1 text-lg font-semibold text-emerald-300">
-                          {money(
-                            (typeof salePrice === "number" ? salePrice : 0) +
-                              (typeof homeServiceSupplement === "number" ? homeServiceSupplement : 0)
-                          )}
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                  <>
-                    <div className="space-y-3 md:col-span-2">
-                      <div className="flex flex-wrap items-end justify-between gap-2">
-                        <p className="text-sm font-medium text-slate-200">Piezas (stock disponible)</p>
-                        <button type="button" onClick={() => addSpareLine()} className={SECONDARY_BUTTON_SM}>
-                          Añadir otra pieza
-                        </button>
-                      </div>
-                      {spareLines.map((line, idx) => (
-                        <div
-                          key={idx}
-                          className="flex flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950/40 p-3 sm:flex-row sm:flex-wrap sm:items-end"
-                        >
-                          <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-200">
-                            Pieza
-                            <select
-                              value={line.partId}
-                              onChange={(e) => updateSpareLine(idx, { partId: e.target.value })}
-                              required={idx === 0}
-                              className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                            >
-                              <option value="">Seleccionar...</option>
-                              {sparePartsByCategory.map(({ category, label, parts: groupParts }) => (
-                                <optgroup key={category} label={label}>
-                                  {groupParts.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.name} — stock {p.stock}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="flex w-full flex-col gap-1 text-sm font-medium text-slate-200 sm:w-28">
-                            Cantidad
-                            <input
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={line.quantity}
-                              onChange={(e) =>
-                                updateSpareLine(idx, { quantity: Number(e.target.value) })
-                              }
-                              required={idx === 0}
-                              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                            />
-                          </label>
-                          {spareLines.length > 1 ? (
-                            <button
-                              type="button"
-                              onClick={() => removeSpareLine(idx)}
-                              className={DESTRUCTIVE_BUTTON_SM}
-                            >
-                              Quitar
-                            </button>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                    {spareInventoryCost !== null ? (
-                      <div className="rounded-lg border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm md:col-span-2">
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Coste desde inventario</p>
-                        <p className="mt-0.5 font-medium text-slate-200">{money(spareInventoryCost)}</p>
-                      </div>
-                    ) : null}
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                      Precio de venta (total piezas)
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={salePrice === "" ? "" : salePrice}
-                        onChange={(e) =>
-                          setSalePrice(e.target.value === "" ? "" : Number(e.target.value))
-                        }
-                        required
-                        className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                      />
-                    </label>
-                    {sparePreview && sparePreview.sale !== null ? (
-                      <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/30 p-4 text-sm md:col-span-2">
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Venta total</p>
-                        <p className="mt-1 text-lg font-semibold text-emerald-300">{money(sparePreview.sale)}</p>
-                      </div>
-                    ) : null}
-                  </>
-                  )
-                ) : (
-                  <>
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-                      Precio coste
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={costPrice === "" ? "" : costPrice}
-                        onChange={(e) =>
-                          setCostPrice(e.target.value === "" ? "" : Number(e.target.value))
-                        }
-                        required
-                        className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-                      Precio venta (trabajo)
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={salePrice === "" ? "" : salePrice}
-                        onChange={(e) =>
-                          setSalePrice(e.target.value === "" ? "" : Number(e.target.value))
-                        }
-                        required
-                        className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                      />
-                    </label>
-                  </>
-                )}
-
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-200 md:col-span-2">
-                  <input
-                    type="checkbox"
-                    checked={isHomeService}
-                    onChange={(e) => setIsHomeService(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500"
-                  />
-                  Servicio a domicilio
-                </label>
-
-                {isHomeService ? (
-                  <>
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                      Direccion
-                      <input
-                        value={homeServiceAddress}
-                        onChange={(e) => setHomeServiceAddress(e.target.value)}
-                        className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                        placeholder="Calle, ciudad..."
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                      Suplemento domicilio (opcional, EUR)
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={homeServiceSupplement === "" ? "" : homeServiceSupplement}
-                        onChange={(e) =>
-                          setHomeServiceSupplement(e.target.value === "" ? "" : Number(e.target.value))
-                        }
-                        className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                      />
-                    </label>
-                  </>
-                ) : null}
-
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-                  Fecha del servicio
-                  <input
-                    type="date"
-                    value={serviceDate}
-                    onChange={(e) => setServiceDate(e.target.value)}
-                    required
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-                  Forma de pago (opcional)
-                  <input
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                    placeholder="Efectivo, Bizum..."
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
-                  Notas internas
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={2}
-                    className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
-                  />
-                </label>
-
-                <div className="flex flex-wrap gap-2 md:col-span-2">
-                  <button
-                    type="submit"
-                    disabled={submitting || (editingService != null && actionId === editingService.id)}
-                    className={PRIMARY_ACTION_BUTTON}
-                  >
-                    {submitting ? "Guardando..." : editingService ? "Guardar cambios" : "Registrar servicio"}
-                  </button>
-                  <button type="button" onClick={closeModal} className={SECONDARY_BUTTON_SM}>
-                    Cancelar
-                  </button>
-                  {editingService ? (
-                    <button
-                      type="button"
-                      disabled={submitting || actionId === editingService.id}
-                      onClick={() => void handleDeleteFromEdit()}
-                      className={DESTRUCTIVE_BUTTON_SM}
-                    >
-                      Eliminar servicio
-                    </button>
-                  ) : null}
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      ) : null}
       <div className={STICKY_PRIMARY_MOBILE_DOCK}>
-        <button type="button" onClick={openCreateModal} className={PRIMARY_ACTION_BUTTON}>
-          Nuevo servicio
+        <button
+          type="button"
+          disabled={creatingQuick}
+          onClick={() => void handleQuickCreate()}
+          className={PRIMARY_ACTION_BUTTON}
+        >
+          {creatingQuick ? "Creando…" : "Nuevo servicio"}
         </button>
       </div>
     </div>
@@ -1178,7 +504,8 @@ function CompletedSubsection({
   onComplete,
   onCancel,
   onDelete,
-  onEditService
+  onDownloadPdf,
+  pdfGeneratingId
 }: {
   label: string;
   accent: string;
@@ -1187,7 +514,8 @@ function CompletedSubsection({
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
-  onEditService: (s: ServiceRow) => void;
+  onDownloadPdf: (s: ServiceRow) => void;
+  pdfGeneratingId: string | null;
 }) {
   const st = aggregateStats(rows);
   return (
@@ -1202,7 +530,8 @@ function CompletedSubsection({
         rows={rows}
         actionId={actionId}
         completedActions
-        onEditService={onEditService}
+        onDownloadPdf={onDownloadPdf}
+        pdfGeneratingId={pdfGeneratingId}
         onComplete={onComplete}
         onCancel={onCancel}
         onDelete={onDelete}
@@ -1219,7 +548,8 @@ function ServiceListSection({
   rows,
   actionId,
   completedActions = false,
-  onEditService,
+  onDownloadPdf,
+  pdfGeneratingId,
   onComplete,
   onCancel,
   onDelete
@@ -1227,7 +557,8 @@ function ServiceListSection({
   rows: ServiceRow[];
   actionId: string | null;
   completedActions?: boolean;
-  onEditService?: (s: ServiceRow) => void;
+  onDownloadPdf: (s: ServiceRow) => void;
+  pdfGeneratingId: string | null;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
@@ -1257,7 +588,8 @@ function ServiceListSection({
                   s={s}
                   actionId={actionId}
                   completedActions={completedActions}
-                  onEditService={onEditService}
+                  onDownloadPdf={onDownloadPdf}
+                  pdfGeneratingId={pdfGeneratingId}
                   onComplete={onComplete}
                   onCancel={onCancel}
                   onDelete={onDelete}
@@ -1274,7 +606,8 @@ function ServiceListSection({
             s={s}
             actionId={actionId}
             completedActions={completedActions}
-            onEditService={onEditService}
+            onDownloadPdf={onDownloadPdf}
+            pdfGeneratingId={pdfGeneratingId}
             onComplete={onComplete}
             onCancel={onCancel}
             onDelete={onDelete}
@@ -1289,7 +622,8 @@ function ServiceTableRow({
   s,
   actionId,
   completedActions = false,
-  onEditService,
+  onDownloadPdf,
+  pdfGeneratingId,
   onComplete,
   onCancel,
   onDelete
@@ -1297,7 +631,8 @@ function ServiceTableRow({
   s: ServiceRow;
   actionId: string | null;
   completedActions?: boolean;
-  onEditService?: (row: ServiceRow) => void;
+  onDownloadPdf: (row: ServiceRow) => void;
+  pdfGeneratingId: string | null;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
@@ -1360,25 +695,28 @@ function ServiceTableRow({
               </button>
             </>
           ) : null}
-          {completedActions && s.status === "COMPLETED" && onEditService ? (
-            <button
-              type="button"
-              disabled={actionId === s.id}
-              onClick={() => onEditService(s)}
-              className={ORANGE_EDIT_BUTTON_SM}
-            >
-              Editar
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={actionId === s.id}
-              onClick={() => onDelete(s.id)}
-              className={DESTRUCTIVE_BUTTON_SM}
-            >
-              Eliminar
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={actionId === s.id || pdfGeneratingId === s.id}
+            onClick={() => onDownloadPdf(s)}
+            className={SECONDARY_BUTTON_SM}
+          >
+            {pdfGeneratingId === s.id ? "PDF…" : "PDF"}
+          </button>
+          <Link
+            to={`/services/${s.id}`}
+            className={`${ORANGE_EDIT_BUTTON_SM} inline-flex items-center justify-center`}
+          >
+            Editar
+          </Link>
+          <button
+            type="button"
+            disabled={actionId === s.id}
+            onClick={() => onDelete(s.id)}
+            className={DESTRUCTIVE_BUTTON_SM}
+          >
+            Eliminar
+          </button>
         </div>
       </td>
     </tr>
@@ -1389,7 +727,8 @@ function ServiceCard({
   s,
   actionId,
   completedActions = false,
-  onEditService,
+  onDownloadPdf,
+  pdfGeneratingId,
   onComplete,
   onCancel,
   onDelete
@@ -1397,7 +736,8 @@ function ServiceCard({
   s: ServiceRow;
   actionId: string | null;
   completedActions?: boolean;
-  onEditService?: (row: ServiceRow) => void;
+  onDownloadPdf: (row: ServiceRow) => void;
+  pdfGeneratingId: string | null;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
@@ -1464,25 +804,28 @@ function ServiceCard({
             </button>
           </>
         ) : null}
-        {completedActions && s.status === "COMPLETED" && onEditService ? (
-          <button
-            type="button"
-            disabled={actionId === s.id}
-            onClick={() => onEditService(s)}
-            className={ORANGE_EDIT_BUTTON_CARD}
-          >
-            Editar
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={actionId === s.id}
-            onClick={() => onDelete(s.id)}
-            className={`${DESTRUCTIVE_BUTTON_SM} ${SERVICE_CARD_ACTION_TOUCH}`}
-          >
-            Eliminar
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={actionId === s.id || pdfGeneratingId === s.id}
+          onClick={() => onDownloadPdf(s)}
+          className={`${SECONDARY_BUTTON} ${SERVICE_CARD_ACTION_TOUCH}`}
+        >
+          {pdfGeneratingId === s.id ? "Generando PDF…" : "Descargar PDF"}
+        </button>
+        <Link
+          to={`/services/${s.id}`}
+          className={`${ORANGE_EDIT_BUTTON_CARD} ${SERVICE_CARD_ACTION_TOUCH} inline-flex items-center justify-center`}
+        >
+          Editar
+        </Link>
+        <button
+          type="button"
+          disabled={actionId === s.id}
+          onClick={() => onDelete(s.id)}
+          className={`${DESTRUCTIVE_BUTTON_SM} ${SERVICE_CARD_ACTION_TOUCH}`}
+        >
+          Eliminar
+        </button>
       </div>
     </article>
   );

@@ -147,20 +147,21 @@ function formatShortDate(iso: string): string {
 type KindFilter = "ALL" | "PART" | "PREBUILT_PC";
 type StockFilter = "ALL" | "IN_STOCK" | "OUT_OF_STOCK";
 
-type InventoryTabId = "summary" | "stock" | "catalog" | "components" | "prebuilt";
+type InventoryTabId = "summary" | "stock" | "catalog" | "services" | "components" | "prebuilt";
 
 const TAB_QUERY = "tab";
 const NUEVA_QUERY = "nueva";
 
 function parseInventoryTab(value: string | null): InventoryTabId | null {
   if (!value) return null;
-  const allowed: InventoryTabId[] = ["summary", "stock", "catalog", "components", "prebuilt"];
+  const allowed: InventoryTabId[] = ["summary", "stock", "catalog", "services", "components", "prebuilt"];
   return (allowed as string[]).includes(value) ? (value as InventoryTabId) : null;
 }
 
 const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
   { id: "summary", label: "Resumen" },
   { id: "catalog", label: "Nueva pieza" },
+  { id: "services", label: "Servicios" },
   { id: "stock", label: "Añadir unidades" },
   { id: "components", label: "Componentes" },
   { id: "prebuilt", label: "PCs completos" }
@@ -786,13 +787,17 @@ export function InventoryPage() {
                   : "text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
               ].join(" ")}
             >
-              Servicio/extra sin stock
+              Extra sin stock (montajes)
             </button>
           </div>
         ) : null}
 
         {catalogNuevaMode === "extra" && !selectedPart ? (
-          <ExtraTemplatesPage embedded onTemplatesChanged={() => setCatalogRefreshSignal((n) => n + 1)} />
+          <ExtraTemplatesPage
+            embedded
+            mode="extra"
+            onTemplatesChanged={() => setCatalogRefreshSignal((n) => n + 1)}
+          />
         ) : (
           <>
             {!selectedPart && catalogNuevaMode === "parte" ? (
@@ -871,6 +876,20 @@ export function InventoryPage() {
             )}
           </>
         )}
+      </section>
+
+      <section
+        id="inventory-panel-services"
+        role="tabpanel"
+        aria-labelledby="inventory-tab-services"
+        hidden={activeTab !== "services"}
+        className={activeTab === "services" ? "space-y-4" : "hidden"}
+      >
+        <ExtraTemplatesPage
+          embedded
+          mode="service"
+          onTemplatesChanged={() => setCatalogRefreshSignal((n) => n + 1)}
+        />
       </section>
 
       <section

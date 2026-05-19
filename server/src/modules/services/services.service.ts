@@ -100,6 +100,82 @@ type ExtraSnapshot = {
   unitSalePrice: number;
 };
 
+type ManualSnapshot = {
+  name: string;
+  description: string;
+  quantity: number;
+  unitCost: number;
+  unitSalePrice: number;
+};
+
+function resolveManualLineSnapshots(
+  lines:
+    | {
+        name: string;
+        description?: string;
+        quantity?: number;
+        unitCost?: number;
+        unitSalePrice: number;
+      }[]
+    | undefined
+): { snapshots: ManualSnapshot[]; sumCost: number; sumSale: number } {
+  if (!lines || lines.length === 0) {
+    return { snapshots: [], sumCost: 0, sumSale: 0 };
+  }
+  const snapshots: ManualSnapshot[] = [];
+  let sumCost = 0;
+  let sumSale = 0;
+  for (const line of lines) {
+    const qty = line.quantity ?? 1;
+    const uc = line.unitCost ?? 0;
+    const us = line.unitSalePrice;
+    sumCost += uc * qty;
+    sumSale += us * qty;
+    snapshots.push({
+      name: line.name.trim(),
+      description: (line.description ?? "").trim(),
+      quantity: qty,
+      unitCost: uc,
+      unitSalePrice: us
+    });
+  }
+  return { snapshots, sumCost, sumSale };
+}
+
+async function persistServiceLineSnapshots(
+  tx: Prisma.TransactionClient,
+  serviceId: string,
+  manual: ManualSnapshot[],
+  template: ExtraSnapshot[]
+) {
+  if (manual.length > 0) {
+    await tx.serviceExtraLine.createMany({
+      data: manual.map((s) => ({
+        serviceId,
+        extraTemplateId: null,
+        name: s.name,
+        description: s.description,
+        quantity: s.quantity,
+        unitCost: moneyDecimal(s.unitCost),
+        unitSalePrice: moneyDecimal(s.unitSalePrice)
+      }))
+    });
+  }
+  if (template.length > 0) {
+    await tx.serviceExtraLine.createMany({
+      data: template.map((s) => ({
+        serviceId,
+        extraTemplateId: s.extraTemplateId,
+        name: s.name,
+        description: s.description,
+        quantity: s.quantity,
+        unitCost: moneyDecimal(s.unitCost),
+        unitSalePrice: moneyDecimal(s.unitSalePrice)
+      }))
+    });
+  }
+}
+
 async function resolveExtraLineSnapshots(
   lines:
     | { extraTemplateId: string; quantity?: number; unitCost?: number; unitSalePrice?: number }[]
@@ -147,6 +223,8 @@ export async function createService(payload: unknown) {
   });
   const supplement = data.homeServiceSupplement ?? 0;
   const extra = await resolveExtraLineSnapshots(data.extraLines);
+  const manual = resolveManualLineSnapshots(data.manualLines);
+  const hasConceptLines = manual.snapshots.length > 0 || extra.snapshots.length > 0;
 
   if (data.type === ServiceType.SPARE_PART_SALE) {
     const lines = resolveCreateSpareLines(data);
@@ -155,9 +233,9 @@ export async function createService(payload: unknown) {
     const parts = await prisma.part.findMany({
       where: { id: { in: lines.map((l) => l.partId) } }
     });
-    const costTotal = spareCostTotal(lines, parts) + extra.sumCost;
+    const costTotal = spareCostTotal(lines, parts) + manual.sumCost + extra.sumCost;
     const manualSale = data.salePrice!;
-    const saleTotal = manualSale + supplement + extra.sumSale;
+    const saleTotal = manualSale + supplement + manual.sumSale + extra.sumSale;
     const profit = saleTotal - costTotal;
 
     return prisma.$transaction(async (tx) => {
@@ -193,19 +271,7 @@ export async function createService(payload: unknown) {
           }
         }
       });
-      if (extra.snapshots.length > 0) {
-        await tx.serviceExtraLine.createMany({
-          data: extra.snapshots.map((s) => ({
-            serviceId: row.id,
-            extraTemplateId: s.extraTemplateId,
-            name: s.name,
-            description: s.description,
-            quantity: s.quantity,
-            unitCost: moneyDecimal(s.unitCost),
-            unitSalePrice: moneyDecimal(s.unitSalePrice)
-          }))
-        });
-      }
+      await persistServiceLineSnapshots(tx, row.id, manual.snapshots, extra.snapshots);
       return tx.service.findUnique({
         where: { id: row.id },
         include: serviceInclude
@@ -213,9 +279,12 @@ export async function createService(payload: unknown) {
     });
   }
 
-  const cost = data.costPrice! + extra.sumCost;
-  const saleBase = data.salePrice!;
-  const saleTotal = saleBase + supplement + extra.sumSale;
+  const lineCost = manual.sumCost + extra.sumCost;
+  const cost = data.costPrice !== undefined ? data.costPrice : lineCost;
+  const lineSale = manual.sumSale + extra.sumSale;
+  const saleTotal = hasConceptLines
+    ? lineSale + supplement
+    : (data.salePrice ?? 0) + supplement;
   const profit = saleTotal - cost;
 
   return prisma.$transaction(async (tx) => {
@@ -243,19 +312,7 @@ export async function createService(payload: unknown) {
         notes: normNotes(data.notes)
       }
     });
-    if (extra.snapshots.length > 0) {
-      await tx.serviceExtraLine.createMany({
-        data: extra.snapshots.map((s) => ({
-          serviceId: row.id,
-          extraTemplateId: s.extraTemplateId,
-          name: s.name,
-          description: s.description,
-          quantity: s.quantity,
-          unitCost: moneyDecimal(s.unitCost),
-          unitSalePrice: moneyDecimal(s.unitSalePrice)
-        }))
-      });
-    }
+    await persistServiceLineSnapshots(tx, row.id, manual.snapshots, extra.snapshots);
     return tx.service.findUnique({
       where: { id: row.id },
       include: serviceInclude
@@ -410,9 +467,14 @@ export async function patchService(id: string, payload: unknown) {
     data.selectedPartId !== undefined ||
     data.quantity !== undefined ||
     data.sparePartLines !== undefined ||
+    data.manualLines !== undefined ||
+    data.extraLines !== undefined ||
     data.costPrice !== undefined ||
     data.salePrice !== undefined ||
     data.homeServiceSupplement !== undefined;
+
+  const shouldSyncConceptLines =
+    data.manualLines !== undefined || data.extraLines !== undefined;
 
   const leavesSpare =
     existing.type === ServiceType.SPARE_PART_SALE && nextType !== ServiceType.SPARE_PART_SALE;
@@ -491,7 +553,89 @@ export async function patchService(id: string, payload: unknown) {
     !isCompleted &&
     (leavesSpare || (mustRecalcEconomics && nextType === ServiceType.SPARE_PART_SALE && spareLinesSync));
 
+  let manualSnapshotsForSync: ManualSnapshot[] | null = null;
+  let templateSnapshotsForSync: ExtraSnapshot[] | null = null;
+  if (shouldSyncConceptLines) {
+    if (isCompleted && (data.sparePartLines !== undefined || data.selectedPartId !== undefined)) {
+      throw new Error("SERVICE_COMPLETED_LINES_LOCKED");
+    }
+    manualSnapshotsForSync = resolveManualLineSnapshots(
+      data.manualLines !== undefined
+        ? data.manualLines
+        : (existing.extraLines ?? [])
+            .filter((l) => l.extraTemplateId == null)
+            .map((l) => ({
+              name: l.name,
+              description: l.description,
+              quantity: l.quantity,
+              unitCost: Number(l.unitCost),
+              unitSalePrice: Number(l.unitSalePrice)
+            }))
+    ).snapshots;
+    templateSnapshotsForSync = (
+      await resolveExtraLineSnapshots(
+        data.extraLines !== undefined
+          ? data.extraLines
+          : (existing.extraLines ?? [])
+              .filter((l) => l.extraTemplateId != null)
+              .map((l) => ({
+                extraTemplateId: l.extraTemplateId!,
+                quantity: l.quantity,
+                unitCost: Number(l.unitCost),
+                unitSalePrice: Number(l.unitSalePrice)
+              }))
+      )
+    ).snapshots;
+
+    let conceptCost = 0;
+    let conceptSale = 0;
+    for (const s of manualSnapshotsForSync) {
+      conceptCost += s.unitCost * s.quantity;
+      conceptSale += s.unitSalePrice * s.quantity;
+    }
+    for (const s of templateSnapshotsForSync) {
+      conceptCost += s.unitCost * s.quantity;
+      conceptSale += s.unitSalePrice * s.quantity;
+    }
+
+    if (nextType === ServiceType.SPARE_PART_SALE) {
+      const spareRows =
+        spareLinesSync ??
+        (existing.sparePartLines?.length
+          ? existing.sparePartLines.map((l) => ({ partId: l.partId, quantity: l.quantity }))
+          : existing.selectedPartId && existing.quantity
+            ? [{ partId: existing.selectedPartId, quantity: existing.quantity }]
+            : []);
+      const parts = await prisma.part.findMany({
+        where: { id: { in: spareRows.map((l) => l.partId) } }
+      });
+      const spareCost = spareRows.length > 0 ? spareCostTotal(spareRows, parts) : 0;
+      const costTotal = spareCost + conceptCost;
+      const piecesSaleBase =
+        data.salePrice !== undefined
+          ? data.salePrice
+          : Math.max(0, Number(existing.salePrice) - existingSup - conceptSale);
+      const saleTotal = piecesSaleBase + nextSup + conceptSale;
+      patch.costPrice = moneyDecimal(costTotal);
+      patch.salePrice = moneyDecimal(saleTotal);
+      patch.profit = moneyDecimal(saleTotal - costTotal);
+    } else {
+      const cost = data.costPrice !== undefined ? data.costPrice : conceptCost;
+      const saleTotal = conceptSale + nextSup;
+      patch.costPrice = moneyDecimal(cost);
+      patch.salePrice = moneyDecimal(saleTotal);
+      patch.profit = moneyDecimal(saleTotal - cost);
+      patch.selectedPartId = null;
+      patch.quantity = null;
+    }
+  }
+
   return prisma.$transaction(async (tx) => {
+    if (shouldSyncConceptLines && manualSnapshotsForSync && templateSnapshotsForSync) {
+      await tx.serviceExtraLine.deleteMany({ where: { serviceId: id } });
+      await persistServiceLineSnapshots(tx, id, manualSnapshotsForSync, templateSnapshotsForSync);
+    }
+
     if (shouldSyncSpareLines) {
       if (leavesSpare) {
         await tx.serviceSparePartLine.deleteMany({ where: { serviceId: id } });

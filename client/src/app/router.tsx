@@ -16,6 +16,7 @@ import { QuotesPage } from "../pages/QuotesPage";
 import { SaleDetailPage } from "../pages/SaleDetailPage";
 import { SalesHistoricalImportPage } from "../pages/SalesHistoricalImportPage";
 import { SalesPage } from "../pages/SalesPage";
+import { ServiceDetailPage } from "../pages/ServiceDetailPage";
 import { ServicesPage } from "../pages/ServicesPage";
 
 function PackageIcon({ className }: { className?: string }) {
@@ -220,6 +221,7 @@ export function AppRouter() {
           <Route path="quotes/:id" element={<QuoteDetailPage />} />
           <Route path="extras" element={<Navigate to={{ pathname: "/", search: "?tab=catalog&nueva=extra" }} replace />} />
           <Route path="services" element={<ServicesPage />} />
+          <Route path="services/:id" element={<ServiceDetailPage />} />
           <Route path="customers" element={<CustomersIndexPage />} />
           <Route path="customers/:id" element={<CustomerDetailPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

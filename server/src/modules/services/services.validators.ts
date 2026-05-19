@@ -25,6 +25,21 @@ const serviceExtraLineInputSchema = z.object({
   unitSalePrice: z.coerce.number().finite().nonnegative().optional()
 });
 
+/** Concepto manual (sin plantilla); se persiste en ServiceExtraLine con extraTemplateId null. */
+export const serviceManualLineInputSchema = z.object({
+  name: z.string().min(1, "Indica el concepto"),
+  description: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null) return "";
+      return String(v).trim();
+    }),
+  quantity: z.coerce.number().int().positive().optional().default(1),
+  unitCost: z.coerce.number().finite().nonnegative().optional().default(0),
+  unitSalePrice: z.coerce.number().finite().nonnegative()
+});
+
 export const addServiceExtraLineBodySchema = serviceExtraLineInputSchema;
 
 export const patchServiceExtraLineSchema = z
@@ -56,6 +71,7 @@ export const createServiceSchema = z
     quantity: z.number().int().positive().optional().nullable(),
     sparePartLines: z.array(sparePartLineSchema).optional(),
     extraLines: z.array(serviceExtraLineInputSchema).optional(),
+    manualLines: z.array(serviceManualLineInputSchema).optional(),
     costPrice: z.number().nonnegative().optional(),
     salePrice: z.number().nonnegative().optional(),
     isHomeService: z.boolean().optional().default(false),
@@ -88,19 +104,23 @@ export const createServiceSchema = z
         });
       }
     } else {
-      if (data.costPrice === undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Precio de coste requerido",
-          path: ["costPrice"]
-        });
-      }
-      if (data.salePrice === undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Precio de venta requerido",
-          path: ["salePrice"]
-        });
+      const hasConceptLines =
+        (data.manualLines?.length ?? 0) > 0 || (data.extraLines?.length ?? 0) > 0;
+      if (!hasConceptLines) {
+        if (data.costPrice === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Precio de coste requerido",
+            path: ["costPrice"]
+          });
+        }
+        if (data.salePrice === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Precio de venta requerido",
+            path: ["salePrice"]
+          });
+        }
       }
     }
   });
@@ -117,6 +137,8 @@ export const patchServiceSchema = z
     selectedPartId: z.string().optional().nullable(),
     quantity: z.number().int().positive().optional().nullable(),
     sparePartLines: z.array(sparePartLineSchema).optional(),
+    extraLines: z.array(serviceExtraLineInputSchema).optional(),
+    manualLines: z.array(serviceManualLineInputSchema).optional(),
     costPrice: z.number().nonnegative().optional(),
     salePrice: z.number().nonnegative().optional(),
     profit: z.number().optional(),
