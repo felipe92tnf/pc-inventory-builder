@@ -63,6 +63,11 @@ enum ServiceStatus {
   CANCELLED
 }
 
+enum SaleStatus {
+  COMPLETED
+  REVERTED
+}
+
 enum QuoteStatus {
   DRAFT
   SENT
@@ -280,7 +285,7 @@ model Build {
   customer   Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items      BuildPartItem[]
   extraLines BuildExtraLine[]
-  sale       Sale?
+  sales      Sale[]
 
   convertedFromQuote Quote? @relation("QuoteConvertedBuild")
 
@@ -292,8 +297,10 @@ model Build {
 }
 
 model Sale {
-  id             String   @id @default(cuid())
-  buildId        String   @unique
+  id             String     @id @default(cuid())
+  buildId        String
+  status         SaleStatus @default(COMPLETED)
+  revertedAt     DateTime?
   customerId     String?
   customerName   String
   customerPhone  String
@@ -321,9 +328,11 @@ model Sale {
   build    Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
+  @@index([buildId])
   @@index([customerId])
   @@index([soldAt])
   @@index([importBatchId])
+  @@index([status])
 }
 
 model BuildPartItem {

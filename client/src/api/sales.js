@@ -38,6 +38,11 @@ export function deleteSale(saleId) {
         method: "DELETE"
     });
 }
+export function revertSale(saleId) {
+    return http(`/sales/${saleId}/revert`, {
+        method: "POST"
+    });
+}
 export async function salesImportPreview(file) {
     const formData = new FormData();
     formData.append("file", file);

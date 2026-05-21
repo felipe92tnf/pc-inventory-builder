@@ -9,6 +9,7 @@ type UseSaleDetailReturn = {
   error: string | null;
   reload: () => Promise<void>;
   updateSale: (payload: PatchSalePayload) => Promise<void>;
+  revertSale: () => Promise<void>;
   removeSale: () => Promise<void>;
 };
 
@@ -53,6 +54,20 @@ export function useSaleDetail(saleId: string): UseSaleDetailReturn {
     [saleId]
   );
 
+  const revertSale = useCallback(async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await salesApi.revertSale(saleId);
+      setSale(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo revertir la venta.");
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  }, [saleId]);
+
   const removeSale = useCallback(async () => {
     setSaving(true);
     setError(null);
@@ -67,5 +82,5 @@ export function useSaleDetail(saleId: string): UseSaleDetailReturn {
     }
   }, [saleId]);
 
-  return { sale, loading, saving, error, reload, updateSale, removeSale };
+  return { sale, loading, saving, error, reload, updateSale, revertSale, removeSale };
 }

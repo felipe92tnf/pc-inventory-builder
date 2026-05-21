@@ -161,10 +161,10 @@ function parseInventoryTab(value: string | null): InventoryTabId | null {
 const INVENTORY_TABS: { id: InventoryTabId; label: string }[] = [
   { id: "summary", label: "Resumen" },
   { id: "catalog", label: "Nueva pieza" },
-  { id: "services", label: "Servicios" },
   { id: "stock", label: "Añadir unidades" },
   { id: "components", label: "Componentes" },
-  { id: "prebuilt", label: "PCs completos" }
+  { id: "prebuilt", label: "PCs completos" },
+  { id: "services", label: "Servicios" }
 ];
 
 type CatalogNuevaMode = "parte" | "extra";

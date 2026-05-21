@@ -15,7 +15,7 @@ import {
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
-import { StatusBadge } from "../components/ui/StatusBadge";
+import { StatusBadge, saleStatusVariant } from "../components/ui/StatusBadge";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -31,7 +31,7 @@ export function SaleDetailPage() {
   const { id } = useParams();
   const saleId = String(id ?? "");
   const navigate = useNavigate();
-  const { sale, loading, saving, error, reload, updateSale, removeSale } = useSaleDetail(saleId);
+  const { sale, loading, saving, error, reload, updateSale, revertSale } = useSaleDetail(saleId);
 
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -93,15 +93,17 @@ export function SaleDetailPage() {
     }
   };
 
-  const handleDeleteSale = async () => {
-    if (!sale) return;
+  const handleRevertSale = async () => {
+    if (!sale || sale.status === "REVERTED") return;
     const ok = window.confirm(
-      "Eliminar esta venta? El montaje volvera al estado ensamblado (assembled) y podras registrar otra venta mas adelante."
+      "Revertir esta venta?\n\n- Se restaurara el stock de las piezas\n- El montaje volvera a listo para la venta\n- La venta quedara en historial como revertida (no se borra)\n- Dejara de contar en ingresos y beneficios"
     );
     if (!ok) return;
     try {
-      await removeSale();
-      void navigate(`/builds/${sale.buildId}`);
+      await revertSale();
+      void navigate(`/builds/${sale.buildId}`, {
+        state: { flash: "Venta revertida. Montaje disponible de nuevo." }
+      });
     } catch {
       /* error shown via hook */
     }
@@ -141,6 +143,7 @@ export function SaleDetailPage() {
   }
 
   const b = sale.build;
+  const isReverted = sale.status === "REVERTED";
 
   return (
     <div className={PAGE_OUTER_7XL}>
@@ -152,7 +155,11 @@ export function SaleDetailPage() {
               Cliente: <span className="font-medium text-slate-100">{sale.customerName}</span>
             </p>
           </div>
-          {sale.pickupConfirmedAt == null ? (
+          {isReverted ? (
+            <StatusBadge variant={saleStatusVariant("REVERTED")} size="detail">
+              Venta revertida
+            </StatusBadge>
+          ) : sale.pickupConfirmedAt == null ? (
             <StatusBadge variant="pending" size="detail">
               Cobrado · pendiente de recogida
             </StatusBadge>
@@ -210,7 +217,25 @@ export function SaleDetailPage() {
         </div>
       ) : null}
 
-      {sale.pickupConfirmedAt == null ? (
+      {isReverted ? (
+        <section className="rounded-xl border border-rose-800/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-100">
+          <p className="font-medium">Esta venta fue revertida.</p>
+          <p className="mt-1 text-rose-200/90">
+            No cuenta en ingresos ni beneficios. El montaje quedo disponible para vender de nuevo.
+            {sale.revertedAt
+              ? ` Revertida el ${new Date(sale.revertedAt).toLocaleString("es-ES")}.`
+              : null}
+          </p>
+          <Link
+            to={`/builds/${sale.buildId}`}
+            className="mt-3 inline-flex rounded-lg border border-rose-600/50 bg-rose-900/40 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-900/60"
+          >
+            Ir al montaje
+          </Link>
+        </section>
+      ) : null}
+
+      {!isReverted && sale.pickupConfirmedAt == null ? (
         <section className="rounded-xl border border-amber-700/60 bg-amber-950/35 px-4 py-3 text-sm text-amber-100">
           <p className="font-medium">Esta venta esta cobrada pero el PC sigue en tienda.</p>
           <p className="mt-1 text-amber-200/90">
@@ -246,9 +271,13 @@ export function SaleDetailPage() {
       </section>
 
       <section className={SECTION_SHELL}>
-        <h2 className="text-lg font-semibold text-slate-100">Editar datos de la venta</h2>
+        <h2 className="text-lg font-semibold text-slate-100">
+          {isReverted ? "Datos de la venta (solo lectura)" : "Editar datos de la venta"}
+        </h2>
         <p className="mt-1 text-sm text-slate-400">
-          Modifica cliente, precio o condiciones. El beneficio se recalcula si cambias el precio final.
+          {isReverted
+            ? "La venta revertida se conserva en el historial; no se puede editar."
+            : "Modifica cliente, precio o condiciones. El beneficio se recalcula si cambias el precio final."}
         </p>
 
         <form onSubmit={handleSave} className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -257,7 +286,7 @@ export function SaleDetailPage() {
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
           </label>
@@ -266,7 +295,7 @@ export function SaleDetailPage() {
             <input
               value={editPhone}
               onChange={(e) => setEditPhone(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
           </label>
@@ -276,7 +305,7 @@ export function SaleDetailPage() {
               type="email"
               value={editEmail}
               onChange={(e) => setEditEmail(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
           </label>
@@ -285,7 +314,7 @@ export function SaleDetailPage() {
             <input
               value={editPrice}
               onChange={(e) => setEditPrice(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               inputMode="decimal"
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
@@ -296,7 +325,7 @@ export function SaleDetailPage() {
               type="datetime-local"
               value={editSoldAt}
               onChange={(e) => setEditSoldAt(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
           </label>
@@ -305,7 +334,7 @@ export function SaleDetailPage() {
             <input
               value={editPayment}
               onChange={(e) => setEditPayment(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               placeholder="Efectivo, Bizum, transferencia..."
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
@@ -317,7 +346,7 @@ export function SaleDetailPage() {
               min={0}
               value={editWarranty}
               onChange={(e) => setEditWarranty(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
           </label>
@@ -326,36 +355,41 @@ export function SaleDetailPage() {
             <textarea
               value={editNotes}
               onChange={(e) => setEditNotes(e.target.value)}
-              disabled={saving}
+              disabled={saving || isReverted}
               rows={3}
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
           </label>
           <div className="flex flex-wrap gap-2 md:col-span-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className={PRIMARY_ACTION_BUTTON}
-            >
-              {saving ? "Guardando..." : "Guardar cambios"}
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => {
-                void handleDeleteSale();
-              }}
-              className="rounded-lg border border-rose-500/50 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50"
-            >
-              Eliminar venta
-            </button>
+            {!isReverted ? (
+              <>
+                <button type="submit" disabled={saving} className={PRIMARY_ACTION_BUTTON}>
+                  {saving ? "Guardando..." : "Guardar cambios"}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    void handleRevertSale();
+                  }}
+                  className="rounded-lg border border-rose-500/60 bg-rose-600/20 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-600/35 disabled:opacity-50"
+                >
+                  Revertir venta
+                </button>
+              </>
+            ) : null}
           </div>
         </form>
       </section>
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Piezas del montaje</h2>
-        <BuildItemsTable items={b.items} status="SOLD" actionLoading={false} onRemove={async () => {}} />
+        <BuildItemsTable
+          items={b.items}
+          status={isReverted ? "CONFIRMED" : "SOLD"}
+          actionLoading={false}
+          onRemove={async () => {}}
+        />
         <p className="mt-2 text-xs text-slate-500">
           Referencia del configuracion vendido; no se pueden modificar lineas desde aqui.
         </p>
@@ -366,7 +400,7 @@ export function SaleDetailPage() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Extras del montaje</h2>
           <BuildExtraLinesTable
             lines={b.extraLines ?? []}
-            status="SOLD"
+            status={isReverted ? "CONFIRMED" : "SOLD"}
             actionLoading={false}
             onRemove={async () => {}}
           />

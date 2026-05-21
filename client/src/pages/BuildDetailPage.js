@@ -209,9 +209,9 @@ export function BuildDetailPage() {
             return;
         let cancelled = false;
         void salesApi.listSales().then((rows) => {
-            const hit = rows.find((s) => s.buildId === build.id);
+            const active = rows.find((s) => s.buildId === build.id && (s.status === undefined || s.status === "COMPLETED"));
             if (!cancelled)
-                setLinkedSale(hit ?? null);
+                setLinkedSale(active ?? null);
         });
         return () => {
             cancelled = true;

@@ -5,6 +5,7 @@ import type { Build, BuildExtraLine, BuildPartItem, ExtraTemplate, Part, Sale } 
 import * as salesService from "./sales.service.js";
 import * as salesImportService from "./sales.import.service.js";
 import * as salesImportRevert from "./sales.import.revert.service.js";
+import * as salesRevertService from "./sales.revert.service.js";
 
 const uploadSalesImport = multer({
   storage: multer.memoryStorage(),
@@ -66,9 +67,14 @@ function serializeSale(sale: SaleWithUnknownBuild) {
   const { build, ...rest } = sale;
   const base = {
     ...rest,
+    status: sale.status,
     finalSalePrice: Number(sale.finalSalePrice),
     totalCost: Number(sale.totalCost),
     profit: Number(sale.profit),
+    revertedAt:
+      sale.revertedAt instanceof Date
+        ? sale.revertedAt.toISOString()
+        : (sale.revertedAt as string | null | undefined),
     importedAt:
       sale.importedAt instanceof Date ? sale.importedAt.toISOString() : (sale.importedAt as string | null | undefined)
   };
@@ -135,6 +141,18 @@ function mapSaleError(error: unknown, res: Response) {
   }
   if (error.message === "SALE_NOT_FOUND") {
     res.status(404).json({ message: "Sale not found" });
+    return true;
+  }
+  if (error.message === "SALE_ALREADY_REVERTED") {
+    res.status(409).json({ message: "Esta venta ya fue revertida." });
+    return true;
+  }
+  if (error.message === "SALE_REVERTED_LOCKED") {
+    res.status(409).json({ message: "No se puede modificar una venta revertida." });
+    return true;
+  }
+  if (error.message === "SALE_NOT_ACTIVE") {
+    res.status(409).json({ message: "Solo se pueden revertir ventas activas." });
     return true;
   }
 
@@ -295,6 +313,22 @@ export async function deleteSaleHandler(req: Request, res: Response) {
     const id = String(req.params.id);
     await salesService.deleteSale(id);
     res.status(204).send();
+  } catch (error) {
+    if (!mapSaleError(error, res)) {
+      throw error;
+    }
+  }
+}
+
+export async function revertSaleHandler(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id);
+    const data = await salesRevertService.revertSale(id);
+    if (!data) {
+      res.status(500).json({ message: "Sale revert failed" });
+      return;
+    }
+    res.json(serializeSale(data));
   } catch (error) {
     if (!mapSaleError(error, res)) {
       throw error;

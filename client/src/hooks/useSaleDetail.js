@@ -38,6 +38,21 @@ export function useSaleDetail(saleId) {
             setSaving(false);
         }
     }, [saleId]);
+    const revertSale = useCallback(async () => {
+        setSaving(true);
+        setError(null);
+        try {
+            const updated = await salesApi.revertSale(saleId);
+            setSale(updated);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo revertir la venta.");
+            throw err;
+        }
+        finally {
+            setSaving(false);
+        }
+    }, [saleId]);
     const removeSale = useCallback(async () => {
         setSaving(true);
         setError(null);
@@ -53,5 +68,5 @@ export function useSaleDetail(saleId) {
             setSaving(false);
         }
     }, [saleId]);
-    return { sale, loading, saving, error, reload, updateSale, removeSale };
+    return { sale, loading, saving, error, reload, updateSale, revertSale, removeSale };
 }

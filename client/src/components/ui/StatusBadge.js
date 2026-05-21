@@ -22,6 +22,11 @@ const SIZE_CLASS = {
     card: "px-2.5 py-1 text-xs",
     detail: "px-3 py-1 text-xs"
 };
+export function saleStatusVariant(status) {
+    if (status === "REVERTED")
+        return "rejected";
+    return "completed";
+}
 export function serviceStatusVariant(status) {
     switch (status) {
         case "COMPLETED":

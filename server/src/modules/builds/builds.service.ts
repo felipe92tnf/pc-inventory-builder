@@ -1,4 +1,4 @@
-import { BuildStatus, InventoryKind, PartCategory, Prisma } from "@prisma/client";
+import { BuildStatus, InventoryKind, PartCategory, Prisma, SaleStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { customerDataForEntity } from "../customers/customers.resolve.js";
 import {
@@ -172,7 +172,16 @@ const ASSEMBLED_LIKE: Set<BuildStatus> = new Set([
 export async function updateBuild(id: string, payload: unknown) {
   const data = updateBuildSchema.parse(payload);
 
-  const existing = await prisma.build.findUnique({ where: { id }, include: { sale: true } });
+  const existing = await prisma.build.findUnique({
+    where: { id },
+    include: {
+      sales: {
+        where: { status: SaleStatus.COMPLETED },
+        take: 1,
+        select: { id: true, pickupConfirmedAt: true }
+      }
+    }
+  });
   if (!existing) {
     throw new Error("BUILD_NOT_FOUND");
   }
@@ -230,7 +239,7 @@ export async function updateBuild(id: string, payload: unknown) {
       throw new Error("BUILD_STATUS_INVALID");
     }
     if (next === BuildStatus.PENDING_PICKUP) {
-      const s = existing.sale;
+      const s = existing.sales[0];
       if (!s) {
         throw new Error("BUILD_PENDING_PICKUP_NEEDS_SALE");
       }
@@ -239,7 +248,7 @@ export async function updateBuild(id: string, payload: unknown) {
       }
     }
     if (ASSEMBLED_LIKE.has(next) && next !== BuildStatus.PENDING_PICKUP) {
-      const s = existing.sale;
+      const s = existing.sales[0];
       if (s && s.pickupConfirmedAt == null) {
         throw new Error("BUILD_HAS_PENDING_PICKUP_SALE");
       }
@@ -301,11 +310,14 @@ export async function updateBuild(id: string, payload: unknown) {
 }
 
 export async function deleteBuild(id: string) {
-  const existing = await prisma.build.findUnique({ where: { id }, include: { sale: true } });
+  const existing = await prisma.build.findUnique({
+    where: { id },
+    include: { sales: { where: { status: SaleStatus.COMPLETED }, take: 1 } }
+  });
   if (!existing) {
     throw new Error("BUILD_NOT_FOUND");
   }
-  if (existing.sale) {
+  if (existing.sales.length > 0) {
     throw new Error("BUILD_HAS_SALE");
   }
 
@@ -585,7 +597,7 @@ export async function confirmBuild(buildId: string, payload?: unknown) {
 export async function revertBuildToDraft(buildId: string) {
   const build = await prisma.build.findUnique({
     where: { id: buildId },
-    include: { items: true, sale: true }
+    include: { items: true, sales: { where: { status: SaleStatus.COMPLETED }, take: 1 } }
   });
 
   if (!build) {
@@ -594,7 +606,7 @@ export async function revertBuildToDraft(buildId: string) {
   if (build.status === BuildStatus.SOLD) {
     throw new Error("BUILD_IS_SOLD");
   }
-  if (build.sale) {
+  if (build.sales.length > 0) {
     throw new Error("BUILD_HAS_SALE");
   }
   if (!ASSEMBLED_LIKE.has(build.status)) {

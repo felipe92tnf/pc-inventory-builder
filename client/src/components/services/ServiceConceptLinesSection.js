@@ -5,6 +5,14 @@ import { HOME_DELIVERY_LABEL, ensureHomeDeliveryLine, isHomeDeliveryLine, lineTo
 import { DESTRUCTIVE_BUTTON_SM, PRIMARY_ACTION_BUTTON_COMPACT } from "../../theme/actionButtons";
 import { TABLE_CELL } from "../../theme/layoutDensity";
 const INPUT = "min-h-[36px] w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring";
+function sortCatalogBySaleDesc(presets) {
+    return [...presets].sort((a, b) => {
+        const priceDiff = Number(b.defaultSalePrice) - Number(a.defaultSalePrice);
+        if (priceDiff !== 0)
+            return priceDiff;
+        return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+    });
+}
 function money(n) {
     return `${n.toFixed(2)} EUR`;
 }
@@ -18,9 +26,10 @@ export function ServiceConceptLinesSection({ lines, onLinesChange, servicePreset
     const [manualSale, setManualSale] = useState("");
     const filteredPresets = useMemo(() => {
         const q = catalogQuery.trim().toLowerCase();
-        if (!q)
-            return servicePresets;
-        return servicePresets.filter((p) => p.name.toLowerCase().includes(q));
+        const matched = !q
+            ? servicePresets
+            : servicePresets.filter((p) => p.name.toLowerCase().includes(q));
+        return sortCatalogBySaleDesc(matched);
     }, [servicePresets, catalogQuery]);
     const updateLine = (key, patch) => {
         onLinesChange(lines.map((l) => (l.clientKey === key ? { ...l, ...patch } : l)));

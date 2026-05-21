@@ -1,5 +1,10 @@
 import type { MonthlyServiceSummaryRow } from "../types/service";
-import type { MonthlySalesSummaryRow, SaleListRow } from "../types/sale";
+import type { MonthlySalesSummaryRow, SaleListRow, SaleStatus } from "../types/sale";
+
+/** Ventas que cuentan en ingresos/beneficios (excluye revertidas). */
+export function isActiveSale(sale: { status?: SaleStatus }): boolean {
+  return sale.status === undefined || sale.status === "COMPLETED";
+}
 
 /** Suma mes PC ventas + servicios completados (resumenes mensuales API). */
 export function combinePcMonthWithServices(
@@ -137,16 +142,24 @@ export function prevMonthYear(year: number, month: number): { year: number; mont
   return { year, month: month - 1 };
 }
 
-export function filterSalesByMonth(sales: SaleListRow[], year: number, month: number): SaleListRow[] {
+export function filterSalesByMonth(
+  sales: SaleListRow[],
+  year: number,
+  month: number,
+  options?: { activeOnly?: boolean }
+): SaleListRow[] {
+  const activeOnly = options?.activeOnly ?? false;
   return sales.filter((s) => {
     const d = new Date(s.soldAt);
-    return d.getFullYear() === year && d.getMonth() + 1 === month;
+    if (d.getFullYear() !== year || d.getMonth() + 1 !== month) return false;
+    if (activeOnly && !isActiveSale(s)) return false;
+    return true;
   });
 }
 
 /** Totales del mes calculados desde el listado (coherente con rankings). */
 export function monthTotalsFromSales(sales: SaleListRow[], year: number, month: number): MonthlySalesSummaryRow {
-  const list = filterSalesByMonth(sales, year, month);
+  const list = filterSalesByMonth(sales, year, month, { activeOnly: true });
   let totalRevenue = 0;
   let totalCost = 0;
   let totalProfit = 0;
@@ -202,7 +215,7 @@ export type BuildProfitRank = {
 
 export function rankBuildsByProfit(sales: SaleListRow[], limit = 8): BuildProfitRank[] {
   const map = new Map<string, BuildProfitRank>();
-  for (const s of sales) {
+  for (const s of sales.filter(isActiveSale)) {
     const id = s.build.id;
     const cur = map.get(id) ?? {
       buildId: id,
@@ -228,7 +241,7 @@ export type ClientSpendRank = {
 
 export function rankClientsBySpend(sales: SaleListRow[], limit = 8): ClientSpendRank[] {
   const map = new Map<string, ClientSpendRank>();
-  for (const s of sales) {
+  for (const s of sales.filter(isActiveSale)) {
     const key = `${s.customerName.trim().toLowerCase()}|${s.customerPhone.trim()}`;
     const cur = map.get(key) ?? {
       displayName: s.customerName.trim() || "Cliente",
@@ -258,6 +271,32 @@ export function monthlyRevenueSeriesForYear(
 export function pctDelta(current: number, previous: number): number | null {
   if (previous === 0) return null;
   return ((current - previous) / previous) * 100;
+}
+
+function isMonthBefore(
+  row: Pick<MonthlySalesSummaryRow, "year" | "month">,
+  year: number,
+  month: number
+): boolean {
+  return row.year < year || (row.year === year && row.month < month);
+}
+
+/**
+ * Media del beneficio mensual (salario) en todos los meses anteriores al periodo indicado.
+ * Solo cuenta meses presentes en el historico combinado ventas + servicios.
+ */
+export function averageMonthlySalaryBefore(
+  rows: MonthlySalesSummaryRow[],
+  beforeYear: number,
+  beforeMonth: number
+): { average: number; monthsCount: number } | null {
+  const previous = rows.filter((r) => isMonthBefore(r, beforeYear, beforeMonth));
+  if (previous.length === 0) return null;
+  const sum = previous.reduce((acc, r) => acc + r.totalProfit, 0);
+  return {
+    average: Math.round((sum / previous.length) * 100) / 100,
+    monthsCount: previous.length
+  };
 }
 
 export function minMaxYearsFromData(summary: MonthlySalesSummaryRow[], sales: SaleListRow[]): {

@@ -3,9 +3,13 @@ import type { Build, BuildExtraLine, BuildItem } from "./build";
 /** Frase exacta requerida por la API para revertir un lote de importación. */
 export const SALES_IMPORT_REVERT_CONFIRM_PHRASE = "REVERTIR IMPORTACIÓN";
 
+export type SaleStatus = "COMPLETED" | "REVERTED";
+
 export type Sale = {
   id: string;
   buildId: string;
+  status: SaleStatus;
+  revertedAt?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;

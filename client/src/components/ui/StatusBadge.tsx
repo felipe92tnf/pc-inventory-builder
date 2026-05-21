@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { BuildStatus } from "../../types/build";
 import type { QuoteStatus } from "../../types/quote";
+import type { SaleStatus } from "../../types/sale";
 import type { ServiceStatus } from "../../types/service";
 
 /** Paleta unificada (fondo oscuro, buen contraste). */
@@ -48,6 +49,11 @@ const SIZE_CLASS = {
 } as const;
 
 export type StatusBadgeSize = keyof typeof SIZE_CLASS;
+
+export function saleStatusVariant(status: SaleStatus): StatusBadgeVariant {
+  if (status === "REVERTED") return "rejected";
+  return "completed";
+}
 
 export function serviceStatusVariant(status: ServiceStatus): StatusBadgeVariant {
   switch (status) {

@@ -8,6 +8,7 @@ import {
   monthlySummaryHandler,
   patchSaleHandler,
   previewSalesImportBatchHandler,
+  revertSaleHandler,
   revertSalesImportBatchHandler,
   salesImportConfirmHandler,
   salesImportPreviewHandler,
@@ -26,4 +27,5 @@ salesRouter.post("/from-build/:buildId", createSaleFromBuildHandler);
 salesRouter.get("/", listSalesHandler);
 salesRouter.get("/:id", getSaleHandler);
 salesRouter.patch("/:id", patchSaleHandler);
+salesRouter.post("/:id/revert", revertSaleHandler);
 salesRouter.delete("/:id", deleteSaleHandler);

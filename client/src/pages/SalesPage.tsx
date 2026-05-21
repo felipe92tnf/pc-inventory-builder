@@ -8,6 +8,8 @@ import {
   combinePcMonthWithServices,
   extendYearRangeWithServices,
   filterSalesByMonth,
+  isActiveSale,
+  averageMonthlySalaryBefore,
   mergeSalesAndServicesMonthlySummaries,
   mergeYearTotalsFromMonthlySummaries,
   minMaxYearsFromData,
@@ -33,7 +35,7 @@ import {
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL_SALES, SECTION_SHELL } from "../theme/layoutDensity";
-import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
+import { StatusBadge, saleStatusVariant, serviceStatusVariant } from "../components/ui/StatusBadge";
 import { CustomerProfileLink } from "../components/customers/CustomerProfileLink";
 
 function money(n: number): string {
@@ -243,18 +245,31 @@ export function SalesPage() {
     [summary, servicesSummary]
   );
 
+  const averageSalaryBeforeSelected = useMemo(
+    () => averageMonthlySalaryBefore(mergedHistoricSummary, selectedYear, selectedMonth),
+    [mergedHistoricSummary, selectedYear, selectedMonth]
+  );
+
   const salesInSelectedMonth = useMemo(
     () => filterSalesByMonth(sales, selectedYear, selectedMonth),
     [sales, selectedYear, selectedMonth]
   );
 
   const deliveredPcSalesInMonth = useMemo(
-    () => salesInSelectedMonth.filter((s) => s.pickupConfirmedAt != null),
+    () => salesInSelectedMonth.filter((s) => isActiveSale(s) && s.pickupConfirmedAt != null),
     [salesInSelectedMonth]
   );
 
   const pendingPickupPcSalesInMonth = useMemo(
-    () => salesInSelectedMonth.filter((s) => s.pickupConfirmedAt == null),
+    () =>
+      salesInSelectedMonth.filter(
+        (s) => isActiveSale(s) && s.pickupConfirmedAt == null
+      ),
+    [salesInSelectedMonth]
+  );
+
+  const revertedPcSalesInMonth = useMemo(
+    () => salesInSelectedMonth.filter((s) => s.status === "REVERTED"),
     [salesInSelectedMonth]
   );
 
@@ -295,7 +310,7 @@ export function SalesPage() {
     let totalRevenue = 0;
     let totalCost = 0;
     let totalProfit = 0;
-    for (const sale of salesInSelectedMonth) {
+    for (const sale of salesInSelectedMonth.filter(isActiveSale)) {
       totalRevenue += sale.finalSalePrice;
       totalCost += sale.totalCost;
       totalProfit += sale.profit;
@@ -608,10 +623,43 @@ export function SalesPage() {
                             </td>
                           </tr>
                         ))}
+                        {revertedPcSalesInMonth.map((sale) => (
+                          <tr key={sale.id} className="bg-rose-950/20 transition hover:bg-rose-950/35">
+                            <td className="px-3 py-2 text-slate-400">
+                              {new Date(sale.soldAt).toLocaleDateString("es-ES")}
+                            </td>
+                            <td className="px-3 py-2 text-slate-300">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span>{sale.customerName}</span>
+                                <StatusBadge variant={saleStatusVariant("REVERTED")} size="table">
+                                  Revertida
+                                </StatusBadge>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <Link
+                                to={`/sales/${sale.id}`}
+                                className="font-medium text-rose-200 hover:underline"
+                              >
+                                {sale.build.name}
+                              </Link>
+                            </td>
+                            <td className="px-3 py-2 text-right text-slate-500 line-through opacity-70">
+                              {money(sale.totalCost)}
+                            </td>
+                            <td className="px-3 py-2 text-right text-slate-500 line-through opacity-70">
+                              {money(sale.finalSalePrice)}
+                            </td>
+                            <td className="px-3 py-2 text-right text-slate-500 line-through opacity-70">
+                              {money(sale.profit)}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   }
-                  mobileCards={deliveredPcSalesInMonth.map((sale) => (
+                  mobileCards={[
+                    ...deliveredPcSalesInMonth.map((sale) => (
                     <article key={sale.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <p className="text-xs text-slate-500">{new Date(sale.soldAt).toLocaleDateString("es-ES")}</p>
@@ -649,8 +697,41 @@ export function SalesPage() {
                         Ver venta
                       </Link>
                     </article>
-                  ))}
+                  )),
+                    ...revertedPcSalesInMonth.map((sale) => (
+                      <article
+                        key={sale.id}
+                        className="rounded-xl border border-rose-800/50 bg-rose-950/25 p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <p className="text-xs text-slate-500">
+                            {new Date(sale.soldAt).toLocaleDateString("es-ES")}
+                          </p>
+                          <StatusBadge variant={saleStatusVariant("REVERTED")} size="table">
+                            Revertida
+                          </StatusBadge>
+                        </div>
+                        <p className="mt-1 break-words font-semibold text-slate-100">{sale.build.name}</p>
+                        <p className="text-sm text-slate-300">{sale.customerName}</p>
+                        <p className="mt-2 text-xs text-rose-200/80">
+                          No cuenta en ingresos ni beneficios del periodo.
+                        </p>
+                        <Link
+                          to={`/sales/${sale.id}`}
+                          className={`${SECONDARY_GHOST_SM} ${SALES_MOBILE_ROW_BTN} mt-3 inline-flex`}
+                        >
+                          Ver venta
+                        </Link>
+                      </article>
+                    ))
+                  ]}
                 />
+
+                {revertedPcSalesInMonth.length > 0 ? (
+                  <p className="text-xs text-rose-300/90">
+                    {revertedPcSalesInMonth.length} venta(s) revertida(s) en este mes (historial, sin impacto en totales).
+                  </p>
+                ) : null}
 
                 <SalesOverviewSection
                   title="Servicios técnicos"
@@ -881,6 +962,31 @@ export function SalesPage() {
                       {money(selectedMonthStats.totalProfit)}
                     </span>
                     <DeltaBadge value={deltaProfit} />
+                  </dd>
+                </div>
+                <div className={SUMMARY_CARD_SHELL}>
+                  <dt className={SUMMARY_CARD_LABEL}>Media salario mensual</dt>
+                  <dd className="mt-2">
+                    {averageSalaryBeforeSelected ? (
+                      <>
+                        <span
+                          className={
+                            averageSalaryBeforeSelected.average >= 0
+                              ? SUMMARY_VALUE_PROFIT_POS
+                              : SUMMARY_VALUE_NEGATIVE
+                          }
+                        >
+                          {money(averageSalaryBeforeSelected.average)}
+                        </span>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Media de beneficio en {averageSalaryBeforeSelected.monthsCount} mes
+                          {averageSalaryBeforeSelected.monthsCount === 1 ? "" : "es"} anteriores a{" "}
+                          {monthLabel(selectedMonth, selectedYear)}
+                        </p>
+                      </>
+                    ) : (
+                      <span className="text-sm text-slate-500">Sin meses anteriores con datos</span>
+                    )}
                   </dd>
                 </div>
               </dl>

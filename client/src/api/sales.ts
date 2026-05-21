@@ -61,6 +61,12 @@ export function deleteSale(saleId: string) {
   });
 }
 
+export function revertSale(saleId: string) {
+  return http<SaleDetail>(`/sales/${saleId}/revert`, {
+    method: "POST"
+  });
+}
+
 export async function salesImportPreview(file: File): Promise<{ rows: SalesImportPreviewRow[] }> {
   const formData = new FormData();
   formData.append("file", file);

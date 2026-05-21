@@ -1,3 +1,7 @@
+/** Ventas que cuentan en ingresos/beneficios (excluye revertidas). */
+export function isActiveSale(sale) {
+    return sale.status === undefined || sale.status === "COMPLETED";
+}
 /** Suma mes PC ventas + servicios completados (resumenes mensuales API). */
 export function combinePcMonthWithServices(pc, svc) {
     if (!svc) {
@@ -108,15 +112,20 @@ export function prevMonthYear(year, month) {
         return { year: year - 1, month: 12 };
     return { year, month: month - 1 };
 }
-export function filterSalesByMonth(sales, year, month) {
+export function filterSalesByMonth(sales, year, month, options) {
+    const activeOnly = options?.activeOnly ?? false;
     return sales.filter((s) => {
         const d = new Date(s.soldAt);
-        return d.getFullYear() === year && d.getMonth() + 1 === month;
+        if (d.getFullYear() !== year || d.getMonth() + 1 !== month)
+            return false;
+        if (activeOnly && !isActiveSale(s))
+            return false;
+        return true;
     });
 }
 /** Totales del mes calculados desde el listado (coherente con rankings). */
 export function monthTotalsFromSales(sales, year, month) {
-    const list = filterSalesByMonth(sales, year, month);
+    const list = filterSalesByMonth(sales, year, month, { activeOnly: true });
     let totalRevenue = 0;
     let totalCost = 0;
     let totalProfit = 0;
@@ -162,7 +171,7 @@ export function yearTotalsFromSummary(summary, year) {
 }
 export function rankBuildsByProfit(sales, limit = 8) {
     const map = new Map();
-    for (const s of sales) {
+    for (const s of sales.filter(isActiveSale)) {
         const id = s.build.id;
         const cur = map.get(id) ?? {
             buildId: id,
@@ -180,7 +189,7 @@ export function rankBuildsByProfit(sales, limit = 8) {
 }
 export function rankClientsBySpend(sales, limit = 8) {
     const map = new Map();
-    for (const s of sales) {
+    for (const s of sales.filter(isActiveSale)) {
         const key = `${s.customerName.trim().toLowerCase()}|${s.customerPhone.trim()}`;
         const cur = map.get(key) ?? {
             displayName: s.customerName.trim() || "Cliente",
@@ -206,6 +215,23 @@ export function pctDelta(current, previous) {
     if (previous === 0)
         return null;
     return ((current - previous) / previous) * 100;
+}
+function isMonthBefore(row, year, month) {
+    return row.year < year || (row.year === year && row.month < month);
+}
+/**
+ * Media del beneficio mensual (salario) en todos los meses anteriores al periodo indicado.
+ * Solo cuenta meses presentes en el historico combinado ventas + servicios.
+ */
+export function averageMonthlySalaryBefore(rows, beforeYear, beforeMonth) {
+    const previous = rows.filter((r) => isMonthBefore(r, beforeYear, beforeMonth));
+    if (previous.length === 0)
+        return null;
+    const sum = previous.reduce((acc, r) => acc + r.totalProfit, 0);
+    return {
+        average: Math.round((sum / previous.length) * 100) / 100,
+        monthsCount: previous.length
+    };
 }
 export function minMaxYearsFromData(summary, sales) {
     let minY = new Date().getFullYear();

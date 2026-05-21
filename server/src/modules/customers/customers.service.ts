@@ -59,7 +59,7 @@ export async function listCustomers(query?: string) {
     }),
     prisma.sale.groupBy({
       by: ["customerId"],
-      where: { customerId: { in: ids } },
+      where: { customerId: { in: ids }, status: "COMPLETED" },
       _count: { _all: true },
       _sum: { finalSalePrice: true }
     })
@@ -139,7 +139,12 @@ export async function getCustomerById(id: string) {
         name: true,
         status: true,
         createdAt: true,
-        sale: { select: { finalSalePrice: true } }
+        sales: {
+          where: { status: "COMPLETED" },
+          orderBy: { soldAt: "desc" },
+          take: 1,
+          select: { finalSalePrice: true }
+        }
       },
       orderBy: { createdAt: "desc" },
       take: 200
@@ -148,6 +153,7 @@ export async function getCustomerById(id: string) {
       where: { customerId: id },
       select: {
         id: true,
+        status: true,
         soldAt: true,
         finalSalePrice: true,
         profit: true,
@@ -159,7 +165,9 @@ export async function getCustomerById(id: string) {
   ]);
 
   const serviceRevenue = services.reduce((a, s) => a + Number(s.salePrice), 0);
-  const saleRevenue = sales.reduce((a, s) => a + Number(s.finalSalePrice), 0);
+  const saleRevenue = sales
+    .filter((s) => s.status === "COMPLETED")
+    .reduce((a, s) => a + Number(s.finalSalePrice), 0);
 
   return {
     id: row.id,
@@ -193,10 +201,11 @@ export async function getCustomerById(id: string) {
       name: b.name,
       status: b.status,
       createdAt: b.createdAt.toISOString(),
-      salePrice: b.sale ? Number(b.sale.finalSalePrice) : null
+      salePrice: b.sales[0] ? Number(b.sales[0].finalSalePrice) : null
     })),
     sales: sales.map((s) => ({
       id: s.id,
+      status: s.status,
       soldAt: s.soldAt.toISOString(),
       finalSalePrice: Number(s.finalSalePrice),
       profit: Number(s.profit),
@@ -354,7 +363,12 @@ export async function getCustomerOverview(name: string, phone: string) {
         createdAt: true,
         customerName: true,
         customerPhone: true,
-        sale: { select: { finalSalePrice: true } }
+        sales: {
+          where: { status: "COMPLETED" },
+          orderBy: { soldAt: "desc" },
+          take: 1,
+          select: { finalSalePrice: true }
+        }
       },
       orderBy: { createdAt: "desc" },
       take: 500
@@ -401,7 +415,7 @@ export async function getCustomerOverview(name: string, phone: string) {
       name: b.name,
       status: b.status,
       createdAt: b.createdAt.toISOString(),
-      salePrice: b.sale ? Number(b.sale.finalSalePrice) : null
+      salePrice: b.sales[0] ? Number(b.sales[0].finalSalePrice) : null
     }));
 
   return {

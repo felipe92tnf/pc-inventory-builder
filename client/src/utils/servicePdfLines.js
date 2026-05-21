@@ -76,7 +76,7 @@ export function serviceConceptLinesForPdf(service) {
             if (mainSale > 0 || legacySup === 0) {
                 rows.push({
                     key: "legacy-main",
-                    name: service.title.trim() || "Servicio",
+                    name: (service.title ?? "").trim() || "Servicio",
                     quantity: 1,
                     lineSale: mainSale
                 });

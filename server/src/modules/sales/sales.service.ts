@@ -1,7 +1,8 @@
-import { BuildStatus, Prisma } from "@prisma/client";
+import { BuildStatus, Prisma, SaleStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { finalizePricing } from "../builds/builds.service.js";
 import { customerDataForEntity } from "../customers/customers.resolve.js";
+import { findActiveSaleForBuild } from "./sales.revert.service.js";
 import { createSaleFromBuildSchema, patchSaleSchema } from "./sales.validators.js";
 
 function moneyDecimal(value: number): Prisma.Decimal {
@@ -43,8 +44,7 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
     where: { id: buildId },
     include: {
       items: { include: { part: true } },
-      extraLines: { include: { extraTemplate: true } },
-      sale: true
+      extraLines: { include: { extraTemplate: true } }
     }
   });
 
@@ -57,7 +57,8 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
   if (!SELLABLE_FOR_NEW_SALE.has(build.status)) {
     throw new Error("BUILD_NOT_ASSEMBLED");
   }
-  if (build.sale) {
+  const activeSale = await findActiveSaleForBuild(buildId);
+  if (activeSale) {
     throw new Error("BUILD_ALREADY_SOLD");
   }
 
@@ -172,6 +173,9 @@ export async function patchSale(id: string, payload: unknown) {
   if (!existing) {
     throw new Error("SALE_NOT_FOUND");
   }
+  if (existing.status === SaleStatus.REVERTED) {
+    throw new Error("SALE_REVERTED_LOCKED");
+  }
 
   const nextFinal =
     data.finalSalePrice !== undefined ? data.finalSalePrice : Number(existing.finalSalePrice);
@@ -262,6 +266,9 @@ export async function deleteSale(id: string) {
   if (!sale) {
     throw new Error("SALE_NOT_FOUND");
   }
+  if (sale.status === SaleStatus.REVERTED) {
+    throw new Error("SALE_REVERTED_LOCKED");
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.sale.delete({ where: { id } });
@@ -287,6 +294,7 @@ type MonthlyBucket = {
 
 export async function getMonthlySalesSummary(): Promise<MonthlyBucket[]> {
   const sales = await prisma.sale.findMany({
+    where: { status: SaleStatus.COMPLETED },
     select: {
       soldAt: true,
       finalSalePrice: true,
