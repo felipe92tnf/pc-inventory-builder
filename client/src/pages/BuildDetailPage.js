@@ -15,6 +15,7 @@ import { SUMMARY_CARD_GRID_THREE, SUMMARY_CARD_LABEL, SUMMARY_VALUE_NEGATIVE, SU
 import { PAGE_HEADER_COMPACT, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
 import { buildStatusLabelEs } from "../utils/buildStatusLabel";
+import { isActiveSale } from "../utils/salesStats";
 import { CustomerPicker } from "../components/customers/CustomerPicker";
 const BUILD_PAGE_SHELL = "mx-auto w-full max-w-7xl space-y-3 px-2 pb-5 text-slate-100 md:space-y-3.5 md:px-4";
 const BUILD_SECTION = "rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/30 md:p-4";
@@ -209,7 +210,7 @@ export function BuildDetailPage() {
             return;
         let cancelled = false;
         void salesApi.listSales().then((rows) => {
-            const active = rows.find((s) => s.buildId === build.id && (s.status === undefined || s.status === "COMPLETED"));
+            const active = rows.find((s) => s.buildId === build.id && isActiveSale(s));
             if (!cancelled)
                 setLinkedSale(active ?? null);
         });

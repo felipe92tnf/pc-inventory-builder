@@ -59,7 +59,7 @@ export async function listCustomers(query?: string) {
     }),
     prisma.sale.groupBy({
       by: ["customerId"],
-      where: { customerId: { in: ids }, status: "COMPLETED" },
+      where: { customerId: { in: ids }, NOT: { status: "REVERTED" } },
       _count: { _all: true },
       _sum: { finalSalePrice: true }
     })
@@ -140,7 +140,7 @@ export async function getCustomerById(id: string) {
         status: true,
         createdAt: true,
         sales: {
-          where: { status: "COMPLETED" },
+          where: { NOT: { status: "REVERTED" } },
           orderBy: { soldAt: "desc" },
           take: 1,
           select: { finalSalePrice: true }
@@ -166,7 +166,7 @@ export async function getCustomerById(id: string) {
 
   const serviceRevenue = services.reduce((a, s) => a + Number(s.salePrice), 0);
   const saleRevenue = sales
-    .filter((s) => s.status === "COMPLETED")
+    .filter((s) => s.status !== "REVERTED")
     .reduce((a, s) => a + Number(s.finalSalePrice), 0);
 
   return {
@@ -364,7 +364,7 @@ export async function getCustomerOverview(name: string, phone: string) {
         customerName: true,
         customerPhone: true,
         sales: {
-          where: { status: "COMPLETED" },
+          where: { NOT: { status: "REVERTED" } },
           orderBy: { soldAt: "desc" },
           take: 1,
           select: { finalSalePrice: true }

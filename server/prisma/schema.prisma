@@ -306,6 +306,8 @@ model Sale {
   customerPhone  String
   customerEmail  String?
   finalSalePrice Decimal
+  /// Reserva o anticipo ya cobrado antes de registrar la venta (no resta del precio total).
+  amountPaidAtSale Decimal? @db.Decimal(12, 2)
   totalCost      Decimal
   profit         Decimal
   soldAt         DateTime @default(now())

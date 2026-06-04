@@ -3,6 +3,7 @@ import { prisma } from "../../db/prisma.js";
 import { finalizePricing } from "../builds/builds.service.js";
 import { customerDataForEntity } from "../customers/customers.resolve.js";
 import { findActiveSaleForBuild } from "./sales.revert.service.js";
+import { isSaleReverted, metricsSaleWhere } from "./sales.status.js";
 import { createSaleFromBuildSchema, patchSaleSchema } from "./sales.validators.js";
 
 function moneyDecimal(value: number): Prisma.Decimal {
@@ -15,26 +16,43 @@ const SELLABLE_FOR_NEW_SALE: Set<BuildStatus> = new Set([
   BuildStatus.RESERVED
 ]);
 
-function partialCompletionCostRatio(build: {
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Reserva o anticipo ya cobrado en el montaje antes de registrar la venta. */
+function amountPaidBeforeSaleFromBuild(build: {
   status: BuildStatus;
   reservationDeposit: { toString(): string } | null;
-  reservationRemaining: { toString(): string } | null;
   pendingPaymentPaid: { toString(): string } | null;
-  pendingPaymentRemaining: { toString(): string } | null;
-}): number | null {
-  if (build.status === BuildStatus.RESERVED) {
-    const d = build.reservationDeposit != null ? Number(build.reservationDeposit) : 0;
-    const r = build.reservationRemaining != null ? Number(build.reservationRemaining) : 0;
-    const sum = d + r;
-    if (sum > 0) return Math.min(1, Math.max(0, r / sum));
+}): number {
+  if (build.status === BuildStatus.RESERVED && build.reservationDeposit != null) {
+    return Math.max(0, roundMoney(Number(build.reservationDeposit)));
   }
-  if (build.status === BuildStatus.PENDING_PAYMENT) {
-    const d = build.pendingPaymentPaid != null ? Number(build.pendingPaymentPaid) : 0;
-    const r = build.pendingPaymentRemaining != null ? Number(build.pendingPaymentRemaining) : 0;
-    const sum = d + r;
-    if (sum > 0) return Math.min(1, Math.max(0, r / sum));
+  if (build.status === BuildStatus.PENDING_PAYMENT && build.pendingPaymentPaid != null) {
+    return Math.max(0, roundMoney(Number(build.pendingPaymentPaid)));
   }
-  return null;
+  return 0;
+}
+
+/**
+ * Si el cliente envió solo el pendiente (bug UI antiguo), usar el total del montaje.
+ */
+function resolveFinalSalePrice(
+  requested: number | undefined,
+  pricingTotalSale: number,
+  paidBefore: number
+): number {
+  const total = roundMoney(pricingTotalSale);
+  if (requested === undefined) return total;
+  const req = roundMoney(requested);
+  if (paidBefore > 0.005) {
+    const expectedRemaining = roundMoney(total - paidBefore);
+    if (Math.abs(req - expectedRemaining) < 0.02 && Math.abs(req - total) > 0.02) {
+      return total;
+    }
+  }
+  return req;
 }
 
 export async function createSaleFromBuild(buildId: string, payload: unknown) {
@@ -63,16 +81,14 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
   }
 
   const pricing = finalizePricing(build.items, build.saleTotalOverride, build.extraLines ?? []);
-  const fullTotalCost = pricing.totalCost;
-  const suggestedSale =
-    data.finalSalePrice !== undefined ? data.finalSalePrice : pricing.totalSale;
-
-  const ratio = partialCompletionCostRatio(build);
-  const allocatedCost =
-    ratio != null && ratio > 0 && ratio <= 1
-      ? Math.round(fullTotalCost * ratio * 100) / 100
-      : fullTotalCost;
-  const profit = Math.round((suggestedSale - allocatedCost) * 100) / 100;
+  const fullTotalCost = roundMoney(pricing.totalCost);
+  const paidBefore = amountPaidBeforeSaleFromBuild(build);
+  const finalSalePrice = resolveFinalSalePrice(
+    data.finalSalePrice,
+    pricing.totalSale,
+    paidBefore
+  );
+  const profit = roundMoney(finalSalePrice - fullTotalCost);
 
   const soldAt = data.soldAt ?? new Date();
   const customerEmail =
@@ -97,8 +113,9 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
         customerName: customer.customerName,
         customerPhone: customer.customerPhone ?? "",
         customerEmail: customer.customerEmail,
-        finalSalePrice: moneyDecimal(suggestedSale),
-        totalCost: moneyDecimal(allocatedCost),
+        finalSalePrice: moneyDecimal(finalSalePrice),
+        amountPaidAtSale: paidBefore > 0 ? moneyDecimal(paidBefore) : null,
+        totalCost: moneyDecimal(fullTotalCost),
         profit: moneyDecimal(profit),
         soldAt,
         pickupConfirmedAt,
@@ -132,6 +149,58 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
       }
     });
   });
+}
+
+export async function recalculateSaleFromBuild(saleId: string) {
+  const sale = await prisma.sale.findUnique({
+    where: { id: saleId },
+    include: {
+      build: {
+        include: {
+          items: { include: { part: true } },
+          extraLines: { include: { extraTemplate: true } }
+        }
+      }
+    }
+  });
+
+  if (!sale) {
+    throw new Error("SALE_NOT_FOUND");
+  }
+  if (sale.isImported) {
+    throw new Error("SALE_IMPORTED_LOCKED");
+  }
+  if (isSaleReverted(sale.status)) {
+    throw new Error("SALE_REVERTED_LOCKED");
+  }
+
+  const pricing = finalizePricing(
+    sale.build.items,
+    sale.build.saleTotalOverride,
+    sale.build.extraLines ?? []
+  );
+  const totalSale = roundMoney(pricing.totalSale);
+  const totalCost = roundMoney(pricing.totalCost);
+  const profit = roundMoney(totalSale - totalCost);
+
+  let paid =
+    sale.amountPaidAtSale != null ? roundMoney(Number(sale.amountPaidAtSale)) : 0;
+  if (paid <= 0.005 && Number(sale.finalSalePrice) < totalSale - 0.01) {
+    paid = roundMoney(totalSale - Number(sale.finalSalePrice));
+  }
+  paid = Math.min(Math.max(0, paid), totalSale);
+
+  await prisma.sale.update({
+    where: { id: saleId },
+    data: {
+      finalSalePrice: moneyDecimal(totalSale),
+      totalCost: moneyDecimal(totalCost),
+      profit: moneyDecimal(profit),
+      amountPaidAtSale: paid > 0.005 ? moneyDecimal(paid) : null
+    }
+  });
+
+  return getSale(saleId);
 }
 
 export async function listSales() {
@@ -173,7 +242,7 @@ export async function patchSale(id: string, payload: unknown) {
   if (!existing) {
     throw new Error("SALE_NOT_FOUND");
   }
-  if (existing.status === SaleStatus.REVERTED) {
+  if (isSaleReverted(existing.status)) {
     throw new Error("SALE_REVERTED_LOCKED");
   }
 
@@ -266,7 +335,7 @@ export async function deleteSale(id: string) {
   if (!sale) {
     throw new Error("SALE_NOT_FOUND");
   }
-  if (sale.status === SaleStatus.REVERTED) {
+  if (isSaleReverted(sale.status)) {
     throw new Error("SALE_REVERTED_LOCKED");
   }
 
@@ -294,7 +363,7 @@ type MonthlyBucket = {
 
 export async function getMonthlySalesSummary(): Promise<MonthlyBucket[]> {
   const sales = await prisma.sale.findMany({
-    where: { status: SaleStatus.COMPLETED },
+    where: metricsSaleWhere(),
     select: {
       soldAt: true,
       finalSalePrice: true,

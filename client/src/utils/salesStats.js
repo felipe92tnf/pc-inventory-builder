@@ -1,6 +1,9 @@
 /** Ventas que cuentan en ingresos/beneficios (excluye revertidas). */
 export function isActiveSale(sale) {
-    return sale.status === undefined || sale.status === "COMPLETED";
+    return sale.status == null || sale.status === undefined || sale.status === "COMPLETED";
+}
+export function isRevertedSale(sale) {
+    return sale.status === "REVERTED";
 }
 /** Suma mes PC ventas + servicios completados (resumenes mensuales API). */
 export function combinePcMonthWithServices(pc, svc) {

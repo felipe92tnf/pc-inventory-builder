@@ -67,6 +67,12 @@ export function revertSale(saleId: string) {
   });
 }
 
+export function recalculateSaleFromBuild(saleId: string) {
+  return http<SaleDetail>(`/sales/${saleId}/recalculate-from-build`, {
+    method: "POST"
+  });
+}
+
 export async function salesImportPreview(file: File): Promise<{ rows: SalesImportPreviewRow[] }> {
   const formData = new FormData();
   formData.append("file", file);

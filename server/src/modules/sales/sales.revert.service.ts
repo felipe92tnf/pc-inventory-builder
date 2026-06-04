@@ -1,5 +1,10 @@
 import { BuildStatus, InventoryKind, PartCategory, Prisma, SaleStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import {
+  activeSaleForBuildWhere,
+  isSaleCompleted,
+  isSaleReverted
+} from "./sales.status.js";
 
 function partSkipsStockDeduction(part: {
   category: PartCategory | null;
@@ -25,10 +30,10 @@ export async function revertSale(saleId: string) {
   if (!sale) {
     throw new Error("SALE_NOT_FOUND");
   }
-  if (sale.status === SaleStatus.REVERTED) {
+  if (isSaleReverted(sale.status)) {
     throw new Error("SALE_ALREADY_REVERTED");
   }
-  if (sale.status !== SaleStatus.COMPLETED) {
+  if (!isSaleCompleted(sale.status)) {
     throw new Error("SALE_NOT_ACTIVE");
   }
 
@@ -80,6 +85,7 @@ export async function revertSale(saleId: string) {
 
 export async function findActiveSaleForBuild(buildId: string) {
   return prisma.sale.findFirst({
-    where: { buildId, status: SaleStatus.COMPLETED }
+    where: activeSaleForBuildWhere(buildId),
+    orderBy: { soldAt: "desc" }
   });
 }

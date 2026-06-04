@@ -8,12 +8,15 @@ export type SaleStatus = "COMPLETED" | "REVERTED";
 export type Sale = {
   id: string;
   buildId: string;
-  status: SaleStatus;
+  /** Ausente o null en ventas antiguas = completada. */
+  status?: SaleStatus | null;
   revertedAt?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;
   finalSalePrice: number;
+  /** Reserva/anticipo ya cobrado al registrar la venta (no resta del precio total). */
+  amountPaidAtSale?: number | null;
   totalCost: number;
   profit: number;
   soldAt: string;

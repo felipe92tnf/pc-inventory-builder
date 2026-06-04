@@ -176,7 +176,8 @@ export async function updateBuild(id: string, payload: unknown) {
     where: { id },
     include: {
       sales: {
-        where: { status: SaleStatus.COMPLETED },
+        where: { NOT: { status: SaleStatus.REVERTED } },
+        orderBy: { soldAt: "desc" },
         take: 1,
         select: { id: true, pickupConfirmedAt: true }
       }
@@ -312,7 +313,9 @@ export async function updateBuild(id: string, payload: unknown) {
 export async function deleteBuild(id: string) {
   const existing = await prisma.build.findUnique({
     where: { id },
-    include: { sales: { where: { status: SaleStatus.COMPLETED }, take: 1 } }
+    include: {
+      sales: { where: { NOT: { status: SaleStatus.REVERTED } }, orderBy: { soldAt: "desc" }, take: 1 }
+    }
   });
   if (!existing) {
     throw new Error("BUILD_NOT_FOUND");
@@ -597,7 +600,10 @@ export async function confirmBuild(buildId: string, payload?: unknown) {
 export async function revertBuildToDraft(buildId: string) {
   const build = await prisma.build.findUnique({
     where: { id: buildId },
-    include: { items: true, sales: { where: { status: SaleStatus.COMPLETED }, take: 1 } }
+    include: {
+      items: true,
+      sales: { where: { NOT: { status: SaleStatus.REVERTED } }, orderBy: { soldAt: "desc" }, take: 1 }
+    }
   });
 
   if (!build) {

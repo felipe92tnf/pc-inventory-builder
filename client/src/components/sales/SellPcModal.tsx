@@ -6,6 +6,7 @@ type SellPcModalProps = {
   onClose: () => void;
   buildId: string;
   suggestedSalePrice: number;
+  amountAlreadyPaid?: number;
   disabled?: boolean;
   onSuccess: (sale: SaleDetail) => void;
   /** Incrementar al abrir el modal para reiniciar el formulario */
@@ -26,6 +27,7 @@ export function SellPcModal({
   onClose,
   buildId,
   suggestedSalePrice,
+  amountAlreadyPaid,
   disabled,
   onSuccess,
   formResetKey = 0,
@@ -72,6 +74,7 @@ export function SellPcModal({
             variant="plain"
             buildId={buildId}
             suggestedSalePrice={suggestedSalePrice}
+            amountAlreadyPaid={amountAlreadyPaid}
             disabled={disabled}
             offerPendingPickup={offerPendingPickup}
             submitLabel="Confirmar venta"

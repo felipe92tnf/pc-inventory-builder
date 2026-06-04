@@ -2,8 +2,12 @@ import type { MonthlyServiceSummaryRow } from "../types/service";
 import type { MonthlySalesSummaryRow, SaleListRow, SaleStatus } from "../types/sale";
 
 /** Ventas que cuentan en ingresos/beneficios (excluye revertidas). */
-export function isActiveSale(sale: { status?: SaleStatus }): boolean {
-  return sale.status === undefined || sale.status === "COMPLETED";
+export function isActiveSale(sale: { status?: SaleStatus | null }): boolean {
+  return sale.status == null || sale.status === undefined || sale.status === "COMPLETED";
+}
+
+export function isRevertedSale(sale: { status?: SaleStatus | null }): boolean {
+  return sale.status === "REVERTED";
 }
 
 /** Suma mes PC ventas + servicios completados (resumenes mensuales API). */

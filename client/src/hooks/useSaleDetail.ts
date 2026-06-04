@@ -10,6 +10,7 @@ type UseSaleDetailReturn = {
   reload: () => Promise<void>;
   updateSale: (payload: PatchSalePayload) => Promise<void>;
   revertSale: () => Promise<void>;
+  recalculateFromBuild: () => Promise<void>;
   removeSale: () => Promise<void>;
 };
 
@@ -54,6 +55,20 @@ export function useSaleDetail(saleId: string): UseSaleDetailReturn {
     [saleId]
   );
 
+  const recalculateFromBuild = useCallback(async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await salesApi.recalculateSaleFromBuild(saleId);
+      setSale(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo recalcular la venta.");
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  }, [saleId]);
+
   const revertSale = useCallback(async () => {
     setSaving(true);
     setError(null);
@@ -82,5 +97,15 @@ export function useSaleDetail(saleId: string): UseSaleDetailReturn {
     }
   }, [saleId]);
 
-  return { sale, loading, saving, error, reload, updateSale, revertSale, removeSale };
+  return {
+    sale,
+    loading,
+    saving,
+    error,
+    reload,
+    updateSale,
+    revertSale,
+    recalculateFromBuild,
+    removeSale
+  };
 }

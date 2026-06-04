@@ -28,6 +28,7 @@ import { PAGE_HEADER_COMPACT, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
 import type { ExtraTemplate } from "../types/extraTemplate";
 import { buildStatusLabelEs } from "../utils/buildStatusLabel";
+import { isActiveSale } from "../utils/salesStats";
 import { CustomerPicker } from "../components/customers/CustomerPicker";
 
 const BUILD_PAGE_SHELL =
@@ -227,17 +228,23 @@ export function BuildDetailPage() {
     return reservationRemainingFromTotalAndDeposit(totalSaleShown, p);
   }, [mountForm.confirmPayPaid, totalSaleShown]);
 
-  const sellSuggestedPrice = useMemo(() => {
+  /** Precio total del montaje al registrar la venta (nunca solo el pendiente). */
+  const sellSuggestedPrice = totalSaleShown;
+
+  const sellAmountAlreadyPaid = useMemo(() => {
     if (!build) return 0;
-    if (build.status === "RESERVED" && build.reservationRemaining != null) {
-      return Number(build.reservationRemaining);
+    if (build.status === "RESERVED") {
+      const d = parseMoneyInput(resDeposit);
+      if (d !== null) return d;
+      return build.reservationDeposit != null ? Number(build.reservationDeposit) : 0;
     }
     if (build.status === "PENDING_PAYMENT") {
-      if (derivedPendingRemaining !== null) return derivedPendingRemaining;
-      if (build.pendingPaymentRemaining != null) return Number(build.pendingPaymentRemaining);
+      const p = parseMoneyInput(payPaid);
+      if (p !== null) return p;
+      return build.pendingPaymentPaid != null ? Number(build.pendingPaymentPaid) : 0;
     }
-    return Number(build.totalSale);
-  }, [build, derivedPendingRemaining]);
+    return 0;
+  }, [build, resDeposit, payPaid]);
 
   useEffect(() => {
     if (!build) return;
@@ -263,9 +270,7 @@ export function BuildDetailPage() {
     if (!build?.id) return;
     let cancelled = false;
     void salesApi.listSales().then((rows) => {
-      const active = rows.find(
-        (s) => s.buildId === build.id && (s.status === undefined || s.status === "COMPLETED")
-      );
+      const active = rows.find((s) => s.buildId === build.id && isActiveSale(s));
       if (!cancelled) setLinkedSale(active ?? null);
     });
     return () => {
@@ -1207,6 +1212,7 @@ export function BuildDetailPage() {
         onClose={() => setSellModalOpen(false)}
         buildId={build.id}
         suggestedSalePrice={sellSuggestedPrice}
+        amountAlreadyPaid={sellAmountAlreadyPaid}
         offerPendingPickup
         disabled={actionLoading}
         formResetKey={sellFormKey}

@@ -1,19 +1,14 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import {
+  PDF_BRAND_NAME,
+  PDF_BRAND_SLOGAN,
+  pdfBusinessContactFooterLine
+} from "../../constants/pdfBusinessInfo";
 import type { Quote, QuoteStatus } from "../../types/quote";
 import { quotePaymentDueTotal, quotePaymentRemaining } from "../../utils/quotePayment";
 
 /** Nombre comercial mostrado en el PDF del presupuesto. */
-export const QUOTE_PDF_BUSINESS_NAME = "SecondByte";
-
-const QUOTE_PDF_SLOGAN = "Tecnología que te conecta";
-
-/** Datos de contacto de la tienda (editar según negocio real). */
-const STORE_CONTACT = {
-  phone: "+34 900 000 000",
-  email: "contacto@secondbyte.es",
-  web: "www.secondbyte.es",
-  address: "Tu dirección comercial"
-} as const;
+export const QUOTE_PDF_BUSINESS_NAME = PDF_BRAND_NAME;
 
 /**
  * Líneas de producto en la primera página junto a resumen y notas.
@@ -693,9 +688,7 @@ function FooterBlock({ quote }: { quote: Quote }) {
           render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
         />
       </View>
-      <Text style={styles.footerLine2}>
-        {STORE_CONTACT.phone} · {STORE_CONTACT.email} · {STORE_CONTACT.web} · {STORE_CONTACT.address}
-      </Text>
+      <Text style={styles.footerLine2}>{pdfBusinessContactFooterLine()}</Text>
       <Text style={styles.footerLine3}>
         Documento informativo, no factura. Precios y plazos sujetos a disponibilidad
         {quote.validUntil ? ` · Válido hasta ${formatDateEs(quote.validUntil)}` : ""}.
@@ -743,7 +736,7 @@ export function QuotePdfDocument({ quote }: QuotePdfDocumentProps) {
           <SecondByteLogoMark />
           <View style={styles.brandBlock}>
             <Text style={styles.brandName}>{QUOTE_PDF_BUSINESS_NAME}</Text>
-            <Text style={styles.brandSlogan}>{QUOTE_PDF_SLOGAN}</Text>
+            <Text style={styles.brandSlogan}>{PDF_BRAND_SLOGAN}</Text>
           </View>
         </View>
         <View style={styles.headerDocCol}>

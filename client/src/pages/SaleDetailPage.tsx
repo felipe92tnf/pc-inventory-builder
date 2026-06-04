@@ -6,16 +6,24 @@ import { BuildExtraLinesTable } from "../components/builds/BuildExtraLinesTable"
 import { useSaleDetail } from "../hooks/useSaleDetail";
 import { PRIMARY_ACTION_BUTTON } from "../theme/actionButtons";
 import {
-  SUMMARY_CARD_GRID_THREE,
+  SUMMARY_CARD_GRID,
   SUMMARY_CARD_LABEL,
   SUMMARY_CARD_SHELL,
   SUMMARY_VALUE_NEGATIVE,
   SUMMARY_VALUE_NEUTRAL,
   SUMMARY_VALUE_PROFIT_POS,
+  SUMMARY_VALUE_PROFIT_CYAN,
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, saleStatusVariant } from "../components/ui/StatusBadge";
+import { isRevertedSale } from "../utils/salesStats";
+import {
+  buildPricingTotalSale,
+  saleAmountPaid,
+  saleAmountRemaining,
+  saleLooksUnderstated
+} from "../utils/saleAmounts";
 
 function money(n: number): string {
   return `${n.toFixed(2)} EUR`;
@@ -31,7 +39,8 @@ export function SaleDetailPage() {
   const { id } = useParams();
   const saleId = String(id ?? "");
   const navigate = useNavigate();
-  const { sale, loading, saving, error, reload, updateSale, revertSale } = useSaleDetail(saleId);
+  const { sale, loading, saving, error, reload, updateSale, revertSale, recalculateFromBuild } =
+    useSaleDetail(saleId);
 
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -93,8 +102,21 @@ export function SaleDetailPage() {
     }
   };
 
+  const handleRecalculateFromBuild = async () => {
+    if (!sale || sale.isImported || isRevertedSale(sale)) return;
+    const ok = window.confirm(
+      "Recalcular esta venta desde el montaje?\n\n- Precio total = precio de venta del montaje\n- Coste = suma real de piezas\n- Beneficio = total − coste\n- Se intentara restaurar el importe ya cobrado (reserva) si faltaba"
+    );
+    if (!ok) return;
+    try {
+      await recalculateFromBuild();
+    } catch {
+      /* error shown via hook */
+    }
+  };
+
   const handleRevertSale = async () => {
-    if (!sale || sale.status === "REVERTED") return;
+    if (!sale || isRevertedSale(sale)) return;
     const ok = window.confirm(
       "Revertir esta venta?\n\n- Se restaurara el stock de las piezas\n- El montaje volvera a listo para la venta\n- La venta quedara en historial como revertida (no se borra)\n- Dejara de contar en ingresos y beneficios"
     );
@@ -143,7 +165,11 @@ export function SaleDetailPage() {
   }
 
   const b = sale.build;
-  const isReverted = sale.status === "REVERTED";
+  const isReverted = isRevertedSale(sale);
+  const buildTotal = buildPricingTotalSale(b);
+  const paidAtSale = saleAmountPaid(sale);
+  const remainingAtSale = saleAmountRemaining(sale);
+  const looksMispriced = saleLooksUnderstated(sale, buildTotal);
 
   return (
     <div className={PAGE_OUTER_7XL}>
@@ -255,20 +281,70 @@ export function SaleDetailPage() {
         </section>
       ) : null}
 
-      <section className={SUMMARY_CARD_GRID_THREE}>
+      {!isReverted && looksMispriced && !sale.isImported ? (
+        <section className="rounded-xl border border-amber-700/60 bg-amber-950/35 px-4 py-3 text-sm text-amber-100">
+          <p className="font-medium">Posible error en el precio guardado</p>
+          <p className="mt-1 text-amber-200/90">
+            El importe registrado ({money(sale.finalSalePrice)}) parece ser solo el pendiente tras una reserva, no el
+            total del montaje
+            {buildTotal != null ? ` (${money(buildTotal)})` : ""}.
+          </p>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              void handleRecalculateFromBuild();
+            }}
+            className="mt-3 rounded-lg border border-amber-500/60 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
+          >
+            {saving ? "Recalculando..." : "Recalcular desde montaje"}
+          </button>
+        </section>
+      ) : null}
+
+      <section className={SUMMARY_CARD_GRID}>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Precio total venta</p>
+          <p className={SUMMARY_VALUE_REVENUE}>{money(sale.finalSalePrice)}</p>
+        </article>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Pagado / reserva</p>
+          <p className={SUMMARY_VALUE_PROFIT_CYAN}>
+            {paidAtSale > 0.005 ? money(paidAtSale) : "—"}
+          </p>
+        </article>
+        <article className={SUMMARY_CARD_SHELL}>
+          <p className={SUMMARY_CARD_LABEL}>Pendiente</p>
+          <p className={SUMMARY_VALUE_NEUTRAL}>
+            {paidAtSale > 0.005 || remainingAtSale > 0.005 ? money(remainingAtSale) : "—"}
+          </p>
+        </article>
         <article className={SUMMARY_CARD_SHELL}>
           <p className={SUMMARY_CARD_LABEL}>Coste</p>
           <p className={SUMMARY_VALUE_NEUTRAL}>{money(sale.totalCost)}</p>
         </article>
         <article className={SUMMARY_CARD_SHELL}>
-          <p className={SUMMARY_CARD_LABEL}>Precio venta</p>
-          <p className={SUMMARY_VALUE_REVENUE}>{money(sale.finalSalePrice)}</p>
-        </article>
-        <article className={SUMMARY_CARD_SHELL}>
           <p className={SUMMARY_CARD_LABEL}>Beneficio</p>
-          <p className={sale.profit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE}>{money(sale.profit)}</p>
+          <p className={sale.profit >= 0 ? SUMMARY_VALUE_PROFIT_POS : SUMMARY_VALUE_NEGATIVE}>
+            {money(sale.profit)}
+          </p>
         </article>
       </section>
+
+      {!isReverted && !sale.isImported && !looksMispriced ? (
+        <p className="text-center text-xs text-slate-500">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              void handleRecalculateFromBuild();
+            }}
+            className="underline decoration-slate-600 underline-offset-2 hover:text-slate-300 disabled:opacity-50"
+          >
+            Recalcular precio, coste y beneficio desde el montaje
+          </button>
+        </p>
+      ) : null}
 
       <section className={SECTION_SHELL}>
         <h2 className="text-lg font-semibold text-slate-100">
@@ -277,7 +353,7 @@ export function SaleDetailPage() {
         <p className="mt-1 text-sm text-slate-400">
           {isReverted
             ? "La venta revertida se conserva en el historial; no se puede editar."
-            : "Modifica cliente, precio o condiciones. El beneficio se recalcula si cambias el precio final."}
+            : "Modifica cliente, precio total o condiciones. El beneficio se recalcula como precio total − coste."}
         </p>
 
         <form onSubmit={handleSave} className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -310,7 +386,7 @@ export function SaleDetailPage() {
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-            Precio final (EUR)
+            Precio total de venta (EUR)
             <input
               value={editPrice}
               onChange={(e) => setEditPrice(e.target.value)}

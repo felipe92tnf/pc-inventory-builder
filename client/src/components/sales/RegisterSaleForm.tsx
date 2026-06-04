@@ -9,6 +9,8 @@ import { SECTION_SHELL } from "../../theme/layoutDensity";
 type RegisterSaleFormProps = {
   buildId: string;
   suggestedSalePrice: number;
+  /** Reserva o anticipo ya cobrado (solo informativo en el formulario). */
+  amountAlreadyPaid?: number;
   disabled?: boolean;
   onSuccess: (sale: SaleDetail) => void;
   /** "card" = seccion completa; "plain" = solo formulario (p. ej. dentro de un modal) */
@@ -27,6 +29,7 @@ type RegisterSaleFormProps = {
 export function RegisterSaleForm({
   buildId,
   suggestedSalePrice,
+  amountAlreadyPaid = 0,
   disabled,
   onSuccess,
   variant = "card",
@@ -46,6 +49,12 @@ export function RegisterSaleForm({
   const [notes, setNotes] = useState("");
   const [pendingPickup, setPendingPickup] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const paidShown = Math.max(0, Math.round(amountAlreadyPaid * 100) / 100);
+  const pendingShown = Math.max(
+    0,
+    Math.round((suggestedSalePrice - paidShown) * 100) / 100
+  );
 
   useEffect(() => {
     setFinalPrice(suggestedSalePrice.toFixed(2));
@@ -102,8 +111,26 @@ export function RegisterSaleForm({
         />
       </div>
 
+      {paidShown > 0.005 ? (
+        <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/25 px-3 py-2 text-sm text-cyan-100/90 md:col-span-2">
+          <p>
+            <span className="font-medium text-cyan-100">Precio total del montaje:</span>{" "}
+            {suggestedSalePrice.toFixed(2)} EUR
+          </p>
+          <p className="mt-1">
+            <span className="font-medium text-cyan-100">Ya cobrado (reserva/anticipo):</span>{" "}
+            {paidShown.toFixed(2)} EUR ·{" "}
+            <span className="font-medium text-cyan-100">Pendiente al cobrar:</span>{" "}
+            {pendingShown.toFixed(2)} EUR
+          </p>
+          <p className="mt-1 text-xs text-cyan-200/70">
+            El precio de venta registrado es el total del montaje; la reserva no lo reduce.
+          </p>
+        </div>
+      ) : null}
+
       <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-        Precio final de venta (EUR)
+        Precio total de venta (EUR)
         <input
           value={finalPrice}
           onChange={(e) => setFinalPrice(e.target.value)}
@@ -112,7 +139,9 @@ export function RegisterSaleForm({
           className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
         />
         <span className="text-xs font-normal text-slate-500">
-          Por defecto: precio de venta del montaje ({suggestedSalePrice.toFixed(2)} EUR).
+          {paidShown > 0.005
+            ? `Total del montaje (${suggestedSalePrice.toFixed(2)} EUR). Editable si acordaste otro importe final.`
+            : `Por defecto: precio de venta del montaje (${suggestedSalePrice.toFixed(2)} EUR).`}
         </span>
       </label>
 

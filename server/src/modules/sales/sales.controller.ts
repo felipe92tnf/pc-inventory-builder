@@ -6,6 +6,7 @@ import * as salesService from "./sales.service.js";
 import * as salesImportService from "./sales.import.service.js";
 import * as salesImportRevert from "./sales.import.revert.service.js";
 import * as salesRevertService from "./sales.revert.service.js";
+import { normalizeSaleStatus } from "./sales.status.js";
 
 const uploadSalesImport = multer({
   storage: multer.memoryStorage(),
@@ -67,8 +68,12 @@ function serializeSale(sale: SaleWithUnknownBuild) {
   const { build, ...rest } = sale;
   const base = {
     ...rest,
-    status: sale.status,
+    status: normalizeSaleStatus(sale.status),
     finalSalePrice: Number(sale.finalSalePrice),
+    amountPaidAtSale:
+      sale.amountPaidAtSale === null || sale.amountPaidAtSale === undefined
+        ? null
+        : Number(sale.amountPaidAtSale),
     totalCost: Number(sale.totalCost),
     profit: Number(sale.profit),
     revertedAt:
@@ -153,6 +158,10 @@ function mapSaleError(error: unknown, res: Response) {
   }
   if (error.message === "SALE_NOT_ACTIVE") {
     res.status(409).json({ message: "Solo se pueden revertir ventas activas." });
+    return true;
+  }
+  if (error.message === "SALE_IMPORTED_LOCKED") {
+    res.status(409).json({ message: "No se puede recalcular una venta importada." });
     return true;
   }
 
@@ -326,6 +335,22 @@ export async function revertSaleHandler(req: Request, res: Response) {
     const data = await salesRevertService.revertSale(id);
     if (!data) {
       res.status(500).json({ message: "Sale revert failed" });
+      return;
+    }
+    res.json(serializeSale(data));
+  } catch (error) {
+    if (!mapSaleError(error, res)) {
+      throw error;
+    }
+  }
+}
+
+export async function recalculateSaleFromBuildHandler(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id);
+    const data = await salesService.recalculateSaleFromBuild(id);
+    if (!data) {
+      res.status(500).json({ message: "Sale recalculation failed" });
       return;
     }
     res.json(serializeSale(data));

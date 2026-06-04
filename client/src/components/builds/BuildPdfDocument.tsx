@@ -3,19 +3,16 @@
  * (misma paleta que presupuestos), sin importar `QuotePdfDocument`.
  */
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import {
+  PDF_BRAND_NAME,
+  PDF_BRAND_SLOGAN,
+  pdfBusinessContactFooterLine
+} from "../../constants/pdfBusinessInfo";
 import type { BuildDetail, BuildExtraLine, BuildItem, BuildStatus } from "../../types/build";
 
-const PDF_BUSINESS_NAME = "SecondByte";
-/** Cabecera del PDF (marca). */
-const PDF_HEADER_SLOGAN = "Tecnología que te conecta";
+const PDF_BUSINESS_NAME = PDF_BRAND_NAME;
 /** Pie y tono comercial para el cliente. */
 const PDF_CLIENT_TAGLINE = "Tecnología y montaje de equipos";
-
-const CLIENT_PDF_SOCIAL = {
-  whatsapp: "+34 600 000 000",
-  instagram: "@secondbyte",
-  email: "contacto@secondbyte.es"
-} as const;
 
 const STATUS_BADGE: Record<
   BuildStatus,
@@ -728,20 +725,7 @@ function PendingPaymentSummaryBlock({
   );
 }
 
-function clientPdfSocialLine(): string | null {
-  const parts: string[] = [];
-  const wa = String(CLIENT_PDF_SOCIAL.whatsapp).trim();
-  const ig = String(CLIENT_PDF_SOCIAL.instagram).trim();
-  const em = String(CLIENT_PDF_SOCIAL.email).trim();
-  if (wa) parts.push(`WhatsApp ${wa}`);
-  if (ig) parts.push(`Instagram ${ig}`);
-  if (em) parts.push(em);
-  if (parts.length === 0) return null;
-  return parts.join(" · ");
-}
-
 function FooterBlock() {
-  const socialLine = clientPdfSocialLine();
   return (
     <View style={styles.footer} fixed>
       <View style={styles.footerMainRow}>
@@ -754,7 +738,7 @@ function FooterBlock() {
           render={({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}`}
         />
       </View>
-      {socialLine ? <Text style={styles.footerSocials}>{socialLine}</Text> : null}
+      <Text style={styles.footerSocials}>{pdfBusinessContactFooterLine()}</Text>
       <Text style={styles.footerLegal}>Documento informativo. No constituye factura.</Text>
     </View>
   );
@@ -793,7 +777,7 @@ export function BuildPdfDocument({ build }: BuildPdfDocumentProps) {
           <SecondByteLogoMark />
           <View style={styles.brandBlock}>
             <Text style={styles.brandName}>{PDF_BUSINESS_NAME}</Text>
-            <Text style={styles.brandSlogan}>{PDF_HEADER_SLOGAN}</Text>
+            <Text style={styles.brandSlogan}>{PDF_BRAND_SLOGAN}</Text>
           </View>
         </View>
         <View style={styles.headerDocCol}>

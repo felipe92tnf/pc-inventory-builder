@@ -9,6 +9,7 @@ import { PRIMARY_ACTION_BUTTON } from "../theme/actionButtons";
 import { SUMMARY_CARD_GRID_THREE, SUMMARY_CARD_LABEL, SUMMARY_CARD_SHELL, SUMMARY_VALUE_NEGATIVE, SUMMARY_VALUE_NEUTRAL, SUMMARY_VALUE_PROFIT_POS, SUMMARY_VALUE_REVENUE } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, saleStatusVariant } from "../components/ui/StatusBadge";
+import { isRevertedSale } from "../utils/salesStats";
 function money(n) {
     return `${n.toFixed(2)} EUR`;
 }
@@ -81,7 +82,7 @@ export function SaleDetailPage() {
         }
     };
     const handleRevertSale = async () => {
-        if (!sale || sale.status === "REVERTED")
+        if (!sale || isRevertedSale(sale))
             return;
         const ok = window.confirm("Revertir esta venta?\n\n- Se restaurara el stock de las piezas\n- El montaje volvera a listo para la venta\n- La venta quedara en historial como revertida (no se borra)\n- Dejara de contar en ingresos y beneficios");
         if (!ok)
@@ -106,7 +107,7 @@ export function SaleDetailPage() {
         return (_jsxs("section", { className: SECTION_SHELL, children: [_jsx("p", { className: "text-sm text-slate-300", children: error ?? "Venta no encontrada." }), _jsx(Link, { to: "/sales", className: "mt-3 inline-flex text-sm font-medium text-indigo-300 hover:text-indigo-200", children: "Volver a ventas" })] }));
     }
     const b = sale.build;
-    const isReverted = sale.status === "REVERTED";
+    const isReverted = isRevertedSale(sale);
     return (_jsxs("div", { className: PAGE_OUTER_7XL, children: [_jsxs("section", { className: PAGE_HERO, children: [_jsxs("div", { className: "flex flex-wrap items-start justify-between gap-2.5", children: [_jsxs("div", { children: [_jsxs("h1", { className: "text-2xl font-bold tracking-tight", children: ["Venta \u00B7 ", b.name] }), _jsxs("p", { className: "mt-1 text-sm text-slate-300", children: ["Cliente: ", _jsx("span", { className: "font-medium text-slate-100", children: sale.customerName })] })] }), isReverted ? (_jsx(StatusBadge, { variant: saleStatusVariant("REVERTED"), size: "detail", children: "Venta revertida" })) : sale.pickupConfirmedAt == null ? (_jsx(StatusBadge, { variant: "pending", size: "detail", children: "Cobrado \u00B7 pendiente de recogida" })) : (_jsx(StatusBadge, { variant: "sold", size: "detail", children: "Entregado" }))] }), _jsxs("div", { className: "mt-4 flex flex-wrap gap-2", children: [_jsx(Link, { to: "/sales", className: "rounded-full border border-slate-600 bg-slate-950/60 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800", children: "Ventas" }), _jsx(Link, { to: `/builds/${b.id}`, className: "rounded-full border border-slate-600 bg-slate-950/60 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800", children: "Montaje" }), _jsx(CustomerProfileLink, { customerName: sale.customerName, customerPhone: sale.customerPhone, className: "rounded-full border border-slate-600 bg-slate-950/60 px-3 py-1 text-xs font-medium text-indigo-200 hover:bg-slate-800", children: "Ficha cliente" }), sale.paymentMethod ? (_jsx(StatusBadge, { variant: "meta", size: "detail", className: "font-medium", children: sale.paymentMethod })) : null, sale.warrantyMonths != null ? (_jsxs(StatusBadge, { variant: "completed", size: "detail", className: "font-medium", children: ["Garantia ", sale.warrantyMonths, " meses"] })) : null] })] }), error ? (_jsxs("div", { className: "rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200", children: [error, _jsx("button", { type: "button", onClick: () => {
                             void reload();
                         }, className: "ml-3 rounded-lg border border-rose-700 px-2 py-1 text-xs font-semibold text-rose-100", children: "Reintentar" })] })) : null, isReverted ? (_jsxs("section", { className: "rounded-xl border border-rose-800/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-100", children: [_jsx("p", { className: "font-medium", children: "Esta venta fue revertida." }), _jsxs("p", { className: "mt-1 text-rose-200/90", children: ["No cuenta en ingresos ni beneficios. El montaje quedo disponible para vender de nuevo.", sale.revertedAt
