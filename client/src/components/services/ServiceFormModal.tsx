@@ -26,6 +26,7 @@ import {
   newConceptLine,
   templateLinesFromService
 } from "../../utils/serviceConceptLines";
+import { customerFieldToForm, customerFieldsToApi } from "../../utils/customerUi";
 import {
   PRIMARY_ACTION_BUTTON,
   SECONDARY_BUTTON_SM,
@@ -188,9 +189,9 @@ export function ServiceFormModal({
       setTitle(svc.title);
       setCustomerFields({
         customerId: svc.customerId ?? null,
-        customerName: svc.customerName,
-        customerPhone: svc.customerPhone,
-        customerEmail: svc.customerEmail ?? ""
+        customerName: customerFieldToForm(svc.customerName),
+        customerPhone: customerFieldToForm(svc.customerPhone),
+        customerEmail: ""
       });
       setDescription(svc.description ?? "");
       const loadedLines = linesFromService(svc);
@@ -288,23 +289,26 @@ export function ServiceFormModal({
     });
   };
 
-  const buildBasePayload = () => ({
-    title: title.trim(),
-    customerId: customerFields.customerId,
-    customerName: customerFields.customerName.trim(),
-    customerPhone: customerFields.customerPhone.trim(),
-    customerEmail: customerFields.customerEmail.trim() || null,
-    description: description.trim(),
-    isHomeService,
-    homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
-    homeServiceSupplement: null,
-    serviceDate: new Date(serviceDate).toISOString(),
-    paymentMethod: paymentMethod.trim() || null,
-    notes: notes.trim() || null,
-    manualLines: conceptLinesToPayload(conceptLines),
-    extraLines: templateLines.length > 0 ? templateLines : undefined,
-    costPrice: totalCost
-  });
+  const buildBasePayload = () => {
+    const customer = customerFieldsToApi(customerFields);
+    return {
+      title: title.trim(),
+      customerId: customer.customerId,
+      customerName: customer.customerName,
+      customerPhone: customer.customerPhone,
+      customerEmail: customer.customerEmail,
+      description: description.trim(),
+      isHomeService,
+      homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
+      homeServiceSupplement: null,
+      serviceDate: new Date(serviceDate).toISOString(),
+      paymentMethod: paymentMethod.trim() || null,
+      notes: notes.trim() || null,
+      manualLines: conceptLinesToPayload(conceptLines),
+      extraLines: templateLines.length > 0 ? templateLines : undefined,
+      costPrice: totalCost
+    };
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();

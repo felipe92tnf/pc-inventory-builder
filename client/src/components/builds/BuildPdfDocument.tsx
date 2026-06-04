@@ -758,7 +758,6 @@ export function BuildPdfDocument({ build }: BuildPdfDocumentProps) {
   const clientRowsAll: { label: string; value: string }[] = [
     { label: "Nombre", value: dashIfEmpty(build.customerName) },
     { label: "Teléfono", value: dashIfEmpty(build.customerPhone) },
-    { label: "Email", value: dashIfEmpty(build.customerEmail) }
   ];
   const clientRows = clientRowsAll.filter((row) => row.value !== "—");
 

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import * as extraTemplatesApi from "../api/extraTemplates";
 import * as servicesApi from "../api/services";
 import { useParts } from "../hooks/useParts";
+import { ServiceDetailAccordion } from "../components/services/ServiceDetailAccordion";
 import { ServiceConceptLinesSection } from "../components/services/ServiceConceptLinesSection";
 import { ServiceSparePartsSection, type SpareLineDraft } from "../components/services/ServiceSparePartsSection";
 import { CustomerPicker } from "../components/customers/CustomerPicker";
@@ -20,6 +21,17 @@ import {
   newConceptLine,
   templateLinesFromService
 } from "../utils/serviceConceptLines";
+import {
+  customerFieldToForm,
+  customerFieldsToApi,
+  formatCustomerSubtitle
+} from "../utils/customerUi";
+import {
+  displayServiceTitle,
+  serviceTitleForApi,
+  serviceTitleToForm
+} from "../utils/serviceUi";
+import { computeSpareSalePriceFromInventory } from "../utils/sparePartSalePrice";
 import { downloadServicePdf } from "../utils/servicePdfExport";
 import {
   PRIMARY_ACTION_BUTTON,
@@ -43,7 +55,13 @@ const SERVICE_PAGE_SHELL =
   "mx-auto w-full max-w-7xl space-y-3 px-2 pb-5 text-slate-100 md:space-y-3.5 md:px-4";
 
 const SERVICE_SECTION =
-  "rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/30 md:p-4";
+  "rounded-xl border border-slate-800/90 bg-slate-900/70 p-2.5 shadow-sm shadow-slate-950/20 md:p-3";
+
+const FIELD_LABEL = "text-xs font-medium text-slate-400";
+
+function isSparePartSaleType(type: ServiceType): boolean {
+  return type === "SPARE_PART_SALE";
+}
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   SPARE_PART_SALE: "Venta de pieza suelta",
@@ -99,12 +117,12 @@ function syncFromService(service: ServiceRow) {
 
   return {
     formType: service.type,
-    title: service.title ?? "",
+    title: serviceTitleToForm(service.title),
     customerFields: {
       customerId: service.customerId ?? null,
-      customerName: service.customerName,
-      customerPhone: service.customerPhone,
-      customerEmail: service.customerEmail ?? ""
+      customerName: customerFieldToForm(service.customerName),
+      customerPhone: customerFieldToForm(service.customerPhone),
+      customerEmail: ""
     } satisfies CustomerFieldValue,
     description: service.description ?? "",
     notes: service.notes ?? "",
@@ -161,6 +179,8 @@ export function ServiceDetailPage() {
   const [spareSalePrice, setSpareSalePrice] = useState<number | "">("");
 
   const syncedIdRef = useRef<string | null>(null);
+  const spareSalePriceManualRef = useRef(false);
+  const spareLinesKeyRef = useRef("");
 
   const reload = useCallback(async () => {
     if (!serviceId) return;
@@ -213,6 +233,17 @@ export function ServiceDetailPage() {
     setSpareSalePrice(s.spareSalePrice);
   }, [service]);
 
+  useEffect(() => {
+    if (!isSparePartSaleType(formType)) return;
+    const key = spareLines.map((l) => `${l.partId}:${l.quantity}`).join("|");
+    if (key !== spareLinesKeyRef.current) {
+      spareLinesKeyRef.current = key;
+      spareSalePriceManualRef.current = false;
+    }
+    if (spareSalePriceManualRef.current) return;
+    setSpareSalePrice(computeSpareSalePriceFromInventory(spareLines, parts));
+  }, [formType, spareLines, parts]);
+
   const conceptCost = useMemo(() => linesCostTotal(conceptLines), [conceptLines]);
   const conceptSale = useMemo(() => linesSaleTotal(conceptLines), [conceptLines]);
   const spareInventoryCost = useMemo(() => {
@@ -242,21 +273,37 @@ export function ServiceDetailPage() {
   const profit = totalSale - totalCost;
   const conceptCount = conceptLines.filter((l) => l.name.trim()).length;
 
-  const lockedSpareParts = service?.status === "COMPLETED" && service.type === "SPARE_PART_SALE";
+  const isCompleted = service?.status === "COMPLETED";
+  const lockedSpareParts = isCompleted && service?.type === "SPARE_PART_SALE";
+  const isSpareSale = isSparePartSaleType(formType);
+  const fieldsLocked = isCompleted;
 
-  const headerClient = [customerFields.customerName.trim(), customerFields.customerPhone.trim()]
-    .filter(Boolean)
-    .join(" · ");
+  const headerClient = formatCustomerSubtitle(
+    customerFields.customerName,
+    customerFields.customerPhone
+  );
 
   const buildPatch = (): PatchServicePayload => {
+    const customer = customerFieldsToApi(customerFields);
+    if (isCompleted) {
+      return {
+        title: serviceTitleForApi(title),
+        customerId: customer.customerId,
+        customerName: customer.customerName,
+        customerPhone: customer.customerPhone,
+        customerEmail: customer.customerEmail,
+        paymentMethod: paymentMethod.trim() || null,
+        notes: notes.trim() || null
+      };
+    }
     const manual = conceptLinesToPayload(conceptLines);
     const patch: PatchServicePayload = {
       type: formType,
-      title: title.trim(),
-      customerId: customerFields.customerId,
-      customerName: customerFields.customerName.trim(),
-      customerPhone: customerFields.customerPhone.trim(),
-      customerEmail: customerFields.customerEmail.trim() || null,
+      title: serviceTitleForApi(title),
+      customerId: customer.customerId,
+      customerName: customer.customerName,
+      customerPhone: customer.customerPhone,
+      customerEmail: customer.customerEmail,
       description: description.trim(),
       isHomeService,
       homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
@@ -271,7 +318,7 @@ export function ServiceDetailPage() {
     if (templateLines && templateLines.length > 0) {
       patch.extraLines = templateLines;
     }
-    if (formType === "SPARE_PART_SALE" && !lockedSpareParts) {
+    if (formType === "SPARE_PART_SALE") {
       const lines = spareLines
         .filter((l) => l.partId.trim() && l.quantity >= 1)
         .map((l) => ({ partId: l.partId.trim(), quantity: l.quantity }));
@@ -284,20 +331,22 @@ export function ServiceDetailPage() {
 
   const handleSave = async (): Promise<boolean> => {
     if (!service) return false;
-    const manual = conceptLinesToPayload(conceptLines);
-    if (formType !== "SPARE_PART_SALE" && manual.length === 0 && (templateLines?.length ?? 0) === 0) {
-      window.alert("Añade al menos un concepto de servicio.");
-      return false;
-    }
-    if (formType === "SPARE_PART_SALE") {
-      const lines = spareLines.filter((l) => l.partId.trim() && l.quantity >= 1);
-      if (lines.length === 0) {
-        window.alert("Añade al menos una pieza.");
+    if (!isCompleted) {
+      const manual = conceptLinesToPayload(conceptLines);
+      if (formType !== "SPARE_PART_SALE" && manual.length === 0 && (templateLines?.length ?? 0) === 0) {
+        window.alert("Añade al menos un concepto de servicio.");
         return false;
       }
-      if (typeof spareSalePrice !== "number" || spareSalePrice < 0) {
-        window.alert("Indica el precio de venta de las piezas.");
-        return false;
+      if (formType === "SPARE_PART_SALE") {
+        const lines = spareLines.filter((l) => l.partId.trim() && l.quantity >= 1);
+        if (lines.length === 0) {
+          window.alert("Añade al menos una pieza.");
+          return false;
+        }
+        if (typeof spareSalePrice !== "number" || spareSalePrice < 0) {
+          window.alert("Indica el precio de venta de las piezas.");
+          return false;
+        }
       }
     }
     setActionLoading(true);
@@ -327,7 +376,26 @@ export function ServiceDetailPage() {
       setService(updated);
       syncedIdRef.current = null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo completar.");
+      setError(err instanceof Error ? err.message : "No se pudo completar el servicio.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRevert = async () => {
+    if (!service || service.status !== "COMPLETED") return;
+    const ok = window.confirm(
+      "¿Seguro que quieres revertir este servicio? Se devolverá el stock y podrás editarlo de nuevo."
+    );
+    if (!ok) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      const updated = await servicesApi.revertService(service.id);
+      setService(updated);
+      syncedIdRef.current = null;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo revertir el servicio.");
     } finally {
       setActionLoading(false);
     }
@@ -411,11 +479,18 @@ export function ServiceDetailPage() {
         </div>
       ) : null}
 
+      {isCompleted ? (
+        <section className="rounded-xl border border-cyan-700/50 bg-cyan-950/30 px-4 py-3 text-sm text-cyan-100">
+          Este servicio está completado. Para cambiar piezas, cantidades, precios o conceptos, usa «Revertir servicio»,
+          edita y vuelve a completar. Mientras tanto solo puedes ajustar título, cliente, teléfono, forma de pago y notas.
+        </section>
+      ) : null}
+
       <header className={`${PAGE_HEADER_COMPACT} !py-2.5 sm:!py-3`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0 flex-1 space-y-1">
             <HeaderTitleRow
-              title={title.trim() || "Servicio"}
+              title={displayServiceTitle(title)}
               status={status}
               headerClient={headerClient}
             />
@@ -437,6 +512,16 @@ export function ServiceDetailPage() {
                 className={PRIMARY_ACTION_BUTTON}
               >
                 Completar
+              </button>
+            ) : null}
+            {status === "COMPLETED" ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void handleRevert()}
+                className={SECONDARY_BUTTON_SM}
+              >
+                Revertir servicio
               </button>
             ) : null}
             <button
@@ -463,19 +548,25 @@ export function ServiceDetailPage() {
       </header>
 
       <section className={SERVICE_SECTION}>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          Informacion
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          {isSpareSale ? "Venta rapida" : "Orden de trabajo"}
         </h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <label className={`flex flex-col gap-1 sm:col-span-2 ${FIELD_LABEL}`}>
             Titulo del servicio
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className={FIELD} />
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className={FIELD}
+              placeholder="Ej: Limpieza PC, venta RAM…"
+            />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <label className={`flex flex-col gap-1 ${FIELD_LABEL}`}>
             Tipo
             <select
               value={formType}
               onChange={(e) => setFormType(e.target.value as ServiceType)}
+              disabled={fieldsLocked}
               className={FIELD}
             >
               {SERVICE_TYPES.map((t) => (
@@ -485,11 +576,12 @@ export function ServiceDetailPage() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <label className={`flex flex-col gap-1 ${FIELD_LABEL}`}>
             Estado
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as ServiceStatus)}
+              disabled={fieldsLocked}
               className={FIELD}
             >
               {(["PENDING", "COMPLETED", "CANCELLED"] as const).map((s) => (
@@ -499,16 +591,17 @@ export function ServiceDetailPage() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <label className={`flex flex-col gap-1 ${FIELD_LABEL}`}>
             Fecha
             <input
               type="date"
               value={serviceDate}
               onChange={(e) => setServiceDate(e.target.value)}
+              disabled={fieldsLocked}
               className={FIELD}
             />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <label className={`flex flex-col gap-1 ${FIELD_LABEL}`}>
             Forma de pago
             <input
               value={paymentMethod}
@@ -517,17 +610,20 @@ export function ServiceDetailPage() {
               placeholder="Efectivo, Bizum…"
             />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
-            Descripcion
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className={FIELD}
-            />
-          </label>
-          {isHomeService ? (
-            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
+          {!isSpareSale ? (
+            <label className={`flex flex-col gap-1 sm:col-span-2 ${FIELD_LABEL}`}>
+              Descripcion (opcional)
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                disabled={fieldsLocked}
+                className={FIELD}
+              />
+            </label>
+          ) : null}
+          {!isSpareSale && isHomeService ? (
+            <label className={`flex flex-col gap-1 sm:col-span-2 ${FIELD_LABEL}`}>
               Direccion domicilio
               <input
                 value={homeServiceAddress}
@@ -536,45 +632,65 @@ export function ServiceDetailPage() {
               />
             </label>
           ) : null}
-          <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
-            Notas internas
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={FIELD} />
-          </label>
         </div>
       </section>
 
       <section className={SERVICE_SECTION}>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Cliente</h2>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Cliente</h2>
         <CustomerPicker value={customerFields} onChange={setCustomerFields} requirePhone />
       </section>
 
-      {formType === "SPARE_PART_SALE" ? (
-        <ServiceSparePartsSection
-          spareLines={spareLines}
-          onLinesChange={setSpareLines}
-          parts={parts}
-          spareSalePrice={spareSalePrice}
-          onSpareSalePriceChange={setSpareSalePrice}
-          locked={lockedSpareParts}
-        />
-      ) : null}
+      {isSpareSale ? (
+        <ServiceDetailAccordion
+          key="spare-parts"
+          title="Pieza de inventario"
+          subtitle="Pieza, cantidad y precio de venta"
+          defaultOpen
+        >
+          <ServiceSparePartsSection
+            embedded
+            spareLines={spareLines}
+            onLinesChange={setSpareLines}
+            parts={parts}
+            spareSalePrice={spareSalePrice}
+            onSpareSalePriceChange={(v) => {
+              spareSalePriceManualRef.current = true;
+              setSpareSalePrice(v);
+            }}
+            locked={lockedSpareParts}
+          />
+        </ServiceDetailAccordion>
+      ) : (
+        <div className={fieldsLocked ? "pointer-events-none opacity-60" : undefined}>
+          <ServiceConceptLinesSection
+            key="technical-lines"
+            lines={conceptLines}
+            onLinesChange={setConceptLines}
+            servicePresets={servicePresets}
+            isHomeService={isHomeService}
+            onHomeServiceChange={setIsHomeService}
+            accordionMode
+            showCatalog
+            showManual
+            showHomeService
+            catalogDefaultOpen
+          />
+        </div>
+      )}
 
-      <section className={SERVICE_SECTION}>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          Servicios y conceptos
-        </h2>
-        <ServiceConceptLinesSection
-          lines={conceptLines}
-          onLinesChange={setConceptLines}
-          servicePresets={servicePresets}
-          isHomeService={isHomeService}
-          onHomeServiceChange={setIsHomeService}
+      <ServiceDetailAccordion key="internal-notes" title="Notas internas" defaultOpen={false}>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+          className={FIELD}
+          placeholder="Solo uso interno…"
         />
-      </section>
+      </ServiceDetailAccordion>
 
-      <div>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Totales</h2>
-        <section className={SUMMARY_CARD_GRID}>
+      <div className="pt-1">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Totales</h2>
+        <section className={isSpareSale ? "grid grid-cols-1 gap-2 sm:grid-cols-3" : SUMMARY_CARD_GRID}>
           <article className={SUMMARY_CARD_SHELL}>
             <p className={SUMMARY_CARD_LABEL}>Coste total</p>
             <p className={SUMMARY_VALUE_NEUTRAL}>{money(totalCost)}</p>
@@ -589,14 +705,13 @@ export function ServiceDetailPage() {
               {money(profit)}
             </p>
           </article>
-          <article className={SUMMARY_CARD_SHELL}>
-            <p className={SUMMARY_CARD_LABEL}>Conceptos</p>
-            <p className={SUMMARY_VALUE_NEUTRAL}>{conceptCount}</p>
-          </article>
+          {!isSpareSale ? (
+            <article className={SUMMARY_CARD_SHELL}>
+              <p className={SUMMARY_CARD_LABEL}>Conceptos</p>
+              <p className={SUMMARY_VALUE_NEUTRAL}>{conceptCount}</p>
+            </article>
+          ) : null}
         </section>
-        <p className="mt-2 text-xs text-slate-500">
-          Los totales se calculan desde las lineas; no hay campos sueltos de precio.
-        </p>
       </div>
     </div>
   );
@@ -609,7 +724,7 @@ function HeaderTitleRow({
 }: {
   title: string;
   status: ServiceStatus;
-  headerClient: string;
+  headerClient: string | null;
 }) {
   return (
     <>

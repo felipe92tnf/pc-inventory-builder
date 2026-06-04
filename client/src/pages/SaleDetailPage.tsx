@@ -17,6 +17,7 @@ import {
 } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, saleStatusVariant } from "../components/ui/StatusBadge";
+import { customerFieldToForm } from "../utils/customerUi";
 import { isRevertedSale } from "../utils/salesStats";
 import {
   buildPricingTotalSale,
@@ -44,7 +45,6 @@ export function SaleDetailPage() {
 
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
-  const [editEmail, setEditEmail] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editPayment, setEditPayment] = useState("");
   const [editWarranty, setEditWarranty] = useState("");
@@ -53,9 +53,8 @@ export function SaleDetailPage() {
 
   useEffect(() => {
     if (!sale) return;
-    setEditName(sale.customerName);
-    setEditPhone(sale.customerPhone);
-    setEditEmail(sale.customerEmail ?? "");
+    setEditName(customerFieldToForm(sale.customerName));
+    setEditPhone(customerFieldToForm(sale.customerPhone));
     setEditPrice(sale.finalSalePrice.toFixed(2));
     setEditPayment(sale.paymentMethod ?? "");
     setEditWarranty(sale.warrantyMonths != null ? String(sale.warrantyMonths) : "");
@@ -79,7 +78,7 @@ export function SaleDetailPage() {
     await updateSale({
       customerName: editName.trim(),
       customerPhone: editPhone.trim(),
-      customerEmail: editEmail.trim() ? editEmail.trim() : null,
+      customerEmail: null,
       finalSalePrice: Math.round(normalized * 100) / 100,
       paymentMethod: editPayment.trim() ? editPayment.trim() : null,
       warrantyMonths:
@@ -371,16 +370,6 @@ export function SaleDetailPage() {
             <input
               value={editPhone}
               onChange={(e) => setEditPhone(e.target.value)}
-              disabled={saving || isReverted}
-              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
-            Email
-            <input
-              type="email"
-              value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
               disabled={saving || isReverted}
               className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />

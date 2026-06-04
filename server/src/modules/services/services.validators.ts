@@ -150,16 +150,7 @@ export const patchServiceSchema = z
     paymentMethod: z.string().optional().nullable(),
     notes: z.string().optional().nullable()
   })
-  .strict()
-  .superRefine((data, ctx) => {
-    if (data.status === ServiceStatus.COMPLETED) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Para marcar como completado usa POST /services/:id/complete",
-        path: ["status"]
-      });
-    }
-  });
+  .strict();
 
 export const listServicesQuerySchema = z
   .object({

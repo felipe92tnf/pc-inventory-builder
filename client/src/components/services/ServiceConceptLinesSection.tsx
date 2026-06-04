@@ -9,6 +9,7 @@ import {
   lineTotal,
   newConceptLine
 } from "../../utils/serviceConceptLines";
+import { ServiceDetailAccordion } from "./ServiceDetailAccordion";
 import {
   DESTRUCTIVE_BUTTON_SM,
   PRIMARY_ACTION_BUTTON_COMPACT,
@@ -38,6 +39,12 @@ export type ServiceConceptLinesSectionProps = {
   isHomeService: boolean;
   onHomeServiceChange: (enabled: boolean) => void;
   disabled?: boolean;
+  /** Acordeones para catálogo / manual (orden de trabajo). */
+  accordionMode?: boolean;
+  showCatalog?: boolean;
+  showManual?: boolean;
+  showHomeService?: boolean;
+  catalogDefaultOpen?: boolean;
 };
 
 export function ServiceConceptLinesSection({
@@ -46,11 +53,16 @@ export function ServiceConceptLinesSection({
   servicePresets,
   isHomeService,
   onHomeServiceChange,
-  disabled = false
+  disabled = false,
+  accordionMode = false,
+  showCatalog = true,
+  showManual = true,
+  showHomeService = true,
+  catalogDefaultOpen = true
 }: ServiceConceptLinesSectionProps) {
   const [presetPickId, setPresetPickId] = useState("");
   const [catalogQuery, setCatalogQuery] = useState("");
-  const [manualOpen, setManualOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(!accordionMode);
   const [manualName, setManualName] = useState("");
   const [manualQty, setManualQty] = useState(1);
   const [manualCost, setManualCost] = useState("");
@@ -134,67 +146,91 @@ export function ServiceConceptLinesSection({
     onLinesChange(ensureHomeDeliveryLine(lines, checked));
   };
 
-  return (
-    <div className="space-y-4">
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-violet-500/30 bg-violet-950/20 px-4 py-3">
-        <input
-          type="checkbox"
-          checked={isHomeService}
-          onChange={(e) => handleHomeToggle(e.target.checked)}
-          disabled={disabled}
-          className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-violet-500"
-        />
-        <span className="text-sm text-slate-200">
-          Servicio a domicilio — añade concepto de 20 EUR (editable en la tabla)
-        </span>
-      </label>
+  const catalogBlock = (
+    <CatalogBlock
+      presetPickId={presetPickId}
+      setPresetPickId={setPresetPickId}
+      catalogQuery={catalogQuery}
+      setCatalogQuery={setCatalogQuery}
+      filteredPresets={filteredPresets}
+      servicePresets={servicePresets}
+      disabled={disabled}
+      plain={accordionMode}
+      onAddPreset={(preset) => {
+        addPreset(preset);
+        setPresetPickId("");
+      }}
+    />
+  );
 
-      <CatalogBlock
-        presetPickId={presetPickId}
-        setPresetPickId={setPresetPickId}
-        catalogQuery={catalogQuery}
-        setCatalogQuery={setCatalogQuery}
-        filteredPresets={filteredPresets}
-        servicePresets={servicePresets}
+  const manualBlock = (
+    <ManualConceptGrid
+      manualName={manualName}
+      setManualName={setManualName}
+      manualQty={manualQty}
+      setManualQty={setManualQty}
+      manualCost={manualCost}
+      setManualCost={setManualCost}
+      manualSale={manualSale}
+      setManualSale={setManualSale}
+      disabled={disabled}
+      onAdd={addManualLine}
+    />
+  );
+
+  const homeBlock = showHomeService ? (
+    <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-violet-500/25 bg-violet-950/15 px-3 py-2.5">
+      <input
+        type="checkbox"
+        checked={isHomeService}
+        onChange={(e) => handleHomeToggle(e.target.checked)}
         disabled={disabled}
-        onAddPreset={(preset) => {
-          addPreset(preset);
-          setPresetPickId("");
-        }}
+        className="h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-950 text-violet-500"
       />
+      <span className="text-sm text-slate-200">
+        Servicio a domicilio <span className="text-slate-500">(+20 EUR en líneas)</span>
+      </span>
+    </label>
+  ) : null;
 
-      <div className="rounded-xl border border-slate-800 bg-slate-950/40">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setManualOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-200"
+  return (
+    <div className="space-y-3">
+      {homeBlock}
+
+      {showCatalog && accordionMode ? (
+        <ServiceDetailAccordion
+          title="Catálogo de servicios"
+          subtitle="Añade servicios predefinidos"
+          defaultOpen={catalogDefaultOpen}
         >
-          + Añadir concepto manual
-          <span className="text-slate-500">{manualOpen ? "▲" : "▼"}</span>
-        </button>
-        {manualOpen ? (
-          <div className="border-t border-slate-800 px-4 pb-4 pt-3">
-            <ManualConceptGrid
-              manualName={manualName}
-              setManualName={setManualName}
-              manualQty={manualQty}
-              setManualQty={setManualQty}
-              manualCost={manualCost}
-              setManualCost={setManualCost}
-              manualSale={manualSale}
-              setManualSale={setManualSale}
-              disabled={disabled}
-              onAdd={addManualLine}
-            />
-          </div>
-        ) : null}
-      </div>
+          {catalogBlock}
+        </ServiceDetailAccordion>
+      ) : showCatalog ? (
+        catalogBlock
+      ) : null}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/40">
-        <div className="border-b border-slate-800 px-3 py-2 md:px-4">
-          <h3 className="text-sm font-semibold text-slate-100">Conceptos del servicio</h3>
-          <p className="mt-0.5 text-xs text-slate-500">Edita cantidades y precios; el total se calcula automáticamente.</p>
+      {showManual && accordionMode ? (
+        <ServiceDetailAccordion title="Conceptos manuales" subtitle="Líneas personalizadas" defaultOpen={false}>
+          {manualBlock}
+        </ServiceDetailAccordion>
+      ) : showManual ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setManualOpen((v) => !v)}
+            className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-semibold text-slate-200"
+          >
+            + Añadir concepto manual
+            <span className="text-slate-500">{manualOpen ? "▲" : "▼"}</span>
+          </button>
+          {manualOpen ? <div className="border-t border-slate-800 px-3 pb-3 pt-2">{manualBlock}</div> : null}
+        </div>
+      ) : null}
+
+      <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60">
+        <div className="border-b border-slate-800/80 px-3 py-2">
+          <h3 className="text-sm font-semibold text-slate-100">Líneas del servicio</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm text-slate-200">
@@ -295,6 +331,7 @@ function CatalogBlock({
   filteredPresets,
   servicePresets,
   disabled,
+  plain,
   onAddPreset
 }: {
   presetPickId: string;
@@ -304,14 +341,17 @@ function CatalogBlock({
   filteredPresets: ExtraTemplate[];
   servicePresets: ExtraTemplate[];
   disabled: boolean;
+  plain?: boolean;
   onAddPreset: (preset: ExtraTemplate) => void;
 }) {
   return (
-    <div className="rounded-xl border border-indigo-500/25 bg-indigo-950/20 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200/80">
-        Catálogo de servicios
-      </p>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+    <div className={plain ? "space-y-2" : "rounded-xl border border-indigo-500/25 bg-indigo-950/20 p-3"}>
+      {!plain ? (
+        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200/80">
+          Catálogo de servicios
+        </p>
+      ) : null}
+      <div className={`flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end ${plain ? "" : "mt-2"}`}>
         <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs font-medium text-slate-400">
           Buscar
           <input

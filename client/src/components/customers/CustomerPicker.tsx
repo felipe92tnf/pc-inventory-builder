@@ -68,7 +68,7 @@ export function CustomerPicker({
 
   const scheduleSearch = (parts: Partial<CustomerFieldValue>) => {
     const merged = { ...value, ...parts };
-    const q = [merged.customerName, merged.customerPhone, merged.customerEmail].filter(Boolean).join(" ");
+    const q = [merged.customerName, merged.customerPhone].filter(Boolean).join(" ");
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => void search(q), 280);
   };
@@ -78,7 +78,7 @@ export function CustomerPicker({
       customerId: row.id,
       customerName: row.name,
       customerPhone: row.phone,
-      customerEmail: row.email ?? ""
+      customerEmail: ""
     });
     setOpen(false);
     setSuggestions([]);
@@ -105,13 +105,13 @@ export function CustomerPicker({
       const row = await customersApi.createCustomer({
         name,
         phone: value.customerPhone.trim(),
-        email: value.customerEmail.trim() || null
+        email: null
       });
       onChange({
         customerId: row.id,
         customerName: row.name,
         customerPhone: row.phone,
-        customerEmail: row.email ?? ""
+        customerEmail: ""
       });
       setShowQuickCreate(false);
       setOpen(false);
@@ -165,7 +165,7 @@ export function CustomerPicker({
                 else void search(value.customerName);
               }}
               className={inputClass}
-              placeholder="Nombre del cliente"
+              placeholder="Selecciona o añade un cliente"
               required={requireName}
               autoComplete="off"
             />
@@ -187,22 +187,11 @@ export function CustomerPicker({
               autoComplete="off"
             />
           </div>
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs text-slate-500">Email</label>
-            <input
-              type="email"
-              value={value.customerEmail}
-              onChange={(e) => onChange({ ...value, customerId: null, customerEmail: e.target.value })}
-              className={inputClass}
-              placeholder="opcional@email.com"
-              autoComplete="off"
-            />
-          </div>
         </div>
 
         <datalist id={listId}>
           {suggestions.map((s) => (
-            <option key={s.id} value={s.name} label={`${s.phone}${s.email ? ` · ${s.email}` : ""}`} />
+            <option key={s.id} value={s.name} label={s.phone || s.name} />
           ))}
         </datalist>
 
@@ -221,10 +210,7 @@ export function CustomerPicker({
                   onClick={() => selectCustomer(s)}
                 >
                   <span className="font-medium">{s.name}</span>
-                  <span className="text-xs text-slate-400">
-                    {s.phone || "Sin telefono"}
-                    {s.email ? ` · ${s.email}` : ""}
-                  </span>
+                  <span className="text-xs text-slate-400">{s.phone || "Sin telefono"}</span>
                 </button>
               </li>
             ))}

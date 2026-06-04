@@ -715,7 +715,6 @@ export function QuotePdfDocument({ quote }: QuotePdfDocumentProps) {
   const clientRows: { label: string; value: string }[] = [
     { label: "Nombre", value: dashIfEmpty(quote.customerName) },
     { label: "Teléfono", value: dashIfEmpty(quote.customerPhone) },
-    { label: "Email", value: dashIfEmpty(quote.customerEmail) }
   ];
   if (address) {
     clientRows.push({ label: "Dirección", value: address });

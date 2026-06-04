@@ -15,7 +15,8 @@ export function ServiceSparePartsSection({
   parts,
   spareSalePrice,
   onSpareSalePriceChange,
-  locked
+  locked,
+  embedded = false
 }: {
   spareLines: SpareLineDraft[];
   onLinesChange: (lines: SpareLineDraft[]) => void;
@@ -23,6 +24,8 @@ export function ServiceSparePartsSection({
   spareSalePrice: number | "";
   onSpareSalePriceChange: (v: number | "") => void;
   locked: boolean;
+  /** Sin cáscara de sección (dentro de un acordeón). */
+  embedded?: boolean;
 }) {
   const partsForSpare = useMemo(() => parts.filter((p) => isPartPiece(p) && p.stock > 0), [parts]);
 
@@ -61,14 +64,11 @@ export function ServiceSparePartsSection({
     onLinesChange(spareLines.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
   };
 
-  return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-md shadow-slate-950/30 md:p-5">
-      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-        Piezas del inventario
-      </h2>
+  const body = (
+    <>
       {locked ? (
-        <p className="mb-3 text-xs text-slate-500">
-          Las piezas no se modifican en servicios completados; los conceptos y datos sí.
+        <p className="mb-2 text-xs text-slate-500">
+          Servicio completado: revierte el servicio para modificar piezas, cantidades y precio de venta.
         </p>
       ) : null}
       {!locked ? (
@@ -131,8 +131,8 @@ export function ServiceSparePartsSection({
           <span className="font-medium text-slate-300">{inventoryCost.toFixed(2)} EUR</span>
         </p>
       ) : null}
-      <label className={`mt-3 flex flex-col gap-1.5 ${FIELD_LABEL}`}>
-        Precio venta de las piezas (sin conceptos del catálogo)
+      <label className={`mt-3 flex flex-col gap-1 ${embedded ? "text-sm font-medium text-slate-200" : FIELD_LABEL}`}>
+        Precio de venta
         <input
           type="number"
           min={0}
@@ -145,6 +145,17 @@ export function ServiceSparePartsSection({
           className={INPUT}
         />
       </label>
+    </>
+  );
+
+  if (embedded) return <div className="space-y-2">{body}</div>;
+
+  return (
+    <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-md shadow-slate-950/30 md:p-4">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        Piezas del inventario
+      </h2>
+      {body}
     </section>
   );
 }

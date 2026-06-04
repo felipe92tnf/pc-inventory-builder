@@ -79,9 +79,7 @@ export function RegisterSaleForm({
       customerId: customerFields.customerId,
       customerName: name,
       customerPhone: phone,
-      customerEmail: customerFields.customerEmail.trim()
-        ? customerFields.customerEmail.trim()
-        : undefined,
+      customerEmail: null,
       finalSalePrice: Math.round(normalized * 100) / 100,
       paymentMethod: paymentMethod.trim() ? paymentMethod.trim() : undefined,
       warrantyMonths:

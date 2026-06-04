@@ -4,6 +4,8 @@ import * as servicesApi from "../api/services";
 import { useServices } from "../hooks/useServices";
 import type { ServiceRow, ServiceStatus, ServiceType } from "../types/service";
 import { SERVICE_TYPES, SERVICE_STATUSES } from "../types/service";
+import { API_EMPTY_CUSTOMER_MARKER, displayCustomerLabel, isUnsetCustomerValue } from "../utils/customerUi";
+import { API_EMPTY_SERVICE_TITLE_MARKER, displayServiceTitleLabel } from "../utils/serviceUi";
 import { downloadServicePdf } from "../utils/servicePdfExport";
 import {
   PRIMARY_ACTION_BUTTON,
@@ -147,9 +149,9 @@ export function ServicesPage() {
     try {
       const created = await servicesApi.createService({
         type: "DIAGNOSTIC",
-        title: "Nuevo servicio",
-        customerName: "Por definir",
-        customerPhone: "-",
+        title: API_EMPTY_SERVICE_TITLE_MARKER,
+        customerName: API_EMPTY_CUSTOMER_MARKER,
+        customerPhone: API_EMPTY_CUSTOMER_MARKER,
         serviceDate: new Date().toISOString(),
         costPrice: 0,
         salePrice: 0,
@@ -644,8 +646,8 @@ function ServiceTableRow({
     <tr className="transition hover:bg-slate-800/40">
       <td className="whitespace-nowrap px-2 py-2 text-slate-400">{dateStr}</td>
       <td className="max-w-[200px] px-2 py-2">
-        <div className="truncate font-medium text-slate-100" title={s.title}>
-          {s.title}
+        <div className="truncate font-medium text-slate-100" title={displayServiceTitleLabel(s.title)}>
+          {displayServiceTitleLabel(s.title)}
         </div>
         {spareHint ? (
           <div className="truncate text-[10px] text-slate-500" title={spareHint}>
@@ -657,14 +659,16 @@ function ServiceTableRow({
         {SERVICE_LABELS[s.type]}
       </td>
       <td className="max-w-[120px] px-2 py-2 text-slate-300">
-        <div className="truncate font-medium" title={s.customerName}>
-          {s.customerName}
+        <div className="truncate font-medium" title={displayCustomerLabel(s.customerName)}>
+          {displayCustomerLabel(s.customerName)}
         </div>
-        <CustomerProfileLink
-          customerName={s.customerName}
-          customerPhone={s.customerPhone}
-          className="mt-0.5 inline-flex text-[10px]"
-        />
+        {!isUnsetCustomerValue(s.customerName) ? (
+          <CustomerProfileLink
+            customerName={s.customerName}
+            customerPhone={s.customerPhone}
+            className="mt-0.5 inline-flex text-[10px]"
+          />
+        ) : null}
       </td>
       <td className="px-2 py-2">
         <StatusBadge variant={serviceStatusVariant(s.status)} size="table">
@@ -748,7 +752,9 @@ function ServiceCard({
     <article className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 break-words font-semibold text-slate-100">{s.title}</p>
+          <p className="line-clamp-2 break-words font-semibold text-slate-100">
+            {displayServiceTitleLabel(s.title)}
+          </p>
           {spareHint ? (
             <p className="truncate text-[11px] text-slate-500" title={spareHint}>
               {spareHint}
@@ -763,12 +769,14 @@ function ServiceCard({
           {STATUS_LABELS[s.status]}
         </StatusBadge>
       </div>
-      <p className="truncate text-sm text-slate-300">{s.customerName}</p>
-      <CustomerProfileLink
-        customerName={s.customerName}
-        customerPhone={s.customerPhone}
-        className="mt-1 inline-flex text-xs"
-      />
+      <p className="truncate text-sm text-slate-300">{displayCustomerLabel(s.customerName)}</p>
+      {!isUnsetCustomerValue(s.customerName) ? (
+        <CustomerProfileLink
+          customerName={s.customerName}
+          customerPhone={s.customerPhone}
+          className="mt-1 inline-flex text-xs"
+        />
+      ) : null}
       <dl className="mt-3 space-y-1.5 border-t border-slate-800 pt-3 text-sm">
         <div className="flex justify-between gap-3">
           <dt className="shrink-0 text-xs text-slate-500">Coste</dt>

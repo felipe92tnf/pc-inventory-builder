@@ -11,6 +11,7 @@ import { isConfiguratorPart, isPrebuiltPc } from "../types/part";
 import type { AddQuoteItemPayload, PatchQuoteItemPayload, Quote, QuoteItem, QuoteStatus } from "../types/quote";
 import type { ExtraTemplate } from "../types/extraTemplate";
 import { QUOTE_STATUSES } from "../types/quote";
+import { customerFieldToForm, customerFieldsToApi } from "../utils/customerUi";
 import {
   aggregateQuoteFinancials,
   itemLineCostTotal,
@@ -126,9 +127,9 @@ export function QuoteDetailPage() {
   const applyQuoteToForm = useCallback((q: Quote) => {
     setCustomerFields({
       customerId: q.customerId ?? null,
-      customerName: q.customerName,
-      customerPhone: q.customerPhone ?? "",
-      customerEmail: q.customerEmail ?? ""
+      customerName: customerFieldToForm(q.customerName),
+      customerPhone: customerFieldToForm(q.customerPhone),
+      customerEmail: ""
     });
     setTitle(q.title);
     setDescription(q.description ?? "");
@@ -228,11 +229,12 @@ export function QuoteDetailPage() {
     setActionLoading(true);
     setError(null);
     try {
+      const customer = customerFieldsToApi(customerFields);
       await quotesApi.patchQuote(quoteId, {
-        customerId: customerFields.customerId,
-        customerName: customerFields.customerName.trim(),
-        customerPhone: customerFields.customerPhone.trim() || null,
-        customerEmail: customerFields.customerEmail.trim() || null,
+        customerId: customer.customerId,
+        customerName: customer.customerName,
+        customerPhone: customer.customerPhone,
+        customerEmail: customer.customerEmail,
         title: title.trim(),
         description: description.trim() || null,
         validUntil: validUntilDate ? new Date(validUntilDate).toISOString() : null,

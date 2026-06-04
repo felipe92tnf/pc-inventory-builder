@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   addServiceExtraLineHandler,
   completeServiceHandler,
+  revertServiceHandler,
   createServiceHandler,
   deleteServiceExtraLineHandler,
   deleteServiceHandler,
@@ -21,6 +22,7 @@ servicesRouter.get("/:id", getServiceHandler);
 servicesRouter.patch("/:id", patchServiceHandler);
 servicesRouter.delete("/:id", deleteServiceHandler);
 servicesRouter.post("/:id/complete", completeServiceHandler);
+servicesRouter.post("/:id/revert", revertServiceHandler);
 servicesRouter.post("/:id/extra-lines", addServiceExtraLineHandler);
 servicesRouter.patch("/:id/extra-lines/:lineId", patchServiceExtraLineHandler);
 servicesRouter.delete("/:id/extra-lines/:lineId", deleteServiceExtraLineHandler);

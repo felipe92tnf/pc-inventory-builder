@@ -137,7 +137,7 @@ export function QuotesPage() {
         customerId: newCustomer.customerId,
         customerName: newCustomer.customerName.trim(),
         customerPhone: newCustomer.customerPhone.trim() || null,
-        customerEmail: newCustomer.customerEmail.trim() || null,
+        customerEmail: null,
         title: newTitle.trim()
       };
       const created = await quotesApi.createQuote(payload);

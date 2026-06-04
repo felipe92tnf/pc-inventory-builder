@@ -88,11 +88,15 @@ function mapServiceError(error: unknown, res: Response) {
     return true;
   }
   if (msg === "INSUFFICIENT_STOCK") {
-    res.status(400).json({ message: "Stock insuficiente para esta operacion" });
+    res.status(400).json({ message: "No hay stock suficiente" });
     return true;
   }
   if (msg === "SERVICE_ALREADY_COMPLETED") {
     res.status(409).json({ message: "El servicio ya esta completado" });
+    return true;
+  }
+  if (msg === "SERVICE_NOT_ACTIVE_FOR_REVERT") {
+    res.status(400).json({ message: "Solo se puede revertir un servicio completado" });
     return true;
   }
   if (msg === "SERVICE_COMPLETED_STATUS_LOCKED") {
@@ -105,7 +109,13 @@ function mapServiceError(error: unknown, res: Response) {
   }
   if (msg === "SERVICE_COMPLETED_LINES_LOCKED") {
     res.status(400).json({
-      message: "En servicios completados no se pueden cambiar las piezas vendidas; solo datos y precios."
+      message: "En servicios completados no se pueden cambiar piezas, precios ni conceptos."
+    });
+    return true;
+  }
+  if (msg === "USE_COMPLETE_ENDPOINT") {
+    res.status(400).json({
+      message: "Para marcar como completado usa el boton Completar, no cambiar el estado manualmente."
     });
     return true;
   }
@@ -142,6 +152,24 @@ function mapServiceError(error: unknown, res: Response) {
   return false;
 }
 
+function zodValidationMessage(error: ZodError): string {
+  const issue = error.issues[0];
+  if (!issue) {
+    return "Datos invalidos";
+  }
+  const path = issue.path.join(".");
+  if (path.includes("salePrice")) {
+    return "Debes indicar precio de venta";
+  }
+  if (path.includes("sparePartLines") || path.includes("partId")) {
+    return "Debes seleccionar una pieza";
+  }
+  if (path.includes("manualLines")) {
+    return "Añade al menos un concepto de servicio";
+  }
+  return issue.message;
+}
+
 export async function monthlySummaryHandler(_req: Request, res: Response) {
   const data = await servicesService.getMonthlyServicesSummary();
   res.json(data);
@@ -153,7 +181,7 @@ export async function listServicesHandler(req: Request, res: Response) {
     res.json(rows.map((row) => serializeService(row)));
   } catch (error) {
     if (error instanceof ZodError) {
-      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      res.status(400).json({ message: zodValidationMessage(error), issues: error.flatten() });
       return;
     }
     throw error;
@@ -170,7 +198,7 @@ export async function createServiceHandler(req: Request, res: Response) {
     res.status(201).json(serializeService(row));
   } catch (error) {
     if (error instanceof ZodError) {
-      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      res.status(400).json({ message: zodValidationMessage(error), issues: error.flatten() });
       return;
     }
     if (!mapServiceError(error, res)) {
@@ -202,7 +230,7 @@ export async function patchServiceHandler(req: Request, res: Response) {
     res.json(serializeService(row));
   } catch (error) {
     if (error instanceof ZodError) {
-      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      res.status(400).json({ message: zodValidationMessage(error), issues: error.flatten() });
       return;
     }
     if (!mapServiceError(error, res)) {
@@ -239,6 +267,22 @@ export async function completeServiceHandler(req: Request, res: Response) {
   }
 }
 
+export async function revertServiceHandler(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id);
+    const row = await servicesService.revertService(id);
+    if (!row) {
+      res.status(500).json({ message: "No se pudo revertir el servicio" });
+      return;
+    }
+    res.json(serializeService(row));
+  } catch (error) {
+    if (!mapServiceError(error, res)) {
+      throw error;
+    }
+  }
+}
+
 export async function addServiceExtraLineHandler(req: Request, res: Response) {
   try {
     const id = String(req.params.id);
@@ -250,7 +294,7 @@ export async function addServiceExtraLineHandler(req: Request, res: Response) {
     res.status(201).json(serializeService(row));
   } catch (error) {
     if (error instanceof ZodError) {
-      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      res.status(400).json({ message: zodValidationMessage(error), issues: error.flatten() });
       return;
     }
     if (!mapServiceError(error, res)) {
@@ -271,7 +315,7 @@ export async function patchServiceExtraLineHandler(req: Request, res: Response) 
     res.json(serializeService(row));
   } catch (error) {
     if (error instanceof ZodError) {
-      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      res.status(400).json({ message: zodValidationMessage(error), issues: error.flatten() });
       return;
     }
     if (!mapServiceError(error, res)) {

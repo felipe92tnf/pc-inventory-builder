@@ -519,7 +519,6 @@ export function ServicePdfDocument({ service }: ServicePdfDocumentProps) {
   const clientRowsAll: { label: string; value: string }[] = [
     { label: "Nombre", value: dashIfEmpty(service.customerName) },
     { label: "Teléfono", value: dashIfEmpty(service.customerPhone) },
-    { label: "Email", value: dashIfEmpty(service.customerEmail) }
   ];
   const clientRows = clientRowsAll.filter((row) => row.value !== "—");
 

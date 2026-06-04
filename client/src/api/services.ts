@@ -62,6 +62,12 @@ export function completeService(id: string) {
   });
 }
 
+export function revertService(id: string) {
+  return http<ServiceRow>(`/services/${id}/revert`, {
+    method: "POST"
+  });
+}
+
 export function addServiceExtraLine(serviceId: string, payload: ServiceExtraLinePayload) {
   return http<ServiceRow>(`/services/${serviceId}/extra-lines`, {
     method: "POST",

@@ -28,6 +28,7 @@ import { PAGE_HEADER_COMPACT, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
 import type { ExtraTemplate } from "../types/extraTemplate";
 import { buildStatusLabelEs } from "../utils/buildStatusLabel";
+import { customerFieldToForm, formatCustomerSubtitle } from "../utils/customerUi";
 import { isActiveSale } from "../utils/salesStats";
 import { CustomerPicker } from "../components/customers/CustomerPicker";
 
@@ -174,7 +175,6 @@ export function BuildDetailPage() {
     customerId: null as string | null,
     customerName: "",
     customerPhone: "",
-    customerEmail: "",
     notes: "",
     initialStatus: "CONFIRMED" as BuildStatus,
     confirmResDeposit: "",
@@ -186,15 +186,9 @@ export function BuildDetailPage() {
   const headerClientLine = useMemo(() => {
     if (!build) return null;
     if (build.status === "DRAFT") {
-      const a = mountForm.customerName.trim();
-      const b = mountForm.customerPhone.trim();
-      if (!a && !b) return null;
-      return [a, b].filter(Boolean).join(" · ");
+      return formatCustomerSubtitle(mountForm.customerName, mountForm.customerPhone);
     }
-    const a = (build.customerName ?? "").trim();
-    const b = (build.customerPhone ?? "").trim();
-    if (!a && !b) return null;
-    return [a, b].filter(Boolean).join(" · ");
+    return formatCustomerSubtitle(build.customerName, build.customerPhone);
   }, [build, mountForm.customerName, mountForm.customerPhone]);
 
   const [opStatus, setOpStatus] = useState<BuildStatus>("CONFIRMED");
@@ -292,9 +286,8 @@ export function BuildDetailPage() {
     setMountForm({
       name: build.name,
       customerId: build.customerId ?? null,
-      customerName: build.customerName ?? "",
-      customerPhone: build.customerPhone ?? "",
-      customerEmail: build.customerEmail ?? "",
+      customerName: customerFieldToForm(build.customerName),
+      customerPhone: customerFieldToForm(build.customerPhone),
       notes: build.notes ?? "",
       initialStatus: "CONFIRMED",
       confirmResDeposit: "",
@@ -373,11 +366,6 @@ export function BuildDetailPage() {
   };
 
   const handleSaveMountData = async () => {
-    const emailTrim = mountForm.customerEmail.trim();
-    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-      window.alert("Introduce un email valido o dejalo vacio.");
-      return;
-    }
     if (!mountForm.name.trim()) {
       window.alert("Indica al menos un nombre para el montaje.");
       return;
@@ -389,7 +377,7 @@ export function BuildDetailPage() {
         customerId: mountForm.customerId,
         customerName: mountForm.customerName.trim() ? mountForm.customerName.trim() : null,
         customerPhone: mountForm.customerPhone.trim() ? mountForm.customerPhone.trim() : null,
-        customerEmail: emailTrim ? emailTrim : null
+        customerEmail: null
       });
       setMountDataSaved(true);
       window.setTimeout(() => setMountDataSaved(false), 2800);
@@ -404,8 +392,6 @@ export function BuildDetailPage() {
     const name = mountForm.name.trim();
     const customerName = mountForm.customerName.trim();
     const phone = mountForm.customerPhone.trim();
-    const emailTrim = mountForm.customerEmail.trim();
-
     if (!name) {
       window.alert("Indica un nombre para el montaje.");
       return;
@@ -418,11 +404,6 @@ export function BuildDetailPage() {
       window.alert("Indica un telefono de contacto.");
       return;
     }
-    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-      window.alert("Introduce un email valido o dejalo vacio.");
-      return;
-    }
-
     const saleNum = parseMoneyInput(saleDraft);
     if (saleNum === null) {
       window.alert("Introduce un precio de venta total valido (mayor o igual que 0).");
@@ -435,7 +416,7 @@ export function BuildDetailPage() {
       customerId: mountForm.customerId,
       customerName,
       customerPhone: phone,
-      customerEmail: emailTrim ? emailTrim : null
+      customerEmail: null
     };
 
     const roundedSale = Math.round(saleNum * 100) / 100;
@@ -666,15 +647,14 @@ export function BuildDetailPage() {
                       customerId: mountForm.customerId,
                       customerName: mountForm.customerName,
                       customerPhone: mountForm.customerPhone,
-                      customerEmail: mountForm.customerEmail
+                      customerEmail: ""
                     }}
                     onChange={(c) =>
                       setMountForm((m) => ({
                         ...m,
                         customerId: c.customerId,
                         customerName: c.customerName,
-                        customerPhone: c.customerPhone,
-                        customerEmail: c.customerEmail
+                        customerPhone: c.customerPhone
                       }))
                     }
                     requireName={false}
@@ -1220,7 +1200,7 @@ export function BuildDetailPage() {
           customerId: build.customerId,
           customerName: build.customerName,
           customerPhone: build.customerPhone,
-          customerEmail: build.customerEmail
+          customerEmail: null
         }}
         onSuccess={async (sale) => {
           await reload();

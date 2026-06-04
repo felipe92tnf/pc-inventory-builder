@@ -50,7 +50,7 @@ export function CustomersPage() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nombre, telefono o email..."
+            placeholder="Nombre o telefono..."
             className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring"
           />
         </label>
@@ -75,7 +75,6 @@ export function CustomersPage() {
                   <tr>
                     <th className={TABLE_CELL}>Nombre</th>
                     <th className={TABLE_CELL}>Telefono</th>
-                    <th className={TABLE_CELL}>Email</th>
                     <th className={TABLE_CELL}>Trabajos</th>
                     <th className={TABLE_CELL}>Total ventas</th>
                     <th className={`${TABLE_CELL} text-right`}>Ficha</th>
@@ -86,7 +85,6 @@ export function CustomersPage() {
                     <tr key={c.id} className="transition hover:bg-slate-800/40">
                       <td className={`${TABLE_CELL} font-medium text-slate-100`}>{c.name}</td>
                       <td className={TABLE_CELL}>{c.phone || "—"}</td>
-                      <td className={`${TABLE_CELL} text-slate-400`}>{c.email ?? "—"}</td>
                       <td className={TABLE_CELL}>{c.workCount}</td>
                       <td className={`${TABLE_CELL} text-emerald-300/95`}>{money(c.totalSpent)}</td>
                       <td className={`${TABLE_CELL} text-right`}>
@@ -108,7 +106,6 @@ export function CustomersPage() {
                 >
                   <p className="font-semibold text-slate-100">{c.name}</p>
                   <p className="mt-0.5 text-sm text-slate-400">{c.phone || "Sin telefono"}</p>
-                  {c.email ? <p className="text-sm text-slate-500">{c.email}</p> : null}
                   <p className="mt-2 text-xs text-slate-500">
                     {c.workCount} trabajos · {money(c.totalSpent)} en ventas
                   </p>

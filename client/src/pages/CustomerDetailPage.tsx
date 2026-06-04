@@ -200,12 +200,6 @@ export function CustomerDetailPage() {
                 <p className="mt-1 text-lg font-semibold text-slate-100">{data.displayName}</p>
                 <p className="mt-0.5 text-sm text-slate-400">
                   Telefono: <span className="text-slate-200">{data.displayPhone || "—"}</span>
-                  {data.displayEmail ? (
-                    <>
-                      {" "}
-                      · Email: <span className="text-slate-200">{data.displayEmail}</span>
-                    </>
-                  ) : null}
                 </p>
                 {data.workCount != null ? (
                   <p className="mt-1 text-xs text-slate-500">

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { InventoryKind, Prisma, ServiceStatus, ServiceType } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { customerDataForEntity } from "../customers/customers.resolve.js";
 import {
@@ -381,9 +382,22 @@ async function effectiveSpareLinesForPatch(
   throw new Error("SPARE_PART_INVALID");
 }
 
-export async function patchService(id: string, payload: unknown) {
-  const data = patchServiceSchema.parse(payload);
+type PatchServiceInput = z.infer<typeof patchServiceSchema>;
 
+/** Solo metadatos editables cuando el servicio ya está completado (sin tocar economía ni piezas). */
+function pickCompletedMetadataPatch(data: PatchServiceInput): PatchServiceInput {
+  const out = {} as PatchServiceInput;
+  if (data.title !== undefined) out.title = data.title;
+  if (data.customerId !== undefined) out.customerId = data.customerId;
+  if (data.customerName !== undefined) out.customerName = data.customerName;
+  if (data.customerPhone !== undefined) out.customerPhone = data.customerPhone;
+  if (data.customerEmail !== undefined) out.customerEmail = data.customerEmail;
+  if (data.paymentMethod !== undefined) out.paymentMethod = data.paymentMethod;
+  if (data.notes !== undefined) out.notes = data.notes;
+  return out;
+}
+
+export async function patchService(id: string, payload: unknown) {
   const existing = await prisma.service.findUnique({
     where: { id },
     include: serviceInclude
@@ -392,7 +406,16 @@ export async function patchService(id: string, payload: unknown) {
     throw new Error("SERVICE_NOT_FOUND");
   }
 
+  let data = patchServiceSchema.parse(payload);
+
+  if (data.status === ServiceStatus.COMPLETED && existing.status !== ServiceStatus.COMPLETED) {
+    throw new Error("USE_COMPLETE_ENDPOINT");
+  }
+
   const isCompleted = existing.status === ServiceStatus.COMPLETED;
+  if (isCompleted) {
+    data = pickCompletedMetadataPatch(data);
+  }
   if (isCompleted) {
     if (data.status !== undefined && data.status !== ServiceStatus.COMPLETED) {
       throw new Error("SERVICE_COMPLETED_STATUS_LOCKED");
@@ -685,6 +708,47 @@ function linesForCompletion(existing: {
     return [{ partId: existing.selectedPartId, quantity: existing.quantity }];
   }
   return [];
+}
+
+export async function revertService(id: string) {
+  const existing = await prisma.service.findUnique({
+    where: { id },
+    include: serviceInclude
+  });
+  if (!existing) {
+    throw new Error("SERVICE_NOT_FOUND");
+  }
+  if (existing.status !== ServiceStatus.COMPLETED) {
+    throw new Error("SERVICE_NOT_ACTIVE_FOR_REVERT");
+  }
+
+  const toRestore = linesForCompletion(existing);
+
+  return prisma.$transaction(async (tx) => {
+    for (const line of toRestore) {
+      const part = await tx.part.findUnique({ where: { id: line.partId } });
+      if (!part) {
+        throw new Error("PART_NOT_FOUND");
+      }
+      if (part.inventoryKind !== InventoryKind.PART) {
+        throw new Error("SPARE_PART_REQUIRES_PART_KIND");
+      }
+      await tx.part.update({
+        where: { id: line.partId },
+        data: { stock: { increment: line.quantity } }
+      });
+    }
+
+    await tx.service.update({
+      where: { id },
+      data: { status: ServiceStatus.PENDING }
+    });
+
+    return tx.service.findUnique({
+      where: { id },
+      include: serviceInclude
+    });
+  });
 }
 
 export async function completeService(id: string) {
