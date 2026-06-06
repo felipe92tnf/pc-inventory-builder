@@ -1,28 +1,73 @@
 import { z } from "zod";
 
+const emptyToUndefined = (v: unknown) => (v === "" || v === null ? undefined : v);
+
 const optionalTrimmed = z
-  .string()
+  .union([z.string(), z.null()])
   .optional()
-  .transform((v) => (v === undefined ? undefined : v.trim() === "" ? undefined : v.trim()));
+  .transform((v) => {
+    if (v === undefined || v === null) return undefined;
+    const t = v.trim();
+    return t === "" ? undefined : t;
+  });
 
 const optionalCustomerId = z
   .union([z.string().min(1), z.null()])
   .optional()
   .transform((v) => (v === undefined ? undefined : v));
 
-export const createSaleFromBuildSchema = z.object({
-  customerId: optionalCustomerId,
-  customerName: z.string().min(1),
-  customerPhone: z.string().min(1),
-  customerEmail: z.union([z.string().email(), z.literal("")]).optional(),
-  finalSalePrice: z.number().finite().nonnegative().optional(),
-  paymentMethod: optionalTrimmed,
-  warrantyMonths: z.number().int().nonnegative().optional(),
-  notes: optionalTrimmed,
-  soldAt: z.coerce.date().optional(),
-  /** Si true: cobro registrado pero el PC no se cuenta como entregado hasta confirmar recogida. */
-  pendingPickup: z.boolean().optional()
-});
+const optionalNonNegativeNumber = z.preprocess(
+  emptyToUndefined,
+  z
+    .union([z.number().finite().nonnegative(), z.string()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === "number") return v;
+      const n = Number(String(v).trim().replace(",", "."));
+      return n;
+    })
+    .refine((v) => v === undefined || (Number.isFinite(v) && v >= 0), {
+      message: "Debe ser un numero mayor o igual a 0"
+    })
+);
+
+const optionalNonNegativeInt = z.preprocess(
+  emptyToUndefined,
+  z
+    .union([z.number(), z.string()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === "number") return Math.trunc(v);
+      const n = Number(String(v).trim());
+      return Number.isFinite(n) ? Math.trunc(n) : NaN;
+    })
+    .refine((v) => v === undefined || (Number.isInteger(v) && v >= 0), {
+      message: "Debe ser un entero mayor o igual a 0"
+    })
+);
+
+export const createSaleFromBuildSchema = z
+  .object({
+    customerId: optionalCustomerId,
+    customerName: optionalTrimmed,
+    customerPhone: optionalTrimmed,
+    customerEmail: z.union([z.string().email(), z.literal(""), z.null()]).optional(),
+    finalSalePrice: optionalNonNegativeNumber,
+    salePrice: optionalNonNegativeNumber,
+    price: optionalNonNegativeNumber,
+    paymentMethod: optionalTrimmed,
+    warrantyMonths: optionalNonNegativeInt,
+    notes: optionalTrimmed,
+    soldAt: z.coerce.date().optional(),
+    /** Si true: cobro registrado pero el PC no se cuenta como entregado hasta confirmar recogida. */
+    pendingPickup: z.boolean().optional()
+  })
+  .transform((data) => ({
+    ...data,
+    finalSalePrice: data.finalSalePrice ?? data.salePrice ?? data.price
+  }));
 
 export const patchSaleSchema = z
   .object({

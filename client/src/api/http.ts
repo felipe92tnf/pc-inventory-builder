@@ -18,8 +18,14 @@ export async function http<T>(path: string, options: RequestOptions = {}): Promi
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;
     try {
-      const data = (await response.json()) as { message?: string };
-      if (data.message) {
+      const data = (await response.json()) as {
+        message?: string;
+        validation?: { field: string; received: unknown; message: string }[];
+      };
+      if (data.validation?.length) {
+        const v = data.validation[0];
+        message = `${v.field}: ${v.message} (recibido: ${JSON.stringify(v.received)})`;
+      } else if (data.message) {
         message = data.message;
       }
     } catch {

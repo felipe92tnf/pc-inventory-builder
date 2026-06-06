@@ -168,6 +168,34 @@ function mapSaleError(error: unknown, res: Response) {
   return false;
 }
 
+function readBodyValue(body: unknown, path: (string | number)[]): unknown {
+  let current: unknown = body;
+  for (const key of path) {
+    if (current === null || current === undefined || typeof current !== "object") {
+      return undefined;
+    }
+    current = (current as Record<string | number, unknown>)[key];
+  }
+  return current;
+}
+
+function formatZodValidationResponse(error: ZodError, body: unknown) {
+  const validation = error.issues.map((issue) => {
+    const field = issue.path.length > 0 ? issue.path.join(".") : "(body)";
+    const received = readBodyValue(body, issue.path as (string | number)[]);
+    return {
+      field,
+      received,
+      message: issue.message
+    };
+  });
+  const first = validation[0];
+  const message = first
+    ? `${first.field}: ${first.message} (recibido: ${JSON.stringify(first.received)})`
+    : "Datos de venta invalidos";
+  return { message, validation, issues: error.flatten() };
+}
+
 export async function monthlySummaryHandler(_req: Request, res: Response) {
   const data = await salesService.getMonthlySalesSummary();
   res.json(data);
@@ -259,6 +287,8 @@ export async function salesImportConfirmHandler(req: Request, res: Response) {
 export async function createSaleFromBuildHandler(req: Request, res: Response) {
   try {
     const buildId = String(req.params.buildId);
+    console.log("from-build params:", req.params);
+    console.log("from-build body:", req.body);
     const data = await salesService.createSaleFromBuild(buildId, req.body);
     if (!data) {
       res.status(500).json({ message: "Sale creation failed" });
@@ -267,7 +297,7 @@ export async function createSaleFromBuildHandler(req: Request, res: Response) {
     res.status(201).json(serializeSale(data));
   } catch (error) {
     if (error instanceof ZodError) {
-      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      res.status(400).json(formatZodValidationResponse(error, req.body));
       return;
     }
     if (!mapSaleError(error, res)) {
@@ -308,7 +338,7 @@ export async function patchSaleHandler(req: Request, res: Response) {
     res.json(serializeSale(data));
   } catch (error) {
     if (error instanceof ZodError) {
-      res.status(400).json({ message: "Validation error", issues: error.flatten() });
+      res.status(400).json(formatZodValidationResponse(error, req.body));
       return;
     }
     if (!mapSaleError(error, res)) {

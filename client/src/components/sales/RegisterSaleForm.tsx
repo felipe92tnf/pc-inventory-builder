@@ -75,16 +75,20 @@ export function RegisterSaleForm({
       return;
     }
 
+    const warrantyRaw = warrantyMonths.trim();
+    const warrantyParsed =
+      warrantyRaw === "" ? null : Math.max(0, Number.parseInt(warrantyRaw, 10) || 0);
+
     const payload: CreateSaleFromBuildPayload = {
-      customerId: customerFields.customerId,
+      customerId: customerFields.customerId ?? null,
       customerName: name,
       customerPhone: phone,
-      customerEmail: null,
+      customerEmail:
+        customerFields.customerEmail.trim() ? customerFields.customerEmail.trim() : null,
       finalSalePrice: Math.round(normalized * 100) / 100,
-      paymentMethod: paymentMethod.trim() ? paymentMethod.trim() : undefined,
-      warrantyMonths:
-        warrantyMonths.trim() === "" ? undefined : Math.max(0, parseInt(warrantyMonths, 10) || 0),
-      notes: notes.trim() ? notes.trim() : undefined,
+      paymentMethod: paymentMethod.trim() ? paymentMethod.trim() : null,
+      warrantyMonths: warrantyParsed,
+      notes: notes.trim() ? notes.trim() : null,
       ...(pendingPickup ? { pendingPickup: true } : {})
     };
 

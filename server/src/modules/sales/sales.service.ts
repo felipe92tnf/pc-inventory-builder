@@ -100,8 +100,8 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
 
   const customer = await customerDataForEntity({
     customerId: data.customerId ?? build.customerId,
-    customerName: data.customerName,
-    customerPhone: data.customerPhone,
+    customerName: data.customerName ?? build.customerName,
+    customerPhone: data.customerPhone ?? build.customerPhone,
     customerEmail
   });
 
