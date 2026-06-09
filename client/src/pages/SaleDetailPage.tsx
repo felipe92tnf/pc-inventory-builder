@@ -16,6 +16,7 @@ import {
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL } from "../theme/layoutDensity";
+import { PaymentMethodSelect } from "../components/ui/PaymentMethodSelect";
 import { StatusBadge, saleStatusVariant } from "../components/ui/StatusBadge";
 import { customerFieldToForm } from "../utils/customerUi";
 import { isRevertedSale } from "../utils/salesStats";
@@ -396,12 +397,11 @@ export function SaleDetailPage() {
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 md:col-span-2">
             Metodo de pago
-            <input
+            <PaymentMethodSelect
               value={editPayment}
-              onChange={(e) => setEditPayment(e.target.value)}
+              onChange={setEditPayment}
               disabled={saving || isReverted}
-              placeholder="Efectivo, Bizum, transferencia..."
-              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring disabled:opacity-50"
+              className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">

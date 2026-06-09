@@ -204,7 +204,7 @@ export function CustomerDetailPage() {
                 {data.workCount != null ? (
                   <p className="mt-1 text-xs text-slate-500">
                     {data.workCount} trabajos
-                    {data.totalSpent != null ? ` · ${money(data.totalSpent)} en ventas y servicios` : ""}
+                    {data.totalSpent != null ? ` · ${money(data.totalSpent)} total generado` : ""}
                   </p>
                 ) : null}
               </>

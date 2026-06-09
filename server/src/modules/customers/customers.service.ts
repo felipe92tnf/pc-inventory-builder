@@ -1,6 +1,25 @@
+import { ServiceStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { buildCustomerLookupKey, matchesCustomerRow } from "./customers.lookup.js";
 import { backfillCustomersFromLegacy, resolveCustomerFields } from "./customers.resolve.js";
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Ingresos reales: ventas activas (montajes vendidos vía Sale) + servicios completados. Sin presupuestos ni montajes sin venta. */
+function computeCustomerTotalSpent(
+  sales: { finalSalePrice: unknown; status?: string }[],
+  services: { salePrice: unknown; status: string }[]
+): number {
+  const saleRevenue = sales
+    .filter((s) => s.status !== "REVERTED")
+    .reduce((sum, s) => sum + Number(s.finalSalePrice), 0);
+  const serviceRevenue = services
+    .filter((s) => s.status === ServiceStatus.COMPLETED)
+    .reduce((sum, s) => sum + Number(s.salePrice), 0);
+  return roundMoney(saleRevenue + serviceRevenue);
+}
 
 function normNotes(value: string | null | undefined): string | null {
   if (value === undefined || value === null) return null;
@@ -41,7 +60,7 @@ export async function listCustomers(query?: string) {
   const ids = filtered.map((c) => c.id);
   if (ids.length === 0) return [];
 
-  const [quoteCounts, serviceCounts, buildCounts, saleSums] = await Promise.all([
+  const [quoteCounts, serviceCounts, buildCounts, saleSums, completedServiceSums] = await Promise.all([
     prisma.quote.groupBy({
       by: ["customerId"],
       where: { customerId: { in: ids } },
@@ -62,6 +81,11 @@ export async function listCustomers(query?: string) {
       where: { customerId: { in: ids }, NOT: { status: "REVERTED" } },
       _count: { _all: true },
       _sum: { finalSalePrice: true }
+    }),
+    prisma.service.groupBy({
+      by: ["customerId"],
+      where: { customerId: { in: ids }, status: ServiceStatus.COMPLETED },
+      _sum: { salePrice: true }
     })
   ]);
 
@@ -74,12 +98,16 @@ export async function listCustomers(query?: string) {
       { count: r._count._all, total: Number(r._sum.finalSalePrice ?? 0) }
     ])
   );
+  const completedServiceMap = new Map(
+    completedServiceSums.map((r) => [r.customerId, Number(r._sum.salePrice ?? 0)])
+  );
 
   return filtered.map((c) => {
     const qc = quoteMap.get(c.id) ?? 0;
     const sc = serviceMap.get(c.id) ?? 0;
     const bc = buildMap.get(c.id) ?? 0;
     const sale = saleMap.get(c.id) ?? { count: 0, total: 0 };
+    const completedServices = completedServiceMap.get(c.id) ?? 0;
     return {
       id: c.id,
       name: c.name,
@@ -88,7 +116,7 @@ export async function listCustomers(query?: string) {
       notes: c.notes,
       createdAt: c.createdAt.toISOString(),
       workCount: qc + sc + bc + sale.count,
-      totalSpent: sale.total
+      totalSpent: roundMoney(sale.total + completedServices)
     };
   });
 }
@@ -164,10 +192,7 @@ export async function getCustomerById(id: string) {
     })
   ]);
 
-  const serviceRevenue = services.reduce((a, s) => a + Number(s.salePrice), 0);
-  const saleRevenue = sales
-    .filter((s) => s.status !== "REVERTED")
-    .reduce((a, s) => a + Number(s.finalSalePrice), 0);
+  const totalSpent = computeCustomerTotalSpent(sales, services);
 
   return {
     id: row.id,
@@ -178,7 +203,7 @@ export async function getCustomerById(id: string) {
     lookupKey: row.lookupKey,
     createdAt: row.createdAt.toISOString(),
     workCount: quotes.length + services.length + builds.length + sales.length,
-    totalSpent: serviceRevenue + saleRevenue,
+    totalSpent,
     quotes: quotes.map((q) => ({
       id: q.id,
       quoteNumber: q.quoteNumber,
@@ -275,6 +300,25 @@ export async function patchCustomer(
   });
 
   return getCustomerById(id);
+}
+
+export async function deleteCustomer(id: string) {
+  const existing = await prisma.customer.findUnique({ where: { id } });
+  if (!existing) return false;
+
+  const [quoteCount, serviceCount, buildCount, saleCount] = await Promise.all([
+    prisma.quote.count({ where: { customerId: id } }),
+    prisma.service.count({ where: { customerId: id } }),
+    prisma.build.count({ where: { customerId: id } }),
+    prisma.sale.count({ where: { customerId: id } })
+  ]);
+
+  if (quoteCount + serviceCount + buildCount + saleCount > 0) {
+    throw new Error("CUSTOMER_HAS_HISTORY");
+  }
+
+  await prisma.customer.delete({ where: { id } });
+  return true;
 }
 
 export async function getCustomerOverview(name: string, phone: string) {

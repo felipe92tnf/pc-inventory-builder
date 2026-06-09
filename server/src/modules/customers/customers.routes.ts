@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createCustomerHandler,
+  deleteCustomerHandler,
   getCustomerByIdHandler,
   getCustomerOverviewHandler,
   listCustomersHandler,
@@ -18,3 +19,4 @@ customersRouter.patch("/notes", patchCustomerNotesHandler);
 customersRouter.get("/:id", getCustomerByIdHandler);
 customersRouter.post("/", createCustomerHandler);
 customersRouter.patch("/:id", patchCustomerHandler);
+customersRouter.delete("/:id", deleteCustomerHandler);

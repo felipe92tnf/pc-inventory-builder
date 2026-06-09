@@ -40,9 +40,13 @@ export function createCustomer(payload: {
 
 export function patchCustomer(
   id: string,
-  payload: { name?: string; phone?: string; email?: string | null; notes?: string | null }
+  payload: { name?: string; phone?: string; notes?: string | null }
 ) {
   return http<CustomerDetail>(`/customers/${id}`, { method: "PATCH", body: payload });
+}
+
+export function deleteCustomer(id: string) {
+  return http<void>(`/customers/${id}`, { method: "DELETE" });
 }
 
 export function getCustomerOverview(name: string, phone: string) {

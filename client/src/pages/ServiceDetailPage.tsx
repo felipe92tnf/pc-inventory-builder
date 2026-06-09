@@ -49,6 +49,7 @@ import {
   SUMMARY_VALUE_REVENUE
 } from "../theme/summaryCards";
 import { PAGE_HEADER_COMPACT, SECTION_SHELL } from "../theme/layoutDensity";
+import { PaymentMethodSelect } from "../components/ui/PaymentMethodSelect";
 import { StatusBadge, serviceStatusVariant } from "../components/ui/StatusBadge";
 
 const SERVICE_PAGE_SHELL =
@@ -603,12 +604,7 @@ export function ServiceDetailPage() {
           </label>
           <label className={`flex flex-col gap-1 ${FIELD_LABEL}`}>
             Forma de pago
-            <input
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className={FIELD}
-              placeholder="Efectivo, Bizum…"
-            />
+            <PaymentMethodSelect value={paymentMethod} onChange={setPaymentMethod} className={FIELD} />
           </label>
           {!isSpareSale ? (
             <label className={`flex flex-col gap-1 sm:col-span-2 ${FIELD_LABEL}`}>

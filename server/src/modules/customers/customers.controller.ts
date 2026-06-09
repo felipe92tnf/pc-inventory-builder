@@ -82,6 +82,27 @@ export async function patchCustomerHandler(req: Request, res: Response) {
   }
 }
 
+export async function deleteCustomerHandler(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id);
+    const ok = await customersService.deleteCustomer(id);
+    if (!ok) {
+      res.status(404).json({ message: "Cliente no encontrado" });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    if (error instanceof Error && error.message === "CUSTOMER_HAS_HISTORY") {
+      res.status(409).json({
+        message:
+          "No se puede eliminar este cliente: tiene presupuestos, servicios, montajes o ventas asociados. El historial se conserva."
+      });
+      return;
+    }
+    throw error;
+  }
+}
+
 export async function getCustomerOverviewHandler(req: Request, res: Response) {
   try {
     const q = customerOverviewQuerySchema.parse({

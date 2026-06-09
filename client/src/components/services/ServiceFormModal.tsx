@@ -13,6 +13,7 @@ import { isPartPiece, PART_CATEGORIES, partCategoryLabel } from "../../types/par
 import type { ExtraTemplate } from "../../types/extraTemplate";
 import type { CustomerFieldValue } from "../../types/customer";
 import { CustomerPicker, emptyCustomerFields } from "../customers/CustomerPicker";
+import { PaymentMethodSelect } from "../ui/PaymentMethodSelect";
 import {
   conceptLinesToPayload,
   type ConceptLineDraft,
@@ -587,11 +588,10 @@ export function ServiceFormModal({
               <div className="mt-3 grid grid-cols-1 gap-4">
                 <label className={`flex flex-col gap-1.5 ${FIELD_LABEL}`}>
                   Forma de pago
-                  <input
+                  <PaymentMethodSelect
                     value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    onChange={setPaymentMethod}
                     className={INPUT}
-                    placeholder="Efectivo, Bizum..."
                   />
                 </label>
                 <label className={`flex flex-col gap-1.5 ${FIELD_LABEL}`}>

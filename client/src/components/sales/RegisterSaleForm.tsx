@@ -3,6 +3,7 @@ import * as salesApi from "../../api/sales";
 import type { CreateSaleFromBuildPayload, SaleDetail } from "../../types/sale";
 import { CustomerPicker, emptyCustomerFields } from "../customers/CustomerPicker";
 import type { CustomerFieldValue } from "../../types/customer";
+import { PaymentMethodSelect } from "../ui/PaymentMethodSelect";
 import { PRIMARY_ACTION_BUTTON } from "../../theme/actionButtons";
 import { SECTION_SHELL } from "../../theme/layoutDensity";
 
@@ -149,12 +150,11 @@ export function RegisterSaleForm({
 
       <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
         Metodo de pago (opcional)
-        <input
+        <PaymentMethodSelect
           value={paymentMethod}
-          onChange={(e) => setPaymentMethod(e.target.value)}
+          onChange={setPaymentMethod}
           disabled={disabled || submitting}
-          placeholder="Efectivo, transferencia, Bizum..."
-          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 placeholder:text-slate-500 focus:border-indigo-400 focus:ring disabled:opacity-50"
+          className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring disabled:opacity-50"
         />
       </label>
 
