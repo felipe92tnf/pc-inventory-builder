@@ -1,19 +1,13 @@
-import { BuildStatus, InventoryKind, PartCategory, Prisma, SaleStatus } from "@prisma/client";
+import { BuildStatus, SaleStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { isPrebuiltInventoryBuild } from "../builds/builds.stock.js";
 import {
   activeSaleForBuildWhere,
   isSaleCompleted,
   isSaleReverted
 } from "./sales.status.js";
 
-function partSkipsStockDeduction(part: {
-  category: PartCategory | null;
-  inventoryKind: InventoryKind;
-}): boolean {
-  if (part.inventoryKind === InventoryKind.PREBUILT_PC) return false;
-  if (part.category === null) return false;
-  return part.category === PartCategory.OS || part.category === PartCategory.LABOR;
-}
+const REVERT_DEBUG = "[sale-revert-debug]";
 
 export async function revertSale(saleId: string) {
   const sale = await prisma.sale.findUnique({
@@ -37,17 +31,22 @@ export async function revertSale(saleId: string) {
     throw new Error("SALE_NOT_ACTIVE");
   }
 
-  return prisma.$transaction(async (tx) => {
-    if (!sale.isImported) {
-      for (const item of sale.build.items) {
-        if (partSkipsStockDeduction(item.part)) continue;
-        await tx.part.update({
-          where: { id: item.partId },
-          data: { stock: { increment: item.quantity } }
-        });
-      }
+  console.log(REVERT_DEBUG, "BEFORE", {
+    saleId: sale.id,
+    buildId: sale.buildId,
+    buildStatus: sale.build.status,
+    isPrebuiltInventoryBuild: isPrebuiltInventoryBuild(sale.build),
+    partIds: sale.build.items.map((item) => ({
+      partId: item.partId,
+      quantity: item.quantity,
+      inventoryKind: item.part.inventoryKind,
+      stock: item.part.stock
+    }))
+  });
 
-    }
+  const result = await prisma.$transaction(async (tx) => {
+    // El stock se descuenta al confirmar el montaje, no al registrar la venta.
+    // Revertir la venta solo reabre el montaje; el stock sigue comprometido hasta volver a borrador.
 
     await tx.build.update({
       where: { id: sale.buildId },
@@ -81,6 +80,21 @@ export async function revertSale(saleId: string) {
       }
     });
   });
+
+  console.log(REVERT_DEBUG, "AFTER", {
+    saleId: result?.id,
+    saleStatus: result?.status,
+    buildId: result?.buildId,
+    buildStatus: result?.build.status,
+    partIds: result?.build.items.map((item) => ({
+      partId: item.partId,
+      quantity: item.quantity,
+      inventoryKind: item.part.inventoryKind,
+      stock: item.part.stock
+    }))
+  });
+
+  return result;
 }
 
 export async function findActiveSaleForBuild(buildId: string) {

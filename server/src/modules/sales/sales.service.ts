@@ -1,6 +1,7 @@
 import { BuildStatus, Prisma, SaleStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { finalizePricing } from "../builds/builds.service.js";
+import { isPrebuiltInventoryBuild } from "../builds/builds.stock.js";
 import { customerDataForEntity } from "../customers/customers.resolve.js";
 import { findActiveSaleForBuild } from "./sales.revert.service.js";
 import { isSaleReverted, metricsSaleWhere } from "./sales.status.js";
@@ -105,7 +106,19 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
     customerEmail
   });
 
-  return prisma.$transaction(async (tx) => {
+  console.log("[sale-create-debug] BEFORE", {
+    buildId,
+    buildStatus: build.status,
+    isPrebuiltInventoryBuild: isPrebuiltInventoryBuild(build),
+    partIds: build.items.map((item) => ({
+      partId: item.partId,
+      quantity: item.quantity,
+      inventoryKind: item.part.inventoryKind,
+      stock: item.part.stock
+    }))
+  });
+
+  const result = await prisma.$transaction(async (tx) => {
     const sale = await tx.sale.create({
       data: {
         buildId,
@@ -149,6 +162,20 @@ export async function createSaleFromBuild(buildId: string, payload: unknown) {
       }
     });
   });
+
+  console.log("[sale-create-debug] AFTER", {
+    saleId: result?.id,
+    buildId: result?.buildId,
+    buildStatus: result?.build.status,
+    partIds: result?.build.items.map((item) => ({
+      partId: item.partId,
+      quantity: item.quantity,
+      inventoryKind: item.part.inventoryKind,
+      stock: item.part.stock
+    }))
+  });
+
+  return result;
 }
 
 export async function recalculateSaleFromBuild(saleId: string) {

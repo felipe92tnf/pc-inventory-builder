@@ -10,7 +10,9 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:generate": "prisma generate",
     "prisma:seed": "tsx prisma/seed.ts",
-    "migrate:inventory-catalog": "node scripts/migrate-inventory-to-catalog.mjs"
+    "migrate:inventory-catalog": "node scripts/migrate-inventory-to-catalog.mjs",
+    "repair:prebuilt-sale-revert": "node scripts/repair-prebuilt-sale-revert.mjs",
+    "repair:prebuilt-sale-revert:dry": "node scripts/repair-prebuilt-sale-revert.mjs --dry-run"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

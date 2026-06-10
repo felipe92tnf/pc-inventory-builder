@@ -145,6 +145,14 @@ function mapBuildError(error: unknown, res: Response) {
     return true;
   }
 
+  if (error.message.startsWith("PREBUILT_ALREADY_IN_ACTIVE_BUILD:")) {
+    res.status(409).json({
+      message:
+        "Este PC completo ya esta asociado a un montaje activo. Usa ese montaje para registrar la venta o revierte el montaje a borrador."
+    });
+    return true;
+  }
+
   return false;
 }
 

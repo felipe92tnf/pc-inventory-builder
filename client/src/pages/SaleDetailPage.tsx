@@ -118,7 +118,7 @@ export function SaleDetailPage() {
   const handleRevertSale = async () => {
     if (!sale || isRevertedSale(sale)) return;
     const ok = window.confirm(
-      "Revertir esta venta?\n\n- Se restaurara el stock de las piezas\n- El montaje volvera a listo para la venta\n- La venta quedara en historial como revertida (no se borra)\n- Dejara de contar en ingresos y beneficios"
+      "Revertir esta venta?\n\n- El montaje volvera a listo para la venta (el stock sigue comprometido en el montaje)\n- La venta quedara en historial como revertida (no se borra)\n- Dejara de contar en ingresos y beneficios"
     );
     if (!ok) return;
     try {

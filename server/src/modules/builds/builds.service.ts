@@ -2,6 +2,10 @@ import { BuildStatus, InventoryKind, PartCategory, Prisma, SaleStatus } from "@p
 import { prisma } from "../../db/prisma.js";
 import { customerDataForEntity } from "../customers/customers.resolve.js";
 import {
+  BUILD_STOCK_COMMITTED_STATUSES,
+  partSkipsStockDeduction
+} from "./builds.stock.js";
+import {
   addBuildExtraLineSchema,
   addBuildManualLineSchema,
   addBuildItemSchema,
@@ -12,17 +16,6 @@ import {
   updateBuildItemSchema,
   updateBuildSchema
 } from "./builds.validators.js";
-
-function categorySkipsStock(category: PartCategory): boolean {
-  return category === PartCategory.OS || category === PartCategory.LABOR;
-}
-
-/** OS/LABOR no descuentan stock; PCs premontados si (unidades fisicas). */
-function partSkipsStockDeduction(part: { category: PartCategory | null; inventoryKind: InventoryKind }): boolean {
-  if (part.inventoryKind === InventoryKind.PREBUILT_PC) return false;
-  if (part.category === null) return false;
-  return categorySkipsStock(part.category);
-}
 
 function moneyDecimal(value: number): Prisma.Decimal {
   return new Prisma.Decimal(Math.round(value * 100) / 100);
@@ -136,6 +129,17 @@ export async function createBuildFromPrebuiltPart(payload: unknown) {
   }
   if (part.stock < 1) {
     throw new Error(`INSUFFICIENT_STOCK:${part.name}`);
+  }
+
+  const activeBuildLink = await prisma.buildPartItem.findFirst({
+    where: {
+      partId: part.id,
+      build: { status: { in: BUILD_STOCK_COMMITTED_STATUSES } }
+    },
+    include: { build: { select: { id: true, name: true, status: true } } }
+  });
+  if (activeBuildLink) {
+    throw new Error(`PREBUILT_ALREADY_IN_ACTIVE_BUILD:${activeBuildLink.build.id}`);
   }
 
   const notesParts = [part.description?.trim(), part.notes?.trim()].filter((t): t is string => Boolean(t && t.length > 0));
