@@ -49,7 +49,7 @@ export function CustomerPicker({ value, onChange, requireName = true, requirePho
     }, []);
     const scheduleSearch = (parts) => {
         const merged = { ...value, ...parts };
-        const q = [merged.customerName, merged.customerPhone, merged.customerEmail].filter(Boolean).join(" ");
+        const q = [merged.customerName, merged.customerPhone].filter(Boolean).join(" ");
         if (debounceRef.current)
             clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => void search(q), 280);
@@ -59,7 +59,7 @@ export function CustomerPicker({ value, onChange, requireName = true, requirePho
             customerId: row.id,
             customerName: row.name,
             customerPhone: row.phone,
-            customerEmail: row.email ?? ""
+            customerEmail: ""
         });
         setOpen(false);
         setSuggestions([]);
@@ -84,13 +84,13 @@ export function CustomerPicker({ value, onChange, requireName = true, requirePho
             const row = await customersApi.createCustomer({
                 name,
                 phone: value.customerPhone.trim(),
-                email: value.customerEmail.trim() || null
+                email: null
             });
             onChange({
                 customerId: row.id,
                 customerName: row.name,
                 customerPhone: row.phone,
-                customerEmail: row.email ?? ""
+                customerEmail: ""
             });
             setShowQuickCreate(false);
             setOpen(false);
@@ -111,9 +111,9 @@ export function CustomerPicker({ value, onChange, requireName = true, requirePho
                                                 setOpen(true);
                                             else
                                                 void search(value.customerName);
-                                        }, className: inputClass, placeholder: "Nombre del cliente", required: requireName, autoComplete: "off" })] }), _jsxs("div", { children: [_jsxs("label", { className: "mb-1 block text-xs text-slate-500", children: ["Telefono", requirePhone ? " *" : ""] }), _jsx("input", { type: "tel", value: value.customerPhone, onChange: (e) => {
+                                        }, className: inputClass, placeholder: "Selecciona o a\u00F1ade un cliente", required: requireName, autoComplete: "off" })] }), _jsxs("div", { children: [_jsxs("label", { className: "mb-1 block text-xs text-slate-500", children: ["Telefono", requirePhone ? " *" : ""] }), _jsx("input", { type: "tel", value: value.customerPhone, onChange: (e) => {
                                             const customerPhone = e.target.value;
                                             onChange({ ...value, customerId: null, customerPhone });
                                             scheduleSearch({ customerPhone });
-                                        }, onFocus: () => void search([value.customerName, value.customerPhone].join(" ")), className: inputClass, placeholder: "600 000 000", required: requirePhone, autoComplete: "off" })] }), _jsxs("div", { className: "sm:col-span-2", children: [_jsx("label", { className: "mb-1 block text-xs text-slate-500", children: "Email" }), _jsx("input", { type: "email", value: value.customerEmail, onChange: (e) => onChange({ ...value, customerId: null, customerEmail: e.target.value }), className: inputClass, placeholder: "opcional@email.com", autoComplete: "off" })] })] }), _jsx("datalist", { id: listId, children: suggestions.map((s) => (_jsx("option", { value: s.name, label: `${s.phone}${s.email ? ` · ${s.email}` : ""}` }, s.id))) }), open && suggestions.length > 0 ? (_jsx("ul", { className: "absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-xl border border-slate-700 bg-slate-950 shadow-xl", role: "listbox", children: suggestions.map((s) => (_jsx("li", { children: _jsxs("button", { type: "button", role: "option", className: "flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800/80", onMouseDown: (e) => e.preventDefault(), onClick: () => selectCustomer(s), children: [_jsx("span", { className: "font-medium", children: s.name }), _jsxs("span", { className: "text-xs text-slate-400", children: [s.phone || "Sin telefono", s.email ? ` · ${s.email}` : ""] })] }) }, s.id))) })) : null, loading ? _jsx("p", { className: "mt-1 text-xs text-slate-500", children: "Buscando..." }) : null] }), showQuickCreate ? (_jsxs("div", { className: "rounded-xl border border-dashed border-cyan-700/50 bg-cyan-950/20 p-3", children: [_jsx("p", { className: "text-xs text-slate-400", children: "Guarda este cliente para reutilizarlo en presupuestos, montajes y servicios." }), _jsx("button", { type: "button", disabled: creating, onClick: () => void handleQuickCreate(), className: `${PRIMARY_ACTION_BUTTON_COMPACT} mt-2`, children: creating ? "Guardando..." : "Guardar cliente" })] })) : null] }));
+                                        }, onFocus: () => void search([value.customerName, value.customerPhone].join(" ")), className: inputClass, placeholder: "600 000 000", required: requirePhone, autoComplete: "off" })] })] }), _jsx("datalist", { id: listId, children: suggestions.map((s) => (_jsx("option", { value: s.name, label: s.phone || s.name }, s.id))) }), open && suggestions.length > 0 ? (_jsx("ul", { className: "absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-xl border border-slate-700 bg-slate-950 shadow-xl", role: "listbox", children: suggestions.map((s) => (_jsx("li", { children: _jsxs("button", { type: "button", role: "option", className: "flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800/80", onMouseDown: (e) => e.preventDefault(), onClick: () => selectCustomer(s), children: [_jsx("span", { className: "font-medium", children: s.name }), _jsx("span", { className: "text-xs text-slate-400", children: s.phone || "Sin telefono" })] }) }, s.id))) })) : null, loading ? _jsx("p", { className: "mt-1 text-xs text-slate-500", children: "Buscando..." }) : null] }), showQuickCreate ? (_jsxs("div", { className: "rounded-xl border border-dashed border-cyan-700/50 bg-cyan-950/20 p-3", children: [_jsx("p", { className: "text-xs text-slate-400", children: "Guarda este cliente para reutilizarlo en presupuestos, montajes y servicios." }), _jsx("button", { type: "button", disabled: creating, onClick: () => void handleQuickCreate(), className: `${PRIMARY_ACTION_BUTTON_COMPACT} mt-2`, children: creating ? "Guardando..." : "Guardar cliente" })] })) : null] }));
 }

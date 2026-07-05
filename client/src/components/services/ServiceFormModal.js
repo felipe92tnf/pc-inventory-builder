@@ -4,7 +4,9 @@ import { Link } from "react-router-dom";
 import { SERVICE_TYPES } from "../../types/service";
 import { isPartPiece, PART_CATEGORIES, partCategoryLabel } from "../../types/part";
 import { CustomerPicker, emptyCustomerFields } from "../customers/CustomerPicker";
+import { PaymentMethodSelect } from "../ui/PaymentMethodSelect";
 import { conceptLinesToPayload, ensureHomeDeliveryLine, isHomeDeliveryLine, lineTotal, linesCostTotal, linesFromService, linesSaleTotal, HOME_DELIVERY_LABEL, newConceptLine, templateLinesFromService } from "../../utils/serviceConceptLines";
+import { customerFieldToForm, customerFieldsToApi } from "../../utils/customerUi";
 import { PRIMARY_ACTION_BUTTON, SECONDARY_BUTTON_SM, DESTRUCTIVE_BUTTON_SM } from "../../theme/actionButtons";
 const SERVICE_LABELS = {
     SPARE_PART_SALE: "Venta de pieza suelta",
@@ -123,9 +125,9 @@ export function ServiceFormModal({ open, editingService, submitting, actionId, p
             setTitle(svc.title);
             setCustomerFields({
                 customerId: svc.customerId ?? null,
-                customerName: svc.customerName,
-                customerPhone: svc.customerPhone,
-                customerEmail: svc.customerEmail ?? ""
+                customerName: customerFieldToForm(svc.customerName),
+                customerPhone: customerFieldToForm(svc.customerPhone),
+                customerEmail: ""
             });
             setDescription(svc.description ?? "");
             const loadedLines = linesFromService(svc);
@@ -218,23 +220,26 @@ export function ServiceFormModal({ open, editingService, submitting, actionId, p
             return next.length === 0 ? [newConceptLine()] : next;
         });
     };
-    const buildBasePayload = () => ({
-        title: title.trim(),
-        customerId: customerFields.customerId,
-        customerName: customerFields.customerName.trim(),
-        customerPhone: customerFields.customerPhone.trim(),
-        customerEmail: customerFields.customerEmail.trim() || null,
-        description: description.trim(),
-        isHomeService,
-        homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
-        homeServiceSupplement: null,
-        serviceDate: new Date(serviceDate).toISOString(),
-        paymentMethod: paymentMethod.trim() || null,
-        notes: notes.trim() || null,
-        manualLines: conceptLinesToPayload(conceptLines),
-        extraLines: templateLines.length > 0 ? templateLines : undefined,
-        costPrice: totalCost
-    });
+    const buildBasePayload = () => {
+        const customer = customerFieldsToApi(customerFields);
+        return {
+            title: title.trim(),
+            customerId: customer.customerId,
+            customerName: customer.customerName,
+            customerPhone: customer.customerPhone,
+            customerEmail: customer.customerEmail,
+            description: description.trim(),
+            isHomeService,
+            homeServiceAddress: isHomeService ? homeServiceAddress.trim() || null : null,
+            homeServiceSupplement: null,
+            serviceDate: new Date(serviceDate).toISOString(),
+            paymentMethod: paymentMethod.trim() || null,
+            notes: notes.trim() || null,
+            manualLines: conceptLinesToPayload(conceptLines),
+            extraLines: templateLines.length > 0 ? templateLines : undefined,
+            costPrice: totalCost
+        };
+    };
     const handleSubmit = async (event) => {
         event.preventDefault();
         const manual = conceptLinesToPayload(conceptLines);
@@ -311,7 +316,7 @@ export function ServiceFormModal({ open, editingService, submitting, actionId, p
                                         : "Cliente, conceptos, domicilio y totales automaticos." })] }), _jsx("button", { type: "button", onClick: onClose, className: SECONDARY_BUTTON_SM, children: "Cerrar" })] }), _jsxs("form", { onSubmit: (e) => void handleSubmit(e), className: "flex min-h-0 flex-1 flex-col overflow-hidden", children: [_jsxs("div", { className: "min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-6", children: [_jsx(FormSection, { title: "Datos del servicio", children: _jsxs("div", { className: "mt-3 grid grid-cols-1 gap-4 md:grid-cols-2", children: [_jsxs("label", { className: `flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Tipo", _jsx("select", { value: formType, onChange: (e) => setFormType(e.target.value), disabled: isEdit, className: INPUT, children: SERVICE_TYPES.map((t) => (_jsx("option", { value: t, children: SERVICE_LABELS[t] }, t))) })] }), _jsxs("label", { className: `flex flex-col gap-1.5 md:col-span-2 ${FIELD_LABEL}`, children: ["Titulo / referencia", _jsx("input", { value: title, onChange: (e) => setTitle(e.target.value), required: true, className: INPUT, placeholder: "Ej: Revision torre cliente Juan" })] }), _jsxs("label", { className: `flex flex-col gap-1.5 md:col-span-2 ${FIELD_LABEL}`, children: ["Descripcion (opcional)", _jsx("textarea", { value: description, onChange: (e) => setDescription(e.target.value), rows: 2, className: `${INPUT} min-h-[72px]` })] }), _jsxs("label", { className: `flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Fecha", _jsx("input", { type: "date", value: serviceDate, onChange: (e) => setServiceDate(e.target.value), required: true, className: INPUT })] })] }) }), _jsx(FormSection, { title: "Cliente", children: _jsx("div", { className: "mt-3", children: _jsx(CustomerPicker, { value: customerFields, onChange: setCustomerFields, requirePhone: true }) }) }), formType === "SPARE_PART_SALE" ? (_jsxs(FormSection, { title: "Piezas del inventario", children: [lockedSpare ? (_jsx("p", { className: "mt-2 text-xs text-slate-500", children: "Las piezas no se modifican en servicios completados; puedes editar conceptos y datos." })) : null, _jsx(SpareLinesEditor, { spareLines: spareLines, sparePartsByCategory: sparePartsByCategory, locked: lockedSpare, onUpdate: (idx, patch) => setSpareLines((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row))), onAdd: () => setSpareLines((prev) => [...prev, { partId: "", quantity: 1 }]), onRemove: (idx) => setSpareLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx))) }), spareInventoryCost !== null ? (_jsxs("p", { className: "mt-2 text-xs text-slate-500", children: ["Coste piezas (inventario):", " ", _jsx("span", { className: "font-medium text-slate-300", children: money(spareInventoryCost) })] })) : null, _jsxs("label", { className: `mt-3 flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Precio venta piezas (sin conceptos ni plantillas)", _jsx("input", { type: "number", min: 0, step: "0.01", value: spareSalePrice === "" ? "" : spareSalePrice, onChange: (e) => setSpareSalePrice(e.target.value === "" ? "" : Number(e.target.value)), disabled: lockedSpare, className: INPUT })] })] })) : null, _jsxs(FormSection, { title: "Servicios / conceptos", children: [_jsxs("div", { className: "mt-3 flex flex-wrap items-center justify-between gap-2", children: [_jsx("p", { className: "text-xs text-slate-500", children: "Lineas manuales; el total de venta se calcula automaticamente." }), _jsx("button", { type: "button", onClick: addConceptLine, className: SECONDARY_BUTTON_SM, children: "A\u00F1adir concepto" })] }), _jsx(ServiceCatalogPresetPicker, { presets: servicePresets, presetPickId: presetPickId, onPickId: setPresetPickId, onAdd: (preset) => {
                                                 addPresetAsConcept(preset);
                                                 setPresetPickId("");
-                                            } }), templateLines.length > 0 ? (_jsxs("p", { className: "mt-3 text-xs text-amber-200/90", children: ["Este servicio tiene ", templateLines.length, " linea(s) antigua(s) vinculadas a plantilla; se conservan al guardar."] })) : null, _jsx(ConceptLinesTable, { lines: conceptLines, onUpdate: updateConceptLine, onRemove: removeConceptLine })] }), _jsxs(FormSection, { title: "Domicilio", children: [_jsxs("label", { className: "mt-3 flex items-center gap-2 text-sm text-slate-200", children: [_jsx("input", { type: "checkbox", checked: isHomeService, onChange: (e) => handleHomeToggle(e.target.checked), className: "h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500" }), "Servicio a domicilio (concepto 20 EUR editable, sin duplicar)"] }), isHomeService ? (_jsxs("label", { className: `mt-3 flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Direccion", _jsx("input", { value: homeServiceAddress, onChange: (e) => setHomeServiceAddress(e.target.value), className: INPUT, placeholder: "Calle, ciudad..." })] })) : null] }), _jsxs(FormSection, { title: "Resumen economico", accent: true, children: [_jsxs("dl", { className: "mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4", children: [_jsx(Stat, { label: "Venta total", value: money(totalSale), highlight: true }), _jsx(Stat, { label: "Coste", value: money(totalCost) }), _jsx(Stat, { label: "Beneficio", value: money(profit), positive: profit >= 0 }), _jsx(Stat, { label: "Lineas", value: String(conceptLines.length) })] }), _jsxs("label", { className: `mt-3 flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Coste interno opcional (sustituye calculo automatico)", _jsx("input", { type: "number", min: 0, step: "0.01", value: internalCostOverride === "" ? "" : internalCostOverride, onChange: (e) => setInternalCostOverride(e.target.value === "" ? "" : Number(e.target.value)), className: INPUT, placeholder: "Vacio = suma conceptos + plantillas + piezas" })] })] }), _jsx(FormSection, { title: "Pago y notas", children: _jsxs("div", { className: "mt-3 grid grid-cols-1 gap-4", children: [_jsxs("label", { className: `flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Forma de pago", _jsx("input", { value: paymentMethod, onChange: (e) => setPaymentMethod(e.target.value), className: INPUT, placeholder: "Efectivo, Bizum..." })] }), _jsxs("label", { className: `flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Notas internas", _jsx("textarea", { value: notes, onChange: (e) => setNotes(e.target.value), rows: 2, className: `${INPUT} min-h-[72px]` })] })] }) })] }), _jsxs("footer", { className: "flex shrink-0 flex-wrap gap-2 border-t border-slate-800 bg-slate-950/60 px-4 py-4 sm:px-6", children: [_jsx("button", { type: "submit", disabled: submitting || (isEdit && actionId === editingService?.id), className: PRIMARY_ACTION_BUTTON, children: submitting ? "Guardando..." : isEdit ? "Guardar cambios" : "Registrar servicio" }), _jsx("button", { type: "button", onClick: onClose, className: SECONDARY_BUTTON_SM, children: "Cancelar" }), isEdit && onDelete && editingService ? (_jsx("button", { type: "button", disabled: submitting || actionId === editingService.id, onClick: () => {
+                                            } }), templateLines.length > 0 ? (_jsxs("p", { className: "mt-3 text-xs text-amber-200/90", children: ["Este servicio tiene ", templateLines.length, " linea(s) antigua(s) vinculadas a plantilla; se conservan al guardar."] })) : null, _jsx(ConceptLinesTable, { lines: conceptLines, onUpdate: updateConceptLine, onRemove: removeConceptLine })] }), _jsxs(FormSection, { title: "Domicilio", children: [_jsxs("label", { className: "mt-3 flex items-center gap-2 text-sm text-slate-200", children: [_jsx("input", { type: "checkbox", checked: isHomeService, onChange: (e) => handleHomeToggle(e.target.checked), className: "h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500" }), "Servicio a domicilio (concepto 20 EUR editable, sin duplicar)"] }), isHomeService ? (_jsxs("label", { className: `mt-3 flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Direccion", _jsx("input", { value: homeServiceAddress, onChange: (e) => setHomeServiceAddress(e.target.value), className: INPUT, placeholder: "Calle, ciudad..." })] })) : null] }), _jsxs(FormSection, { title: "Resumen economico", accent: true, children: [_jsxs("dl", { className: "mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4", children: [_jsx(Stat, { label: "Venta total", value: money(totalSale), highlight: true }), _jsx(Stat, { label: "Coste", value: money(totalCost) }), _jsx(Stat, { label: "Beneficio", value: money(profit), positive: profit >= 0 }), _jsx(Stat, { label: "Lineas", value: String(conceptLines.length) })] }), _jsxs("label", { className: `mt-3 flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Coste interno opcional (sustituye calculo automatico)", _jsx("input", { type: "number", min: 0, step: "0.01", value: internalCostOverride === "" ? "" : internalCostOverride, onChange: (e) => setInternalCostOverride(e.target.value === "" ? "" : Number(e.target.value)), className: INPUT, placeholder: "Vacio = suma conceptos + plantillas + piezas" })] })] }), _jsx(FormSection, { title: "Pago y notas", children: _jsxs("div", { className: "mt-3 grid grid-cols-1 gap-4", children: [_jsxs("label", { className: `flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Forma de pago", _jsx(PaymentMethodSelect, { value: paymentMethod, onChange: setPaymentMethod, className: INPUT })] }), _jsxs("label", { className: `flex flex-col gap-1.5 ${FIELD_LABEL}`, children: ["Notas internas", _jsx("textarea", { value: notes, onChange: (e) => setNotes(e.target.value), rows: 2, className: `${INPUT} min-h-[72px]` })] })] }) })] }), _jsxs("footer", { className: "flex shrink-0 flex-wrap gap-2 border-t border-slate-800 bg-slate-950/60 px-4 py-4 sm:px-6", children: [_jsx("button", { type: "submit", disabled: submitting || (isEdit && actionId === editingService?.id), className: PRIMARY_ACTION_BUTTON, children: submitting ? "Guardando..." : isEdit ? "Guardar cambios" : "Registrar servicio" }), _jsx("button", { type: "button", onClick: onClose, className: SECONDARY_BUTTON_SM, children: "Cancelar" }), isEdit && onDelete && editingService ? (_jsx("button", { type: "button", disabled: submitting || actionId === editingService.id, onClick: () => {
                                         if (!window.confirm("Eliminar este servicio? Esta accion no se puede deshacer."))
                                             return;
                                         void onDelete(editingService.id).then(() => onClose());

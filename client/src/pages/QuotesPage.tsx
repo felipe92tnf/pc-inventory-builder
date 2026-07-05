@@ -9,6 +9,7 @@ import {
   PRIMARY_ACTION_BUTTON_HEADER,
   STICKY_PRIMARY_MOBILE_DOCK,
   SECONDARY_GHOST_SM,
+  DESTRUCTIVE_BUTTON_SM,
   FILTER_TOGGLE_ROW
 } from "../theme/actionButtons";
 import {
@@ -68,6 +69,7 @@ export function QuotesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
   const [query, setQuery] = useState("");
@@ -149,6 +151,24 @@ export function QuotesPage() {
       setError(err instanceof Error ? err.message : "No se pudo crear el presupuesto.");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDelete = async (quote: Quote) => {
+    const ok = window.confirm(
+      `Eliminar el presupuesto #${quote.quoteNumber} "${quote.title}"?\n\nEsta accion no se puede deshacer.`
+    );
+    if (!ok) return;
+
+    setDeletingId(quote.id);
+    setError(null);
+    try {
+      await quotesApi.deleteQuote(quote.id);
+      setQuotes((prev) => prev.filter((row) => row.id !== quote.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar el presupuesto.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -336,9 +356,19 @@ export function QuotesPage() {
                               {formatDate(row.createdAt)}
                             </td>
                             <td className={`${TABLE_CELL} text-right`}>
-                              <Link to={`/quotes/${row.id}`} className={SECONDARY_GHOST_SM}>
-                                Ver detalle
-                              </Link>
+                              <div className="flex justify-end gap-2">
+                                <Link to={`/quotes/${row.id}`} className={SECONDARY_GHOST_SM}>
+                                  Ver detalle
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDelete(row)}
+                                  disabled={deletingId === row.id}
+                                  className={DESTRUCTIVE_BUTTON_SM}
+                                >
+                                  {deletingId === row.id ? "Eliminando..." : "Eliminar"}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -405,12 +435,22 @@ export function QuotesPage() {
                               <p className="mt-1 text-xs text-amber-200/90">Por cobrar: {money(row.paymentRemaining)}</p>
                             ) : null}
                           </div>
-                          <Link
-                            to={`/quotes/${row.id}`}
-                            className={`${SECONDARY_GHOST_SM} mt-3 flex w-full min-h-[44px] justify-center py-2.5 text-sm`}
-                          >
-                            Ver detalle
-                          </Link>
+                          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <Link
+                              to={`/quotes/${row.id}`}
+                              className={`${SECONDARY_GHOST_SM} flex min-h-[44px] w-full justify-center py-2.5 text-sm`}
+                            >
+                              Ver detalle
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => void handleDelete(row)}
+                              disabled={deletingId === row.id}
+                              className={`${DESTRUCTIVE_BUTTON_SM} min-h-[44px] w-full text-sm`}
+                            >
+                              {deletingId === row.id ? "Eliminando..." : "Eliminar"}
+                            </button>
+                          </div>
                         </article>
                       ))}
                     </div>

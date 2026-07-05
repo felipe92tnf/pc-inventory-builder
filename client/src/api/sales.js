@@ -43,6 +43,11 @@ export function revertSale(saleId) {
         method: "POST"
     });
 }
+export function recalculateSaleFromBuild(saleId) {
+    return http(`/sales/${saleId}/recalculate-from-build`, {
+        method: "POST"
+    });
+}
 export async function salesImportPreview(file) {
     const formData = new FormData();
     formData.append("file", file);

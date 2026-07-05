@@ -18,6 +18,9 @@ export function createCustomer(payload) {
 export function patchCustomer(id, payload) {
     return http(`/customers/${id}`, { method: "PATCH", body: payload });
 }
+export function deleteCustomer(id) {
+    return http(`/customers/${id}`, { method: "DELETE" });
+}
 export function getCustomerOverview(name, phone) {
     const sp = new URLSearchParams();
     sp.set("name", name);

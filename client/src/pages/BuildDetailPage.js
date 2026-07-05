@@ -15,6 +15,7 @@ import { SUMMARY_CARD_GRID_THREE, SUMMARY_CARD_LABEL, SUMMARY_VALUE_NEGATIVE, SU
 import { PAGE_HEADER_COMPACT, SECTION_SHELL } from "../theme/layoutDensity";
 import { StatusBadge, buildStatusVariant } from "../components/ui/StatusBadge";
 import { buildStatusLabelEs } from "../utils/buildStatusLabel";
+import { customerFieldToForm, formatCustomerSubtitle } from "../utils/customerUi";
 import { isActiveSale } from "../utils/salesStats";
 import { CustomerPicker } from "../components/customers/CustomerPicker";
 const BUILD_PAGE_SHELL = "mx-auto w-full max-w-7xl space-y-3 px-2 pb-5 text-slate-100 md:space-y-3.5 md:px-4";
@@ -118,7 +119,6 @@ export function BuildDetailPage() {
         customerId: null,
         customerName: "",
         customerPhone: "",
-        customerEmail: "",
         notes: "",
         initialStatus: "CONFIRMED",
         confirmResDeposit: "",
@@ -130,17 +130,9 @@ export function BuildDetailPage() {
         if (!build)
             return null;
         if (build.status === "DRAFT") {
-            const a = mountForm.customerName.trim();
-            const b = mountForm.customerPhone.trim();
-            if (!a && !b)
-                return null;
-            return [a, b].filter(Boolean).join(" · ");
+            return formatCustomerSubtitle(mountForm.customerName, mountForm.customerPhone);
         }
-        const a = (build.customerName ?? "").trim();
-        const b = (build.customerPhone ?? "").trim();
-        if (!a && !b)
-            return null;
-        return [a, b].filter(Boolean).join(" · ");
+        return formatCustomerSubtitle(build.customerName, build.customerPhone);
     }, [build, mountForm.customerName, mountForm.customerPhone]);
     const [opStatus, setOpStatus] = useState("CONFIRMED");
     const [resDeposit, setResDeposit] = useState("");
@@ -172,20 +164,25 @@ export function BuildDetailPage() {
             return null;
         return reservationRemainingFromTotalAndDeposit(totalSaleShown, p);
     }, [mountForm.confirmPayPaid, totalSaleShown]);
-    const sellSuggestedPrice = useMemo(() => {
+    /** Precio total del montaje al registrar la venta (nunca solo el pendiente). */
+    const sellSuggestedPrice = totalSaleShown;
+    const sellAmountAlreadyPaid = useMemo(() => {
         if (!build)
             return 0;
-        if (build.status === "RESERVED" && build.reservationRemaining != null) {
-            return Number(build.reservationRemaining);
+        if (build.status === "RESERVED") {
+            const d = parseMoneyInput(resDeposit);
+            if (d !== null)
+                return d;
+            return build.reservationDeposit != null ? Number(build.reservationDeposit) : 0;
         }
         if (build.status === "PENDING_PAYMENT") {
-            if (derivedPendingRemaining !== null)
-                return derivedPendingRemaining;
-            if (build.pendingPaymentRemaining != null)
-                return Number(build.pendingPaymentRemaining);
+            const p = parseMoneyInput(payPaid);
+            if (p !== null)
+                return p;
+            return build.pendingPaymentPaid != null ? Number(build.pendingPaymentPaid) : 0;
         }
-        return Number(build.totalSale);
-    }, [build, derivedPendingRemaining]);
+        return 0;
+    }, [build, resDeposit, payPaid]);
     useEffect(() => {
         if (!build)
             return;
@@ -234,9 +231,8 @@ export function BuildDetailPage() {
         setMountForm({
             name: build.name,
             customerId: build.customerId ?? null,
-            customerName: build.customerName ?? "",
-            customerPhone: build.customerPhone ?? "",
-            customerEmail: build.customerEmail ?? "",
+            customerName: customerFieldToForm(build.customerName),
+            customerPhone: customerFieldToForm(build.customerPhone),
             notes: build.notes ?? "",
             initialStatus: "CONFIRMED",
             confirmResDeposit: "",
@@ -316,11 +312,6 @@ export function BuildDetailPage() {
         })();
     };
     const handleSaveMountData = async () => {
-        const emailTrim = mountForm.customerEmail.trim();
-        if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-            window.alert("Introduce un email valido o dejalo vacio.");
-            return;
-        }
         if (!mountForm.name.trim()) {
             window.alert("Indica al menos un nombre para el montaje.");
             return;
@@ -332,7 +323,7 @@ export function BuildDetailPage() {
                 customerId: mountForm.customerId,
                 customerName: mountForm.customerName.trim() ? mountForm.customerName.trim() : null,
                 customerPhone: mountForm.customerPhone.trim() ? mountForm.customerPhone.trim() : null,
-                customerEmail: emailTrim ? emailTrim : null
+                customerEmail: null
             });
             setMountDataSaved(true);
             window.setTimeout(() => setMountDataSaved(false), 2800);
@@ -348,7 +339,6 @@ export function BuildDetailPage() {
         const name = mountForm.name.trim();
         const customerName = mountForm.customerName.trim();
         const phone = mountForm.customerPhone.trim();
-        const emailTrim = mountForm.customerEmail.trim();
         if (!name) {
             window.alert("Indica un nombre para el montaje.");
             return;
@@ -359,10 +349,6 @@ export function BuildDetailPage() {
         }
         if (!phone) {
             window.alert("Indica un telefono de contacto.");
-            return;
-        }
-        if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-            window.alert("Introduce un email valido o dejalo vacio.");
             return;
         }
         const saleNum = parseMoneyInput(saleDraft);
@@ -376,7 +362,7 @@ export function BuildDetailPage() {
             customerId: mountForm.customerId,
             customerName,
             customerPhone: phone,
-            customerEmail: emailTrim ? emailTrim : null
+            customerEmail: null
         };
         const roundedSale = Math.round(saleNum * 100) / 100;
         const computed = Number(build.computedSaleTotal);
@@ -470,13 +456,12 @@ export function BuildDetailPage() {
                                                 customerId: mountForm.customerId,
                                                 customerName: mountForm.customerName,
                                                 customerPhone: mountForm.customerPhone,
-                                                customerEmail: mountForm.customerEmail
+                                                customerEmail: ""
                                             }, onChange: (c) => setMountForm((m) => ({
                                                 ...m,
                                                 customerId: c.customerId,
                                                 customerName: c.customerName,
-                                                customerPhone: c.customerPhone,
-                                                customerEmail: c.customerEmail
+                                                customerPhone: c.customerPhone
                                             })), requireName: false, requirePhone: false }) }), _jsxs("label", { className: "flex flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-2", children: ["Notas", _jsx("textarea", { value: mountForm.notes, onChange: (e) => setMountForm((m) => ({ ...m, notes: e.target.value })), disabled: actionLoading, rows: 2, className: "rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring", placeholder: "Preferencias, plazo\u2026" })] })] })] })) : null, isAssembledOperational(build.status) && build.status !== "SOLD" ? (_jsxs("div", { className: "flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-end", children: [_jsxs("label", { className: "flex min-w-[10rem] flex-1 flex-col gap-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500", children: ["Estado", _jsx("select", { value: opStatus, onChange: (e) => {
                                             const next = e.target.value;
                                             if (next === "PENDING_PAYMENT" && build) {
@@ -578,11 +563,11 @@ export function BuildDetailPage() {
                                                 ? "Montaje confirmado"
                                                 : actionLoading
                                                     ? "Confirmando..."
-                                                    : "Confirmar montaje" })] })] })] }), _jsx(SellPcModal, { open: sellModalOpen, onClose: () => setSellModalOpen(false), buildId: build.id, suggestedSalePrice: sellSuggestedPrice, offerPendingPickup: true, disabled: actionLoading, formResetKey: sellFormKey, defaultCustomer: {
+                                                    : "Confirmar montaje" })] })] })] }), _jsx(SellPcModal, { open: sellModalOpen, onClose: () => setSellModalOpen(false), buildId: build.id, suggestedSalePrice: sellSuggestedPrice, amountAlreadyPaid: sellAmountAlreadyPaid, offerPendingPickup: true, disabled: actionLoading, formResetKey: sellFormKey, defaultCustomer: {
                     customerId: build.customerId,
                     customerName: build.customerName,
                     customerPhone: build.customerPhone,
-                    customerEmail: build.customerEmail
+                    customerEmail: null
                 }, onSuccess: async (sale) => {
                     await reload();
                     setSellModalOpen(false);

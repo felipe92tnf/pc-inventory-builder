@@ -9,6 +9,7 @@ import { PcConfiguratorForm } from "../components/builds/PcConfiguratorForm";
 import { useParts } from "../hooks/useParts";
 import { isConfiguratorPart, isPrebuiltPc } from "../types/part";
 import { QUOTE_STATUSES } from "../types/quote";
+import { customerFieldToForm, customerFieldsToApi } from "../utils/customerUi";
 import { aggregateQuoteFinancials, itemLineCostTotal, itemLineProfit, moneyOrDash } from "../utils/quoteFinancials";
 import { DESTRUCTIVE_BUTTON_SM, PRIMARY_ACTION_BUTTON, PRIMARY_ACTION_BUTTON_COMPACT, SECONDARY_BUTTON_SM, SECONDARY_GHOST_SM } from "../theme/actionButtons";
 import { SUMMARY_CARD_GRID, SUMMARY_CARD_LABEL, SUMMARY_CARD_SHELL, SUMMARY_CARD_SHELL_AUTO, SUMMARY_VALUE_NEGATIVE, SUMMARY_VALUE_NEUTRAL, SUMMARY_VALUE_PROFIT_POS, SUMMARY_VALUE_REVENUE } from "../theme/summaryCards";
@@ -93,9 +94,9 @@ export function QuoteDetailPage() {
     const applyQuoteToForm = useCallback((q) => {
         setCustomerFields({
             customerId: q.customerId ?? null,
-            customerName: q.customerName,
-            customerPhone: q.customerPhone ?? "",
-            customerEmail: q.customerEmail ?? ""
+            customerName: customerFieldToForm(q.customerName),
+            customerPhone: customerFieldToForm(q.customerPhone),
+            customerEmail: ""
         });
         setTitle(q.title);
         setDescription(q.description ?? "");
@@ -199,11 +200,12 @@ export function QuoteDetailPage() {
         setActionLoading(true);
         setError(null);
         try {
+            const customer = customerFieldsToApi(customerFields);
             await quotesApi.patchQuote(quoteId, {
-                customerId: customerFields.customerId,
-                customerName: customerFields.customerName.trim(),
-                customerPhone: customerFields.customerPhone.trim() || null,
-                customerEmail: customerFields.customerEmail.trim() || null,
+                customerId: customer.customerId,
+                customerName: customer.customerName,
+                customerPhone: customer.customerPhone,
+                customerEmail: customer.customerEmail,
                 title: title.trim(),
                 description: description.trim() || null,
                 validUntil: validUntilDate ? new Date(validUntilDate).toISOString() : null,

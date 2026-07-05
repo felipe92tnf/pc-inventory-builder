@@ -43,6 +43,11 @@ export function completeService(id) {
         method: "POST"
     });
 }
+export function revertService(id) {
+    return http(`/services/${id}/revert`, {
+        method: "POST"
+    });
+}
 export function addServiceExtraLine(serviceId, payload) {
     return http(`/services/${serviceId}/extra-lines`, {
         method: "POST",

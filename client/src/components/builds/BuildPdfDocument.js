@@ -4,16 +4,10 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * (misma paleta que presupuestos), sin importar `QuotePdfDocument`.
  */
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
-const PDF_BUSINESS_NAME = "SecondByte";
-/** Cabecera del PDF (marca). */
-const PDF_HEADER_SLOGAN = "Tecnología que te conecta";
+import { PDF_BRAND_NAME, PDF_BRAND_SLOGAN, pdfBusinessContactFooterLine } from "../../constants/pdfBusinessInfo";
+const PDF_BUSINESS_NAME = PDF_BRAND_NAME;
 /** Pie y tono comercial para el cliente. */
 const PDF_CLIENT_TAGLINE = "Tecnología y montaje de equipos";
-const CLIENT_PDF_SOCIAL = {
-    whatsapp: "+34 600 000 000",
-    instagram: "@secondbyte",
-    email: "contacto@secondbyte.es"
-};
 const STATUS_BADGE = {
     DRAFT: { bg: "#f1f5f9", border: "#94a3b8", title: "#475569", value: "#0f172a" },
     CONFIRMED: { bg: "#ecfdf5", border: "#34d399", title: "#047857", value: "#064e3b" },
@@ -659,24 +653,8 @@ function pendingPaymentPdfTotals(build) {
 function PendingPaymentSummaryBlock({ total, paid, pending }) {
     return (_jsxs(View, { style: styles.paymentSummaryCard, wrap: false, children: [_jsx(View, { style: styles.paymentSummaryTopAccent }), _jsxs(View, { style: styles.paymentSummaryBody, children: [_jsxs(View, { style: styles.paymentSummaryRow, children: [_jsx(Text, { style: styles.paymentSummaryLabel, children: "Total montaje" }), _jsx(Text, { style: styles.paymentSummaryValue, children: formatMoney(total) })] }), _jsxs(View, { style: [styles.paymentSummaryRow, { marginBottom: 0 }], children: [_jsx(Text, { style: styles.paymentSummaryLabel, children: "Cantidad cobrada" }), _jsx(Text, { style: styles.paymentSummaryValue, children: formatMoney(paid) })] })] }), _jsxs(View, { style: styles.paymentPendingHighlight, wrap: false, children: [_jsxs(View, { style: styles.paymentPendingLeft, children: [_jsx(Text, { style: styles.paymentPendingTitle, children: "Pendiente de pago" }), _jsx(Text, { style: styles.paymentPendingHint, children: "Importe restante (total menos cobrado)" })] }), _jsx(Text, { style: styles.paymentPendingAmount, children: formatMoney(pending) })] })] }));
 }
-function clientPdfSocialLine() {
-    const parts = [];
-    const wa = String(CLIENT_PDF_SOCIAL.whatsapp).trim();
-    const ig = String(CLIENT_PDF_SOCIAL.instagram).trim();
-    const em = String(CLIENT_PDF_SOCIAL.email).trim();
-    if (wa)
-        parts.push(`WhatsApp ${wa}`);
-    if (ig)
-        parts.push(`Instagram ${ig}`);
-    if (em)
-        parts.push(em);
-    if (parts.length === 0)
-        return null;
-    return parts.join(" · ");
-}
 function FooterBlock() {
-    const socialLine = clientPdfSocialLine();
-    return (_jsxs(View, { style: styles.footer, fixed: true, children: [_jsxs(View, { style: styles.footerMainRow, children: [_jsxs(View, { style: styles.footerBrandCol, children: [_jsx(Text, { style: styles.footerBrand, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.footerTagline, children: PDF_CLIENT_TAGLINE })] }), _jsx(Text, { style: styles.footerPage, render: ({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}` })] }), socialLine ? _jsx(Text, { style: styles.footerSocials, children: socialLine }) : null, _jsx(Text, { style: styles.footerLegal, children: "Documento informativo. No constituye factura." })] }));
+    return (_jsxs(View, { style: styles.footer, fixed: true, children: [_jsxs(View, { style: styles.footerMainRow, children: [_jsxs(View, { style: styles.footerBrandCol, children: [_jsx(Text, { style: styles.footerBrand, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.footerTagline, children: PDF_CLIENT_TAGLINE })] }), _jsx(Text, { style: styles.footerPage, render: ({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}` })] }), _jsx(Text, { style: styles.footerSocials, children: pdfBusinessContactFooterLine() }), _jsx(Text, { style: styles.footerLegal, children: "Documento informativo. No constituye factura." })] }));
 }
 export function BuildPdfDocument({ build }) {
     const items = build.items ?? [];
@@ -687,7 +665,6 @@ export function BuildPdfDocument({ build }) {
     const clientRowsAll = [
         { label: "Nombre", value: dashIfEmpty(build.customerName) },
         { label: "Teléfono", value: dashIfEmpty(build.customerPhone) },
-        { label: "Email", value: dashIfEmpty(build.customerEmail) }
     ];
     const clientRows = clientRowsAll.filter((row) => row.value !== "—");
     const metaRows = [
@@ -695,7 +672,7 @@ export function BuildPdfDocument({ build }) {
     ];
     const reservedTotals = reservedClientTotals(build);
     const pendingPaymentTotals = pendingPaymentPdfTotals(build);
-    const sharedHeader = (_jsxs(_Fragment, { children: [_jsx(View, { style: styles.accentTop, fixed: true }), _jsxs(View, { style: styles.headerBand, wrap: false, children: [_jsxs(View, { style: styles.headerLeft, children: [_jsx(SecondByteLogoMark, {}), _jsxs(View, { style: styles.brandBlock, children: [_jsx(Text, { style: styles.brandName, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.brandSlogan, children: PDF_HEADER_SLOGAN })] })] }), _jsxs(View, { style: styles.headerDocCol, children: [_jsx(Text, { style: styles.docKind, children: "MONTAJE" }), _jsx(Text, { style: styles.docKindSub, children: "Propuesta \u00B7 configuraci\u00F3n PC" })] })] }), _jsx(View, { style: styles.headerBottomLine, wrap: false })] }));
+    const sharedHeader = (_jsxs(_Fragment, { children: [_jsx(View, { style: styles.accentTop, fixed: true }), _jsxs(View, { style: styles.headerBand, wrap: false, children: [_jsxs(View, { style: styles.headerLeft, children: [_jsx(SecondByteLogoMark, {}), _jsxs(View, { style: styles.brandBlock, children: [_jsx(Text, { style: styles.brandName, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.brandSlogan, children: PDF_BRAND_SLOGAN })] })] }), _jsxs(View, { style: styles.headerDocCol, children: [_jsx(Text, { style: styles.docKind, children: "MONTAJE" }), _jsx(Text, { style: styles.docKindSub, children: "Propuesta \u00B7 configuraci\u00F3n PC" })] })] }), _jsx(View, { style: styles.headerBottomLine, wrap: false })] }));
     return (_jsx(Document, { title: `Montaje ${build.name}`, author: PDF_BUSINESS_NAME, children: _jsxs(Page, { size: "A4", style: styles.page, children: [sharedHeader, _jsxs(Text, { style: styles.subjectLine, wrap: false, children: [_jsx(Text, { style: styles.subjectStrong, children: "Montaje: " }), dashIfEmpty(build.name)] }), _jsx(StatusBadgeBlock, { status: build.status }), _jsxs(View, { style: styles.infoRow, wrap: false, children: [_jsxs(View, { style: styles.clientCard, children: [_jsx(Text, { style: styles.cardTitle, children: "Cliente" }), clientRows.length === 0 ? (_jsx(InfoLine, { label: "Nombre", value: "\u2014", isLast: true })) : (clientRows.map((row, i) => (_jsx(InfoLine, { label: row.label, value: row.value, isLast: i === clientRows.length - 1 }, row.label))))] }), _jsxs(View, { style: styles.metaCard, children: [_jsx(Text, { style: styles.cardTitle, children: "Documento" }), metaRows.map((row, i) => (_jsx(InfoLine, { label: row.label, value: row.value, isLast: i === metaRows.length - 1 }, row.label)))] })] }), _jsx(View, { style: styles.sectionRule }), _jsxs(View, { style: styles.tableSectionHeader, wrap: false, children: [_jsx(View, { style: styles.tableSectionAccent }), _jsx(Text, { style: styles.tableSectionTitle, children: "Componentes incluidos" })] }), _jsxs(View, { style: styles.tableOuter, children: [_jsx(LineTableHeaderThreeCol, {}), items.length === 0 && manualLines.length === 0 ? (_jsx(Text, { style: styles.emptyHint, children: "Sin componentes listados en este documento." })) : (_jsxs(_Fragment, { children: [items.map((item, index) => {
                                     const zebra = index % 2 === 1;
                                     return (_jsxs(View, { style: [styles.tableRow, ...(zebra ? [styles.tableRowAlt] : [])], wrap: false, children: [_jsx(Text, { style: [styles.td, styles.colConcept], wrap: true, children: item.part?.name ?? "Componente" }), _jsx(Text, { style: [styles.td, styles.colQty], children: item.quantity }), _jsx(Text, { style: [styles.td, styles.colSale], children: formatMoney(partLineSale(item)) })] }, item.id));

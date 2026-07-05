@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, createSearchParams, useLocation, useNavigate } from "react-router-dom";
 import * as buildsApi from "../api/builds";
 import { useBuilds } from "../hooks/useBuilds";
@@ -12,6 +12,7 @@ import {
   PRIMARY_ACTION_BUTTON_HEADER,
   STICKY_PRIMARY_MOBILE_DOCK,
   PRIMARY_ACTION_BUTTON_COMPACT,
+  SECONDARY_BUTTON_SM,
   SECONDARY_GHOST_SM,
   DESTRUCTIVE_BUTTON_SM
 } from "../theme/actionButtons";
@@ -25,6 +26,7 @@ import {
   LIST_PAGE_LISTING_TITLE
 } from "../theme/listPageMobile";
 import { PAGE_HERO, PAGE_OUTER_7XL, SECTION_SHELL, TABLE_CELL } from "../theme/layoutDensity";
+import { isActiveSale, isRevertedSale } from "../utils/salesStats";
 
 type BuildBucketKey =
   | "WIP"
@@ -78,9 +80,39 @@ function bucketTitle(bucket: BuildBucketKey): string {
   return "Vendidos";
 }
 
+function buildFilterDateRef(
+  build: Build,
+  bucket: BuildBucketKey,
+  sale: SaleListRow | undefined
+): string {
+  if (bucket === "SOLD" || build.status === "SOLD" || build.status === "PENDING_PICKUP") {
+    return sale?.soldAt ?? build.updatedAt;
+  }
+  if (bucket === "WIP") {
+    return build.createdAt;
+  }
+  return build.confirmedAt ?? build.createdAt;
+}
+
+function matchesMonthYear(
+  iso: string,
+  monthFilter: number | "ALL",
+  yearFilter: number | "ALL"
+): boolean {
+  const d = new Date(iso);
+  const matchesMonth = monthFilter === "ALL" || d.getMonth() + 1 === monthFilter;
+  const matchesYear = yearFilter === "ALL" || d.getFullYear() === yearFilter;
+  return matchesMonth && matchesYear;
+}
+
 function canLinkRegisterSale(build: Build, sale: SaleListRow | undefined): boolean {
   if (!["CONFIRMED", "PENDING_PAYMENT", "RESERVED"].includes(build.status)) return false;
-  return !sale;
+  return !sale || !isActiveSale(sale);
+}
+
+function canRevertSale(build: Build, sale: SaleListRow | undefined): sale is SaleListRow {
+  if (!sale || isRevertedSale(sale) || sale.isImported) return false;
+  return build.status === "SOLD" || build.status === "PENDING_PICKUP";
 }
 
 function bucketTone(bucket: BuildBucketKey): string {
@@ -109,12 +141,8 @@ export function BuildsPage() {
   const [monthFilter, setMonthFilter] = useState<number | "ALL">("ALL");
   const [yearFilter, setYearFilter] = useState<number | "ALL">("ALL");
   const [sortOrder, setSortOrder] = useState<SortOrder>("RECENT");
-  const [soldMonthFilter, setSoldMonthFilter] = useState<number | "ALL">(
-    () => new Date().getMonth() + 1
-  );
-  const [soldYearFilter, setSoldYearFilter] = useState<number | "ALL">(
-    () => new Date().getFullYear()
-  );
+  const [revertingSaleId, setRevertingSaleId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showEmptySections, setShowEmptySections] = useState(false);
   const [listFlash, setListFlash] = useState<string | null>(null);
 
@@ -148,27 +176,27 @@ export function BuildsPage() {
     void reload();
   }, [location.pathname, location.state, navigate, reload]);
 
+  const reloadSales = useCallback(async () => {
+    try {
+      const rows = await salesApi.listSales();
+      setSalesRows(rows);
+    } catch {
+      setSalesRows([]);
+    }
+  }, []);
+
   useEffect(() => {
-    let active = true;
-    void salesApi
-      .listSales()
-      .then((rows) => {
-        if (!active) return;
-        setSalesRows(rows);
-      })
-      .catch(() => {
-        if (!active) return;
-        setSalesRows([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, [builds.length]);
+    void reloadSales();
+  }, [builds.length, reloadSales]);
 
   const salesByBuildId = useMemo(() => {
     const map = new Map<string, SaleListRow>();
     for (const sale of salesRows) {
-      map.set(sale.buildId, sale);
+      if (isRevertedSale(sale)) continue;
+      const prev = map.get(sale.buildId);
+      if (!prev || new Date(sale.soldAt).getTime() > new Date(prev.soldAt).getTime()) {
+        map.set(sale.buildId, sale);
+      }
     }
     return map;
   }, [salesRows]);
@@ -177,13 +205,17 @@ export function BuildsPage() {
     const set = new Set<number>();
     set.add(new Date().getFullYear());
     for (const build of builds) {
+      set.add(new Date(build.confirmedAt ?? build.createdAt).getFullYear());
       set.add(new Date(build.updatedAt).getFullYear());
+    }
+    for (const part of inventoryParts) {
+      set.add(new Date(part.updatedAt).getFullYear());
     }
     for (const sale of salesRows) {
       set.add(new Date(sale.soldAt).getFullYear());
     }
     return [...set].sort((a, b) => b - a);
-  }, [builds, salesRows]);
+  }, [builds, salesRows, inventoryParts]);
 
   const globallyFilteredBuilds = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -191,8 +223,7 @@ export function BuildsPage() {
       .filter((build) => {
         const bucket = buildBucket(build);
         const sale = salesByBuildId.get(build.id);
-        const dateRef = bucket === "SOLD" ? sale?.soldAt ?? build.updatedAt : build.updatedAt;
-        const d = new Date(dateRef);
+        const dateRef = buildFilterDateRef(build, bucket, sale);
         const hay = [
           build.name,
           build.customerName ?? "",
@@ -203,9 +234,8 @@ export function BuildsPage() {
           .toLowerCase();
         const matchesQuery = !q || hay.includes(q);
         const matchesStatus = statusFilter === "ALL" || bucket === statusFilter;
-        const matchesMonth = monthFilter === "ALL" || d.getMonth() + 1 === monthFilter;
-        const matchesYear = yearFilter === "ALL" || d.getFullYear() === yearFilter;
-        return matchesQuery && matchesStatus && matchesMonth && matchesYear;
+        const matchesDate = matchesMonthYear(dateRef, monthFilter, yearFilter);
+        return matchesQuery && matchesStatus && matchesDate;
       })
       .sort((a, b) => {
         const saleA = salesByBuildId.get(a.id);
@@ -216,8 +246,12 @@ export function BuildsPage() {
         if (sortOrder === "PRICE_DESC") {
           return (Number(saleB?.finalSalePrice ?? b.totalSale ?? 0) - Number(saleA?.finalSalePrice ?? a.totalSale ?? 0));
         }
-        const dateA = new Date((buildBucket(a) === "SOLD" ? saleA?.soldAt : a.updatedAt) ?? a.updatedAt).getTime();
-        const dateB = new Date((buildBucket(b) === "SOLD" ? saleB?.soldAt : b.updatedAt) ?? b.updatedAt).getTime();
+        const dateA = new Date(
+          buildFilterDateRef(a, buildBucket(a), saleA)
+        ).getTime();
+        const dateB = new Date(
+          buildFilterDateRef(b, buildBucket(b), saleB)
+        ).getTime();
         return dateB - dateA;
       });
   }, [builds, salesByBuildId, query, statusFilter, monthFilter, yearFilter, sortOrder]);
@@ -237,16 +271,7 @@ export function BuildsPage() {
     return map;
   }, [globallyFilteredBuilds]);
 
-  const soldBuildsFiltered = useMemo(() => {
-    return bucketBuilds.SOLD.filter((build) => {
-      const sale = salesByBuildId.get(build.id);
-      const ref = sale?.soldAt ?? build.updatedAt;
-      const d = new Date(ref);
-      const matchesMonth = soldMonthFilter === "ALL" || d.getMonth() + 1 === soldMonthFilter;
-      const matchesYear = soldYearFilter === "ALL" || d.getFullYear() === soldYearFilter;
-      return matchesMonth && matchesYear;
-    });
-  }, [bucketBuilds.SOLD, salesByBuildId, soldMonthFilter, soldYearFilter]);
+  const soldBuildsFiltered = bucketBuilds.SOLD;
 
   const soldVisible = soldExpanded ? soldBuildsFiltered : soldBuildsFiltered.slice(0, 5);
 
@@ -260,11 +285,9 @@ export function BuildsPage() {
     return prebuiltWithStock.filter((p) => {
       const hay = p.name.toLowerCase();
       const matchesQuery = !q || hay.includes(q);
-      const d = new Date(p.updatedAt);
-      const matchesMonth = monthFilter === "ALL" || d.getMonth() + 1 === monthFilter;
-      const matchesYear = yearFilter === "ALL" || d.getFullYear() === yearFilter;
+      const matchesDate = matchesMonthYear(p.updatedAt, monthFilter, yearFilter);
       const matchesStatus = statusFilter === "ALL" || statusFilter === "CONFIRMED";
-      return matchesQuery && matchesMonth && matchesYear && matchesStatus;
+      return matchesQuery && matchesDate && matchesStatus;
     });
   }, [prebuiltWithStock, query, monthFilter, yearFilter, statusFilter]);
 
@@ -279,6 +302,34 @@ export function BuildsPage() {
     !showEmptySections &&
     !vendidosSectionVisible &&
     !anyOperativeBucketHasRows;
+
+  const handleClearFilters = () => {
+    setQuery("");
+    setStatusFilter("ALL");
+    setMonthFilter("ALL");
+    setYearFilter("ALL");
+    setSortOrder("RECENT");
+    setListFlash("Filtros restablecidos.");
+  };
+
+  const handleRevertSale = async (build: Build, sale: SaleListRow) => {
+    const ok = window.confirm(
+      `Revertir la venta del montaje "${build.name}"?\n\n- El montaje volverá a listo para la venta\n- La venta quedará en historial como revertida\n- El stock sigue comprometido en el montaje`
+    );
+    if (!ok) return;
+
+    setRevertingSaleId(sale.id);
+    setActionError(null);
+    try {
+      await salesApi.revertSale(sale.id);
+      await Promise.all([reload(), reloadSales()]);
+      setListFlash(`Venta revertida. "${build.name}" disponible de nuevo.`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "No se pudo revertir la venta.");
+    } finally {
+      setRevertingSaleId(null);
+    }
+  };
 
   return (
     <div className={`${PAGE_OUTER_7XL} max-md:pb-32`}>
@@ -308,12 +359,13 @@ export function BuildsPage() {
         </button>
       </section>
 
-      {error ? (
+      {error || actionError ? (
         <div className="flex flex-col gap-3 rounded-xl border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 md:flex-row md:items-center md:justify-between">
-          <span>{error}</span>
+          <span>{error ?? actionError}</span>
           <button
             type="button"
             onClick={() => {
+              setActionError(null);
               void reload();
             }}
             className="rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-800/70"
@@ -365,7 +417,11 @@ export function BuildsPage() {
               Mes
               <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2">
                 <option value="ALL">Todos</option>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m}</option>)}
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                  <option key={m} value={m}>
+                    {SPANISH_MONTH_NAMES[m - 1]}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm text-slate-300">
@@ -383,6 +439,15 @@ export function BuildsPage() {
                 <option value="PRICE_DESC">Mayor precio</option>
               </select>
             </label>
+            <div className="flex items-end xl:col-span-5">
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className={SECONDARY_BUTTON_SM}
+              >
+                Limpiar filtros
+              </button>
+            </div>
             </div>
           </div>
         </details>
@@ -430,8 +495,10 @@ export function BuildsPage() {
                 salesByBuildId={salesByBuildId}
                 deletingId={deletingId}
                 preparingPartId={preparingPartId}
+                revertingSaleId={revertingSaleId}
                 defaultOpen={defaultOpen}
                 onDelete={(build) => void handleDelete(build.id, build.name)}
+                onRevertSale={(build, sale) => void handleRevertSale(build, sale)}
                 onRegisterInventoryPrebuilt={
                   isConfirmed
                     ? (part) => {
@@ -477,26 +544,6 @@ export function BuildsPage() {
                 </svg>
               </summary>
               <div className="border-t border-slate-800 px-4 pb-3 pt-2.5">
-                <div className="mb-2.5 grid grid-cols-1 gap-2.5 md:grid-cols-4">
-                  <label className="flex flex-col gap-1 text-sm text-slate-300">
-                    Ventas por mes
-                    <select value={soldMonthFilter} onChange={(e) => setSoldMonthFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2">
-                      <option value="ALL">Todos</option>
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                        <option key={m} value={m}>
-                          {SPANISH_MONTH_NAMES[m - 1]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm text-slate-300">
-                    Año vendidos
-                    <select value={soldYearFilter} onChange={(e) => setSoldYearFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2">
-                      <option value="ALL">Todos</option>
-                      {years.map((y) => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                  </label>
-                </div>
                 <div className="space-y-2">
                   {soldVisible.map((build) => {
                     const sale = salesByBuildId.get(build.id);
@@ -508,6 +555,9 @@ export function BuildsPage() {
                             <p className="mt-1 text-sm text-slate-400">
                               {sale?.customerName ?? build.customerName ?? "—"}
                             </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {toDateLabel(sale?.soldAt ?? build.updatedAt)}
+                            </p>
                           </div>
                           <p className="text-lg font-semibold text-emerald-300">
                             {money(Number(sale?.finalSalePrice ?? build.totalSale ?? 0))}
@@ -515,6 +565,16 @@ export function BuildsPage() {
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <Link to={`/builds/${build.id}`} className={SECONDARY_GHOST_SM}>Ver detalle</Link>
+                          {sale && canRevertSale(build, sale) ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleRevertSale(build, sale)}
+                              disabled={revertingSaleId === sale.id}
+                              className={SECONDARY_BUTTON_SM}
+                            >
+                              {revertingSaleId === sale.id ? "Revirtiendo..." : "Revertir venta"}
+                            </button>
+                          ) : null}
                         </div>
                       </article>
                     );
@@ -583,7 +643,9 @@ function BuildSection({
   defaultOpen,
   salesByBuildId,
   preparingPartId,
+  revertingSaleId,
   onDelete,
+  onRevertSale,
   onRegisterInventoryPrebuilt
 }: {
   title: string;
@@ -597,7 +659,9 @@ function BuildSection({
   defaultOpen: boolean;
   salesByBuildId: Map<string, SaleListRow>;
   preparingPartId: string | null;
+  revertingSaleId: string | null;
   onDelete: (build: Build) => void;
+  onRevertSale?: (build: Build, sale: SaleListRow) => void;
   onRegisterInventoryPrebuilt?: (part: Part) => void;
 }) {
   const merged = useMemo(() => {
@@ -607,7 +671,7 @@ function BuildSection({
     const out: Row[] = builds.map((b) => ({
       kind: "build" as const,
       build: b,
-      t: new Date(b.updatedAt).getTime()
+      t: new Date(buildFilterDateRef(b, buildBucket(b), salesByBuildId.get(b.id))).getTime()
     }));
     if (inventoryPrebuilts?.length) {
       for (const part of inventoryPrebuilts) {
@@ -739,7 +803,7 @@ function BuildSection({
                             </div>
                           </td>
                           <td className={`${TABLE_CELL} text-slate-400`}>
-                            {toDateLabel(sale?.soldAt ?? build.updatedAt)}
+                            {toDateLabel(buildFilterDateRef(build, buildBucket(build), sale))}
                           </td>
                           <td className={`${TABLE_CELL} text-slate-300`}>
                             {sale?.customerName ?? build.customerName ?? "—"}
@@ -765,6 +829,16 @@ function BuildSection({
                                 >
                                   Vender PC
                                 </Link>
+                              ) : null}
+                              {sale && canRevertSale(build, sale) && onRevertSale ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onRevertSale(build, sale)}
+                                  disabled={revertingSaleId === sale.id}
+                                  className={SECONDARY_BUTTON_SM}
+                                >
+                                  {revertingSaleId === sale.id ? "Revirtiendo..." : "Revertir venta"}
+                                </button>
                               ) : null}
                               <button
                                 type="button"
@@ -852,6 +926,16 @@ function BuildSection({
                           <Link to={`/builds/${build.id}#registrar-venta`} className={PRIMARY_ACTION_BUTTON_COMPACT}>
                             Vender PC
                           </Link>
+                        ) : null}
+                        {sale && canRevertSale(build, sale) && onRevertSale ? (
+                          <button
+                            type="button"
+                            onClick={() => onRevertSale(build, sale)}
+                            disabled={revertingSaleId === sale.id}
+                            className={SECONDARY_BUTTON_SM}
+                          >
+                            {revertingSaleId === sale.id ? "Revirtiendo..." : "Revertir venta"}
+                          </button>
                         ) : null}
                         <button
                           type="button"

@@ -13,7 +13,11 @@ export async function http(path, options = {}) {
         let message = `Request failed with status ${response.status}`;
         try {
             const data = (await response.json());
-            if (data.message) {
+            if (data.validation?.length) {
+                const v = data.validation[0];
+                message = `${v.field}: ${v.message} (recibido: ${JSON.stringify(v.received)})`;
+            }
+            else if (data.message) {
                 message = data.message;
             }
         }

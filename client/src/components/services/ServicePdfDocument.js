@@ -3,15 +3,10 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * PDF de ficha de servicio para cliente. Misma paleta y estructura que montajes/presupuestos.
  */
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import { PDF_BRAND_NAME, PDF_BRAND_SLOGAN, pdfBusinessContactFooterLine } from "../../constants/pdfBusinessInfo";
 import { serviceConceptLinesForPdf } from "../../utils/servicePdfLines";
-const PDF_BUSINESS_NAME = "SecondByte";
-const PDF_HEADER_SLOGAN = "Tecnología que te conecta";
+const PDF_BUSINESS_NAME = PDF_BRAND_NAME;
 const PDF_CLIENT_TAGLINE = "Tecnología y asistencia informática";
-const CLIENT_PDF_SOCIAL = {
-    whatsapp: "+34 600 000 000",
-    instagram: "@secondbyte",
-    email: "contacto@secondbyte.es"
-};
 const SERVICE_TYPE_LABELS = {
     SPARE_PART_SALE: "Venta de pieza suelta",
     PC_CLEANING: "Limpieza de PC",
@@ -438,24 +433,8 @@ function StatusBadgeBlock({ status }) {
 function LineTableHeaderThreeCol() {
     return (_jsxs(View, { style: styles.tableHeader, wrap: false, children: [_jsx(Text, { style: [styles.th, styles.colConcept], children: "Concepto" }), _jsx(Text, { style: [styles.th, styles.colQty], children: "Unidades" }), _jsx(Text, { style: [styles.th, styles.colSale], children: "Precio venta" })] }));
 }
-function clientPdfSocialLine() {
-    const parts = [];
-    const wa = String(CLIENT_PDF_SOCIAL.whatsapp).trim();
-    const ig = String(CLIENT_PDF_SOCIAL.instagram).trim();
-    const em = String(CLIENT_PDF_SOCIAL.email).trim();
-    if (wa)
-        parts.push(`WhatsApp ${wa}`);
-    if (ig)
-        parts.push(`Instagram ${ig}`);
-    if (em)
-        parts.push(em);
-    if (parts.length === 0)
-        return null;
-    return parts.join(" · ");
-}
 function FooterBlock() {
-    const socialLine = clientPdfSocialLine();
-    return (_jsxs(View, { style: styles.footer, fixed: true, children: [_jsxs(View, { style: styles.footerMainRow, children: [_jsxs(View, { style: styles.footerBrandCol, children: [_jsx(Text, { style: styles.footerBrand, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.footerTagline, children: PDF_CLIENT_TAGLINE })] }), _jsx(Text, { style: styles.footerPage, render: ({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}` })] }), socialLine ? _jsx(Text, { style: styles.footerSocials, children: socialLine }) : null, _jsx(Text, { style: styles.footerLegal, children: "Documento informativo. No constituye factura." })] }));
+    return (_jsxs(View, { style: styles.footer, fixed: true, children: [_jsxs(View, { style: styles.footerMainRow, children: [_jsxs(View, { style: styles.footerBrandCol, children: [_jsx(Text, { style: styles.footerBrand, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.footerTagline, children: PDF_CLIENT_TAGLINE })] }), _jsx(Text, { style: styles.footerPage, render: ({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}` })] }), _jsx(Text, { style: styles.footerSocials, children: pdfBusinessContactFooterLine() }), _jsx(Text, { style: styles.footerLegal, children: "Documento informativo. No constituye factura." })] }));
 }
 export function ServicePdfDocument({ service }) {
     const conceptLines = serviceConceptLinesForPdf(service);
@@ -465,7 +444,6 @@ export function ServicePdfDocument({ service }) {
     const clientRowsAll = [
         { label: "Nombre", value: dashIfEmpty(service.customerName) },
         { label: "Teléfono", value: dashIfEmpty(service.customerPhone) },
-        { label: "Email", value: dashIfEmpty(service.customerEmail) }
     ];
     const clientRows = clientRowsAll.filter((row) => row.value !== "—");
     const metaRows = [
@@ -481,7 +459,7 @@ export function ServicePdfDocument({ service }) {
             value: dashIfEmpty(service.homeServiceAddress) === "—" ? "Sí" : dashIfEmpty(service.homeServiceAddress)
         });
     }
-    const sharedHeader = (_jsxs(_Fragment, { children: [_jsx(View, { style: styles.accentTop, fixed: true }), _jsxs(View, { style: styles.headerBand, wrap: false, children: [_jsxs(View, { style: styles.headerLeft, children: [_jsx(SecondByteLogoMark, {}), _jsxs(View, { style: styles.brandBlock, children: [_jsx(Text, { style: styles.brandName, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.brandSlogan, children: PDF_HEADER_SLOGAN })] })] }), _jsxs(View, { style: styles.headerDocCol, children: [_jsx(Text, { style: styles.docKind, children: "SERVICIO" }), _jsx(Text, { style: styles.docKindSub, children: "Asistencia \u00B7 reparaci\u00F3n" })] })] }), _jsx(View, { style: styles.headerBottomLine, wrap: false })] }));
+    const sharedHeader = (_jsxs(_Fragment, { children: [_jsx(View, { style: styles.accentTop, fixed: true }), _jsxs(View, { style: styles.headerBand, wrap: false, children: [_jsxs(View, { style: styles.headerLeft, children: [_jsx(SecondByteLogoMark, {}), _jsxs(View, { style: styles.brandBlock, children: [_jsx(Text, { style: styles.brandName, children: PDF_BUSINESS_NAME }), _jsx(Text, { style: styles.brandSlogan, children: PDF_BRAND_SLOGAN })] })] }), _jsxs(View, { style: styles.headerDocCol, children: [_jsx(Text, { style: styles.docKind, children: "SERVICIO" }), _jsx(Text, { style: styles.docKindSub, children: "Asistencia \u00B7 reparaci\u00F3n" })] })] }), _jsx(View, { style: styles.headerBottomLine, wrap: false })] }));
     return (_jsx(Document, { title: `Servicio ${service.title}`, author: PDF_BUSINESS_NAME, children: _jsxs(Page, { size: "A4", style: styles.page, children: [sharedHeader, _jsxs(Text, { style: styles.subjectLine, wrap: false, children: [_jsx(Text, { style: styles.subjectStrong, children: "Servicio: " }), dashIfEmpty(service.title)] }), _jsx(StatusBadgeBlock, { status: service.status }), _jsxs(View, { style: styles.infoRow, wrap: false, children: [_jsxs(View, { style: styles.clientCard, children: [_jsx(Text, { style: styles.cardTitle, children: "Cliente" }), clientRows.length === 0 ? (_jsx(InfoLine, { label: "Nombre", value: "\u2014", isLast: true })) : (clientRows.map((row, i) => (_jsx(InfoLine, { label: row.label, value: row.value, isLast: i === clientRows.length - 1 }, row.label))))] }), _jsxs(View, { style: styles.metaCard, children: [_jsx(Text, { style: styles.cardTitle, children: "Documento" }), metaRows.map((row, i) => (_jsx(InfoLine, { label: row.label, value: row.value, isLast: i === metaRows.length - 1 }, row.label)))] })] }), description ? (_jsxs(View, { style: styles.notesCard, wrap: false, children: [_jsx(Text, { style: styles.notesTitle, children: "Descripci\u00F3n" }), _jsx(Text, { style: styles.notesBody, children: truncateNotes(description, NOTES_MAX) })] })) : null, _jsx(View, { style: styles.sectionRule }), _jsxs(View, { style: styles.tableSectionHeader, wrap: false, children: [_jsx(View, { style: styles.tableSectionAccent }), _jsx(Text, { style: styles.tableSectionTitle, children: "Conceptos del servicio" })] }), _jsxs(View, { style: styles.tableOuter, children: [_jsx(LineTableHeaderThreeCol, {}), conceptLines.length === 0 ? (_jsx(Text, { style: styles.emptyHint, children: "Sin conceptos detallados en este documento." })) : (conceptLines.map((line, index) => {
                             const zebra = index % 2 === 1;
                             const isLast = index === conceptLines.length - 1;
