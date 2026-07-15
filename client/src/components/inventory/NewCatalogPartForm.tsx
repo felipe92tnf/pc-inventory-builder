@@ -1,4 +1,12 @@
-import { type FormEvent, useEffect, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type MutableRefObject,
+  useEffect,
+  useRef,
+  useState
+} from "react";
 import * as catalogApi from "../../api/catalog";
 import {
   PART_CATEGORIES,
@@ -17,6 +25,124 @@ const TEMPLATE_CONDITION_LABEL: Record<PartCondition, string> = {
   REFURBISHED: "Reacondicionado"
 };
 
+const DECIMAL_TYPING_RE = /^\d*(?:[.,]\d*)?$/;
+
+function isDecimalSeparatorKey(key: string, code?: string): boolean {
+  return (
+    key === "." ||
+    key === "," ||
+    key === "Decimal" ||
+    key === "NumpadDecimal" ||
+    code === "NumpadDecimal"
+  );
+}
+
+function decimalSeparatorFromKey(key: string): string {
+  return key === "," ? "," : ".";
+}
+
+function parseDecimalInput(raw: string): number {
+  const t = raw.trim().replace(",", ".");
+  if (t === "" || t === "." || t === "-") return 0;
+  const n = Number.parseFloat(t);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatDecimalForInput(n: number): string {
+  if (!Number.isFinite(n)) return "";
+  return String(n);
+}
+
+function sanitizeDecimalTypingValue(value: string): string | null {
+  if (!DECIMAL_TYPING_RE.test(value)) return null;
+  if (/^0\d/.test(value)) {
+    return value.replace(/^0+/, "");
+  }
+  return value;
+}
+
+type DecimalFieldHandlers = {
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  onBlur: () => void;
+};
+
+function createDecimalFieldHandlers(options: {
+  getValue: () => string;
+  setValue: (value: string) => void;
+  ignoreNextEmptyRef: MutableRefObject<boolean>;
+  onAfterEdit?: () => void;
+  onBlurEmpty?: () => void;
+}): DecimalFieldHandlers {
+  const { getValue, setValue, ignoreNextEmptyRef, onAfterEdit, onBlurEmpty } = options;
+
+  return {
+    onChange: (event) => {
+      let value = event.target.value;
+
+      if (value === "") {
+        if (ignoreNextEmptyRef.current) {
+          ignoreNextEmptyRef.current = false;
+          return;
+        }
+        setValue("");
+        onAfterEdit?.();
+        return;
+      }
+
+      const sanitized = sanitizeDecimalTypingValue(value);
+      if (sanitized === null) return;
+
+      setValue(sanitized);
+      onAfterEdit?.();
+    },
+
+    onKeyDown: (event) => {
+      if (!isDecimalSeparatorKey(event.key, event.code)) return;
+
+      const input = event.currentTarget;
+      const { value, selectionStart, selectionEnd } = input;
+
+      if (/[.,]/.test(value)) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+
+      const start = selectionStart ?? value.length;
+      const end = selectionEnd ?? value.length;
+      const sep = decimalSeparatorFromKey(event.key);
+      const rawNext = `${value.slice(0, start)}${sep}${value.slice(end)}`;
+      const next = sanitizeDecimalTypingValue(rawNext);
+      if (next === null) return;
+
+      ignoreNextEmptyRef.current = true;
+      setValue(next);
+      onAfterEdit?.();
+
+      const cursor = start + sep.length;
+      requestAnimationFrame(() => {
+        input.setSelectionRange(cursor, cursor);
+      });
+    },
+
+    onBlur: () => {
+      const trimmed = getValue().trim();
+      if (trimmed === "" || trimmed === "." || trimmed === ",") {
+        onBlurEmpty?.();
+        return;
+      }
+      const withoutTrailingSep = trimmed.replace(/[.,]$/, "");
+      const n = parseDecimalInput(withoutTrailingSep);
+      setValue(formatDecimalForInput(n));
+    }
+  };
+}
+
+const DECIMAL_INPUT_CLASS =
+  "min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring";
+
 type NewCatalogPartFormProps = {
   onSuccess?: (created: PartCatalogEntry, meta: { condition: PartCondition }) => void;
 };
@@ -30,14 +156,40 @@ export function NewCatalogPartForm({ onSuccess }: NewCatalogPartFormProps) {
   const [newCategory, setNewCategory] = useState<PartCategory>("OTHER");
   const [newBrand, setNewBrand] = useState("");
   const [newModel, setNewModel] = useState("");
-  const [newDefaultCost, setNewDefaultCost] = useState(0);
+  const [costInput, setCostInput] = useState("0");
   const [templateCondition, setTemplateCondition] = useState<PartCondition>("NEW");
-  const [newDefaultSale, setNewDefaultSale] = useState(0);
+  const [pvpInput, setPvpInput] = useState("0");
+  const [isPvpManual, setIsPvpManual] = useState(false);
   const [newNotes, setNewNotes] = useState("");
+  const ignoreNextEmptyCostChangeRef = useRef(false);
+  const ignoreNextEmptyPvpChangeRef = useRef(false);
+
+  const normalizedCost = parseDecimalInput(costInput);
 
   useEffect(() => {
-    setNewDefaultSale(calculateSalePrice(Math.max(0, newDefaultCost), templateCondition));
-  }, [newDefaultCost, templateCondition]);
+    if (isPvpManual) return;
+    const autoPvp = calculateSalePrice(Math.max(0, normalizedCost), templateCondition);
+    setPvpInput(formatDecimalForInput(autoPvp));
+  }, [normalizedCost, templateCondition, isPvpManual]);
+
+  const costField = createDecimalFieldHandlers({
+    getValue: () => costInput,
+    setValue: setCostInput,
+    ignoreNextEmptyRef: ignoreNextEmptyCostChangeRef,
+    onBlurEmpty: () => setCostInput("0")
+  });
+
+  const pvpField = createDecimalFieldHandlers({
+    getValue: () => pvpInput,
+    setValue: setPvpInput,
+    ignoreNextEmptyRef: ignoreNextEmptyPvpChangeRef,
+    onAfterEdit: () => setIsPvpManual(true),
+    onBlurEmpty: () => {
+      setIsPvpManual(false);
+      const autoPvp = calculateSalePrice(Math.max(0, normalizedCost), templateCondition);
+      setPvpInput(formatDecimalForInput(autoPvp));
+    }
+  });
 
   const handleCreateCatalog = async (event: FormEvent) => {
     event.preventDefault();
@@ -51,8 +203,8 @@ export function NewCatalogPartForm({ onSuccess }: NewCatalogPartFormProps) {
         category: newCategory,
         brand: newBrand.trim(),
         model: newModel.trim(),
-        defaultCostPrice: Math.max(0, newDefaultCost),
-        defaultSalePrice: Math.max(0, Number.isFinite(newDefaultSale) ? newDefaultSale : 0),
+        defaultCostPrice: Math.max(0, parseDecimalInput(costInput)),
+        defaultSalePrice: Math.max(0, parseDecimalInput(pvpInput)),
         notes: newNotes.trim() ? newNotes.trim() : null
       });
       setNewSku("");
@@ -60,9 +212,10 @@ export function NewCatalogPartForm({ onSuccess }: NewCatalogPartFormProps) {
       setNewCategory("OTHER");
       setNewBrand("");
       setNewModel("");
-      setNewDefaultCost(0);
+      setCostInput("0");
       setTemplateCondition("NEW");
-      setNewDefaultSale(calculateSalePrice(0, "NEW"));
+      setIsPvpManual(false);
+      setPvpInput(formatDecimalForInput(calculateSalePrice(0, "NEW")));
       setNewNotes("");
       onSuccess?.(created, { condition: templateCondition });
     } catch (e) {
@@ -150,26 +303,27 @@ export function NewCatalogPartForm({ onSuccess }: NewCatalogPartFormProps) {
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200">
             Coste recomendado
             <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={newDefaultCost}
-              onChange={(e) => setNewDefaultCost(Number(e.target.value))}
-              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              value={costInput}
+              onChange={costField.onChange}
+              onKeyDown={costField.onKeyDown}
+              onBlur={costField.onBlur}
+              className={DECIMAL_INPUT_CLASS}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-200 sm:col-span-2">
             PVP recomendado
             <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={newDefaultSale}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                setNewDefaultSale(Number.isFinite(n) ? n : 0);
-              }}
-              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              value={pvpInput}
+              onChange={pvpField.onChange}
+              onKeyDown={pvpField.onKeyDown}
+              onBlur={pvpField.onBlur}
+              className={DECIMAL_INPUT_CLASS}
             />
             <span className="text-xs font-normal text-slate-500">
               Referencia automática al cambiar coste o estado: nuevo ×1,15 · usado o reacondicionado ×1,30 (euro

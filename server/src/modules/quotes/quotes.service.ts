@@ -461,51 +461,17 @@ export async function deleteQuoteItem(quoteId: string, itemId: string) {
   return getQuote(quoteId);
 }
 
-/** Notas del montaje al convertir presupuesto: solo texto del usuario + referencia interna de lineas no copiadas (sin duplicar cliente/total). */
-function formatQuoteConversionNotes(
-  quote: {
-    description: string | null;
-    notes: string | null;
-  },
-  manualLines: {
-    itemType: QuoteItemType;
-    name: string;
-    description: string | null;
-    quantity: number;
-    unitSalePrice: unknown;
-    total: unknown;
-  }[]
-): string {
-  const parts: string[] = [];
+/** Notas del montaje al convertir presupuesto: solo texto del usuario (las líneas se copian al montaje). */
+function formatQuoteConversionNotes(quote: { notes: string | null }): string {
+  return quote.notes?.trim() ?? "";
+}
 
-  if (quote.notes?.trim()) {
-    parts.push(quote.notes.trim());
-  }
-
-  if (manualLines.length > 0) {
-    if (parts.length > 0) parts.push("");
-    parts.push("--- Líneas no copiadas al montaje (manual / servicio / sin pieza) ---");
-    for (const m of manualLines) {
-      const typeLabel =
-        m.itemType === QuoteItemType.SERVICE
-          ? "Servicio"
-          : m.itemType === QuoteItemType.MANUAL_ITEM
-            ? "Concepto manual"
-            : m.itemType === QuoteItemType.EXTRA_TEMPLATE
-              ? "Extra (plantilla)"
-              : "Inventario (referencia)";
-      const desc = m.description?.trim() ? ` — ${m.description.trim()}` : "";
-      parts.push(
-        `• [${typeLabel}] ${m.name} ×${m.quantity} @ ${Number(m.unitSalePrice).toFixed(2)} €/u → ${Number(m.total).toFixed(2)} €${desc}`
-      );
-    }
-  }
-
-  return parts.join("\n").trim();
+function isQuoteManualExtraLine(itemType: QuoteItemType): boolean {
+  return itemType === QuoteItemType.MANUAL_ITEM || itemType === QuoteItemType.SERVICE;
 }
 
 /**
- * Acepta el presupuesto, crea un montaje en borrador con líneas de inventario y enlaza el presupuesto.
+ * Acepta el presupuesto, crea un montaje en borrador con todas las líneas del presupuesto y enlaza el presupuesto.
  * No descuenta stock (solo al confirmar el montaje).
  */
 export async function convertQuoteToBuild(quoteId: string) {
@@ -521,16 +487,7 @@ export async function convertQuoteToBuild(quoteId: string) {
     throw new Error("QUOTE_ALREADY_CONVERTED");
   }
 
-  const manualLines = quote.items.filter((row) => {
-    if (row.itemType === QuoteItemType.EXTRA_TEMPLATE) return false;
-    return (
-      row.partId === null ||
-      row.itemType === QuoteItemType.MANUAL_ITEM ||
-      row.itemType === QuoteItemType.SERVICE
-    );
-  });
-
-  const notesBody = formatQuoteConversionNotes(quote, manualLines);
+  const notesBody = formatQuoteConversionNotes(quote);
 
   type Agg = { qty: number; costQtySum: number; saleQtySum: number };
   const byPart = new Map<string, Agg>();
@@ -538,8 +495,7 @@ export async function convertQuoteToBuild(quoteId: string) {
   for (const row of quote.items) {
     if (
       row.partId === null ||
-      row.itemType === QuoteItemType.MANUAL_ITEM ||
-      row.itemType === QuoteItemType.SERVICE ||
+      isQuoteManualExtraLine(row.itemType) ||
       row.itemType === QuoteItemType.EXTRA_TEMPLATE
     ) {
       continue;
@@ -592,19 +548,36 @@ export async function convertQuoteToBuild(quoteId: string) {
     }
 
     for (const row of quote.items) {
-      if (row.itemType !== QuoteItemType.EXTRA_TEMPLATE) continue;
-      const uc = row.unitCost != null ? Number(row.unitCost) : 0;
-      await tx.buildExtraLine.create({
-        data: {
-          buildId: newBuild.id,
-          extraTemplateId: row.extraTemplateId,
-          name: row.name,
-          description: row.description ?? "",
-          quantity: row.quantity,
-          unitCost: moneyDecimal(uc),
-          unitSalePrice: moneyDecimal(Number(row.unitSalePrice))
-        }
-      });
+      if (row.itemType === QuoteItemType.EXTRA_TEMPLATE) {
+        const uc = row.unitCost != null ? Number(row.unitCost) : 0;
+        await tx.buildExtraLine.create({
+          data: {
+            buildId: newBuild.id,
+            extraTemplateId: row.extraTemplateId,
+            name: row.name,
+            description: row.description ?? "",
+            quantity: row.quantity,
+            unitCost: moneyDecimal(uc),
+            unitSalePrice: moneyDecimal(Number(row.unitSalePrice))
+          }
+        });
+        continue;
+      }
+
+      if (isQuoteManualExtraLine(row.itemType)) {
+        const uc = row.unitCost != null ? Number(row.unitCost) : 0;
+        await tx.buildExtraLine.create({
+          data: {
+            buildId: newBuild.id,
+            extraTemplateId: null,
+            name: row.name,
+            description: row.description ?? "",
+            quantity: row.quantity,
+            unitCost: moneyDecimal(uc),
+            unitSalePrice: moneyDecimal(Number(row.unitSalePrice))
+          }
+        });
+      }
     }
 
     await tx.quote.update({

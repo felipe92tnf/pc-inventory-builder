@@ -37,6 +37,8 @@ const STOCK_CONDITION_LABEL: Record<PartCondition, string> = {
   REFURBISHED: "Reacondicionado"
 };
 
+const STOCK_QUANTITY_OPTIONS = [1, 2, 3, 4, 5] as const;
+
 type AddStockFromCatalogSectionProps = {
   submitting: boolean;
   onRegisterStock: (payload: StockFromCatalogPayload) => Promise<void>;
@@ -277,15 +279,18 @@ export function AddStockFromCatalogSection({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
             Cantidad
-            <input
-              type="number"
-              min={1}
-              step={1}
+            <select
               value={quantity}
               onChange={(e) => setQuantity(Number(e.target.value))}
               disabled={!selectedId}
               className="min-h-[42px] rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-base text-slate-100 outline-none ring-indigo-400/60 focus:border-indigo-400 focus:ring sm:text-sm"
-            />
+            >
+              {STOCK_QUANTITY_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
             Coste real (unidad)
